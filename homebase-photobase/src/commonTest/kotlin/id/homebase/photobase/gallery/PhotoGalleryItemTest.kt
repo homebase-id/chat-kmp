@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.core.photobase.PhotobaseProtocol
@@ -65,3 +66,8 @@ internal fun galleryTestFile(capturedAtMs: Long, fileId: Uuid = Uuid.random(), p
     ),
     serverMetadata = ServerMetadata(),
 )
+
+internal fun HomebaseFile.newVersion() = copy(fileMetadata = fileMetadata.copy(versionTag = Uuid.random()))
+
+internal fun HomebaseFile.at(status: ArchivalStatus) =
+    copy(fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(archivalStatus = status)))

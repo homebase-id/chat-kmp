@@ -44,9 +44,11 @@ interface BackupUploader {
     suspend fun kick()
 }
 
-/** Which of [uniqueIds] are already on the Photos drive. */
+/** Of the photos asked about, those the Photos drive [has], and those [deletedForGood] from its bin: neither is sent. */
+data class OnServer(val has: Set<Uuid>, val deletedForGood: Set<Uuid> = emptySet())
+
 fun interface BackupDedupe {
-    suspend fun existing(uniqueIds: List<Uuid>): Set<Uuid>
+    suspend fun existing(uniqueIds: List<Uuid>): OnServer
 }
 
 /** Waits out a cold background launch's credential restore; false means there's no signed-in user. */

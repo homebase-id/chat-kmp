@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
+import id.homebase.api.client.drives.files.TombstoneOptions
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -22,38 +23,47 @@ import kotlinx.coroutines.sync.withPermit
  * [done] photos went where they were sent; [changedElsewhere] another device had moved or deleted first; [failed] the
  * server refused, or a request after the first didn't get through. [written] are the photos this call moved itself.
  */
-data class PhotoBinResult(val done: Int, val changedElsewhere: Int = 0, val failed: Int = 0, val written: Set<Uuid> = emptySet())
+data class PhotoMoveResult(val done: Int, val changedElsewhere: Int = 0, val failed: Int = 0, val written: Set<Uuid> = emptySet())
 
-/** The server's side of the bin, answered per file. */
-interface PhotoBinServer {
+/** The server's side of the shelves, answered per file. */
+interface PhotoMoveServer {
     suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>): List<PerFileResult>
 
     suspend fun softDelete(files: List<FileVersionTag>): List<PerFileResult>
+
+    /** Adds or removes [tag] in each file's local tags, on top of the ones it has. */
+    suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult>
 
     /** Null when the server hasn't the file. */
     suspend fun header(fileId: Uuid): HomebaseFile?
 }
 
-class HttpPhotoBinServer(
+class HttpPhotoMoveServer(
     private val files: DriveFileHttpProvider,
     private val headers: DriveFileProvider,
     private val driveId: Uuid = PhotobaseProtocol.DriveAlias,
-) : PhotoBinServer {
+) : PhotoMoveServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) =
         this.files.updateArchivalStatus(driveId, status, files).results
 
-    override suspend fun softDelete(files: List<FileVersionTag>) = this.files.softDeleteFiles(driveId, files).results
+    override suspend fun softDelete(files: List<FileVersionTag>) =
+        this.files.softDeleteFiles(driveId, files, TombstoneOptions(keepUniqueId = true)).results
+
+    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+        val tags = listOf(tag)
+        return this.files.updateLocalTags(driveId, fileIds, add = if (on) tags else emptyList(), remove = if (on) emptyList() else tags).results
+    }
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
 
 /**
- * Moves photos to the bin and back, and deletes them from it for good. Each write names the version the device last
+ * Moves photos between shelves, and deletes them from the bin for good. Each write names the version the device last
  * synced; a photo another device wrote since is read again, and written once more only if it is still where this
  * device saw it, so another device's move or restore stands.
  */
-class PhotoBin(
-    private val server: PhotoBinServer,
+class PhotoMover(
+    private val server: PhotoMoveServer,
     /** The device's copy of the photos with these ids, on any shelf. */
     private val filesOf: suspend (Collection<Uuid>) -> List<HomebaseFile>,
     /** The device's copy of every photo in the bin. */
@@ -61,20 +71,45 @@ class PhotoBin(
     /** Asks the drive to sync, so the device's copy catches up with the writes. */
     private val sync: () -> Unit,
 ) {
-    suspend fun moveToBin(fileIds: Collection<Uuid>): PhotoBinResult =
-        write(fileIds, filesOf(fileIds), from = ArchivalStatus.None, to = ArchivalStatus.Removed)
+    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult =
+        write(fileIds, filesOf(fileIds), from.status, to.status)
 
-    suspend fun restore(fileIds: Collection<Uuid>): PhotoBinResult =
-        write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = ArchivalStatus.None)
-
-    suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoBinResult =
+    suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)
 
+    /**
+     * Puts [tag] on [fileIds], a heart or an album, or takes it off, wherever each is. No version is checked: a tag is
+     * the same whoever set it, and another device's tags on the same photo stand beside this one.
+     */
+    suspend fun setTag(tag: Uuid, on: Boolean, fileIds: Collection<Uuid>): PhotoMoveResult {
+        val tally = Tally(to = null)
+        try {
+            for (answer in send(fileIds.distinct(), tally) { server.setLocalTag(tag, on, it) }) {
+                when (answer.errorCode) {
+                    null -> {
+                        tally.done++
+                        tally.written += answer.fileId
+                    }
+                    OdinClientErrorCode.FileNotFound -> tally.changedElsewhere++
+                    else -> {
+                        tally.failed++
+                        Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
+                    }
+                }
+            }
+        } finally {
+            sync()
+        }
+        return tally.result().also {
+            Logger.i(tag = TAG) { "tag $tag ${if (on) "on" else "off"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
+        }
+    }
+
     /** Deletes for good what the bin shows, not what reached the server since. */
-    suspend fun empty(): PhotoBinResult = binned().let { files -> write(files.map { it.fileId }, files, ArchivalStatus.Removed, to = null) }
+    suspend fun empty(): PhotoMoveResult = binned().let { files -> write(files.map { it.fileId }, files, ArchivalStatus.Removed, to = null) }
 
     /** [to] null deletes for good. */
-    private suspend fun write(fileIds: Collection<Uuid>, files: List<HomebaseFile>, from: ArchivalStatus, to: ArchivalStatus?): PhotoBinResult {
+    private suspend fun write(fileIds: Collection<Uuid>, files: List<HomebaseFile>, from: ArchivalStatus, to: ArchivalStatus?): PhotoMoveResult {
         val tally = Tally(to)
         val held = files.associateBy { it.fileId }
         val ready = mutableListOf<FileVersionTag>()
@@ -92,9 +127,10 @@ class PhotoBin(
         }
         ready += reconsider(unsure, from, tally)
         if (ready.isEmpty()) return tally.result()
+        val call: suspend (List<FileVersionTag>) -> List<PerFileResult> = { batch -> to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch) }
         try {
-            val again = answer(send(ready, tally), from, tally)
-            if (again.isNotEmpty()) answer(send(again, tally), from, tally, retry = false)
+            val again = answer(send(ready, tally, call), from, tally)
+            if (again.isNotEmpty()) answer(send(again, tally, call), from, tally, retry = false)
         } finally {
             sync()
         }
@@ -104,11 +140,11 @@ class PhotoBin(
     }
 
     /** Sends [files] a batch at a time; one that fails after others went through fails the rest, not the call. */
-    private suspend fun send(files: List<FileVersionTag>, tally: Tally): List<PerFileResult> {
+    private suspend fun <T> send(files: List<T>, tally: Tally, call: suspend (List<T>) -> List<PerFileResult>): List<PerFileResult> {
         val answers = mutableListOf<PerFileResult>()
         for (batch in files.chunked(DriveFileHttpProvider.FILE_BATCH)) {
             try {
-                answers += tally.to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch)
+                answers += call(batch)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -189,11 +225,11 @@ class PhotoBin(
             if (to == null) done += count else changedElsewhere += count
         }
 
-        fun result() = PhotoBinResult(done, changedElsewhere, failed, written.toSet())
+        fun result() = PhotoMoveResult(done, changedElsewhere, failed, written.toSet())
     }
 
     private companion object {
-        const val TAG = "PhotoBin"
+        const val TAG = "PhotoMover"
         const val HEADER_READS = 8
     }
 }

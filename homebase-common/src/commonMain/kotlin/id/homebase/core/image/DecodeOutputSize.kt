@@ -19,5 +19,6 @@ fun decodeOutputSize(
     val dst = DecodeUtils.computeDstSize(srcWidth, srcHeight, size, scale, maxBitmapSize)
     var multiplier = DecodeUtils.computeSizeMultiplier(srcWidth, srcHeight, dst.first, dst.second, scale, maxBitmapSize)
     if (precision == Precision.INEXACT) multiplier = multiplier.coerceAtMost(1.0)
-    return (multiplier * srcWidth).toInt() to (multiplier * srcHeight).toInt()
+    // A sliver scaled down would otherwise round to 0 pixels, which no bitmap can hold.
+    return (multiplier * srcWidth).toInt().coerceAtLeast(1) to (multiplier * srcHeight).toInt().coerceAtLeast(1)
 }

@@ -19,6 +19,9 @@ object PhotobaseProtocol {
     const val ConfigFileType = 7202
     val ConfigUniqueId: Uuid = Uuid.parse("94741947-6cc6-43d9-8bfa-776f011cf7bf")
 
+    /** An album: its unique id is also the local tag on its photos. */
+    const val AlbumFileType = 7203
+
     const val ImageDataType = 1
     const val VideoDataType = 2
     const val LivePhotoDataType = 3
@@ -26,6 +29,9 @@ object PhotobaseProtocol {
     const val ImagePayloadKey = "photo_main"
     const val VideoPayloadKey = "video_main"
     const val LivePhotoVideoPayloadKey = "photo_live"
+
+    /** The local tag on a favourite photo: `toGuidId("favorite")`, the id the old web photo app gave its own drive's. */
+    val FavoriteTag: Uuid = Uuid.parse("8a6b6ea3-aa08-285b-e1d4-e00725aa9090")
 
     /** Reconcile key of the identity's one recurring silent backup push. */
     val BackupPushTagId: Uuid = Uuid.parse("2e3f45a8-18b1-43fe-8f4b-19451525a5e7")

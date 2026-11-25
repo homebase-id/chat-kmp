@@ -79,6 +79,8 @@ class PhotoDayIndex(
         .onSubscription { mutex.withLock { orCountAgainLater { if (builtFor != countedFor()) rebuild() } } }
         .filterNotNull()
 
+    val watched: Boolean get() = current.subscriptionCount.value > 0
+
     suspend fun recount() = mutex.withLock { orCountAgainLater { rebuild() } }
 
     /** Photobase is gone: count again from scratch next time. */
@@ -90,7 +92,7 @@ class PhotoDayIndex(
     }
 
     private suspend fun note(change: PhotoChange) {
-        if (current.subscriptionCount.value == 0) {
+        if (!watched) {
             builtFor = null
             arrived.clear()
             return

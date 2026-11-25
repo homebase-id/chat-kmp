@@ -245,7 +245,7 @@ class LoginUiTest {
                         error = null,
                     ),
                     onAction = {},
-                    pendingAuthUrl = "https://frodo.dotyou.cloud/api/owner/v1/youauth/authorize",
+                    pendingAuthUrl = "https://frodo.dotyou.cloud/api/v2/youauth/authorize",
                     onContinueAuth = { continueFired = true },
                 )
             }

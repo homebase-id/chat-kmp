@@ -90,6 +90,7 @@ import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.feed.services.PostAudience
 import id.homebase.api.file.contentType
+import id.homebase.core.camera.CameraModes
 import id.homebase.core.ui.navigation.LocalPaneCloseGuard
 import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.widget.DiscardChangesDialog
@@ -99,6 +100,7 @@ import id.homebase.resources.cancel
 import id.homebase.resources.done
 import id.homebase.resources.feed_compose_add_media
 import id.homebase.resources.feed_compose_attachment_image
+import id.homebase.resources.feed_compose_attachment_video
 import id.homebase.resources.feed_compose_audience
 import id.homebase.resources.feed_compose_audience_circles
 import id.homebase.resources.feed_compose_audience_circles_count
@@ -142,14 +144,14 @@ fun PostComposeScreen(
     }
 
     val galleryLauncher = rememberFilePickerLauncher(
-        type = FileKitType.Image,
+        type = FileKitType.ImageAndVideo,
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
-        viewModel.addAttachments(files.map { it.toPendingImage() })
+        viewModel.addAttachments(files.map { it.toPendingMedia() })
     }
-    val cameraLauncher = rememberCameraManager { file ->
-        file?.let { viewModel.addAttachments(listOf(it.toPendingImage())) }
+    val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
+        file?.let { viewModel.addAttachments(listOf(it.toPendingMedia())) }
     }
 
     PostComposeContent(
@@ -456,8 +458,15 @@ private fun AttachmentThumbnailRow(
                 ) {
                     AsyncImage(
                         imageLoader = imageLoader,
-                        model = (attachment as? AttachmentPendingFile.FileImage)?.file,
-                        contentDescription = stringResource(MR.string.feed_compose_attachment_image),
+                        model = when (attachment) {
+                            is AttachmentPendingFile.FileImage -> attachment.file
+                            is AttachmentPendingFile.FileVideo -> attachment.thumbnailBytes
+                            else -> null
+                        },
+                        contentDescription = stringResource(
+                            if (attachment is AttachmentPendingFile.FileVideo) MR.string.feed_compose_attachment_video
+                            else MR.string.feed_compose_attachment_image,
+                        ),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop,
                     )
@@ -695,5 +704,8 @@ private fun CirclesDialog(
     )
 }
 
-private fun PlatformFile.toPendingImage(): AttachmentPendingFile =
-    AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = contentType())
+internal fun PlatformFile.toPendingMedia(): AttachmentPendingFile {
+    val type = contentType()
+    return if (type.startsWith("video/")) AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
+    else AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+}

@@ -534,6 +534,31 @@ The bin is a photo with `archivalStatus = 2`, so every day query also filters on
   builds it at its first start with this version: 1.5 s on this 562 MB database, inside the database open at
   startup. A device with no photos still reads the table, but builds an empty index.
 
+### 2026-11-25, shrinking images for the screen (display-lanczos), desktop JVM (Windows 10)
+
+Coil's own Skia decoder shrinks with nearest-neighbour on desktop and iOS. Each mode below decoded the
+same photos in the running app (`desktopApp:run`, mode switched through a local experiment). The times
+include the JPEG decode itself, because Skia reads the pixels only when the shrink starts.
+
+| Decode | Mitchell | Mipmaps (linear) | Lanczos (`scaleDown`) |
+|---|---|---|---|
+| 1152x2048 to 547x973 | 35–63 ms | 57–67 ms | 235–258 ms |
+| 2268x4032 to 547x974 | 100–126 ms | 138–175 ms | 306–323 ms |
+| Thumbnails and avatars (240–490 px) | – | 1–7 ms | 2–30 ms |
+
+By eye, Mitchell looked as jagged as nearest-neighbour; mipmaps looked smooth, softer than Lanczos.
+On the stripe test, mipmaps fail (see "Tried").
+
+Memory, from a throwaway JVM test that polls heap use, 8000x6000 JPEG through `decodeForDisplay`:
+
+| Shown at | Heap peak | Time |
+|---|---|---|
+| 4096x3072 | +344 MB | 4.5 s |
+| 1920x1440 | +71 MB | 1.1 s |
+
+Under 4× nothing halves first, so the Kotlin Lanczos copies all 48 MP to the heap; the native full
+decode comes on top. So decodes in which Lanczos reads more than 24 MP run one at a time.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
@@ -610,3 +635,6 @@ The bin is a photo with `archivalStatus = 2`, so every day query also filters on
 | 2026-10-26 | iOS encrypts its database: SQLCipher 4.19.0 (Zetetic's `SQLCipher.swift` package in iosApp; the same xcframework, fetched by checksum, for the simulator test binary) replaces the system `libsqlite3`, which ignored `PRAGMA key`. Raw-key mode from the start: a random 32-byte key under the same SecureStorage name as Android and desktop, set first in sqliter's `onCreateConnection` on every connection. An existing plaintext file is checkpointed, copied with `sqlcipher_export` into an encrypted file (plus `user_version`), checked, and renamed over the original; if that fails the plaintext file opens unencrypted and the next launch tries again | Phone cost: next row. `IosDatabaseEncryptionTest` on the iOS simulator: header encrypted, no-key open fails, migrated rows and `user_version` kept | Yes |
 | 2026-10-26 | iOS SQLCipher on the phone (iPhone 15, `iosApp Dev`, debug K/N framework, demo frodo: 8.4 MB, 1,947 `DriveMainIndex` rows, 310 messages, 70 conversations). Before: 004c805e5 plaintext, plus an uncommitted change that moves `QueryBatch`'s JSON decode off the read lane, so `SlowDbRead` counts don't compare; after: this branch installed over it. Medians of 3 cold starts, ms after `APP STARTUP` from `homebase.log` | One-time export on the first launch: DB init 6–7 → 99, `initializeApp` 30–35 → 167. Later launches, before → after: DB init 6–7 → 6–9; `initializeApp` 30–35 → 32–35; `ComposeView` built 374 → 379; `App()` first composition 389 → 394; list data ready (70 items) 429 → 420; `loadBasicConversations` 46–61 → 37–53; WebSocket `drainOnce` 5.5 → 6.1 (8 drains); unread counts 5–6 → 6. Process start → `APP STARTUP` 112–114 after (device syslog; no like-for-like before). The file starts with a random salt, no plaintext strings in the file or WAL, no `-encrypting` left over, the export ran once | Yes |
 | 2026-10-26 | Rich text: one markdown parse per message (`ChatMarkdownParseCache`, LRU 256 keyed by content, default instance via `LocalChatMarkdownParseCache`). Before, a block bubble ran 3 `MarkdownParser` passes per composition entry (`markdownHasBlockElements`, `withChatHardLineBreaks`, mikepenz `rememberMarkdownState`) and an inline bubble 3 (same two, then `buildMarkdownAnnotatedString`), plus `MessageBubbleRaw`'s own `markdownHasBlockElements`: 4 per bubble, all repeated when the LazyColumn recycled the item. After: 1 parse for a body with no paragraph soft breaks, 2 for one with (the promoted text has different offsets, so it is parsed again), once per content for the life of the cache. `ChatMarkdownParseCacheTest` counts the cache's parse seam: 1 across restyle and dispose/re-add. The search-highlight path still strips with its own CommonMark parse (different flavour, active only while searching) | Parse count, not timed on a device | Yes |
+| 2026-11-25 | Display shrink on desktop and iOS with Skia's Mitchell instead of Coil's nearest-neighbour | Looked as jagged by eye; the stripe table in THUMBNAILS.md has it at 69 | No |
+| 2026-11-25 | Display shrink with Skia's linear with mipmaps | Smooth by eye on a photo shrunk about 4×, at half Lanczos' cost. Square 1-pixel stripes: 71 at 1.25×, 73 at 1.97×, 63 at 2.5×, 127 at 3×, 73 at 4.1×, 0 only from 6× | No |
+| 2026-11-25 | Mipmaps only above 24 MP, to bound memory | The photos it catches are shrunk less than 4×, where mipmaps alias; one large decode at a time bounds the memory and keeps Lanczos | No |

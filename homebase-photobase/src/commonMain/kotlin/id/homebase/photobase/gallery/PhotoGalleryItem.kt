@@ -16,7 +16,11 @@ data class PhotoGalleryItem(
     val playableCopy: PayloadDescriptor? = null,
     /** A Live or motion photo's clip to play (UPLOADS.md section 3.7). */
     val motion: PayloadDescriptor? = null,
+    /** Its local tags: the favourites' and its albums'. */
+    val tags: Set<Uuid> = emptySet(),
 ) {
+    val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
+
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload
 }
@@ -41,5 +45,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         payload = payload,
         playableCopy = payload.takeIf { it.isVideo() }?.playableCopyIn(payloads),
         motion = live?.playableIn(payloads),
+        tags = localTags().toSet(),
     )
 }

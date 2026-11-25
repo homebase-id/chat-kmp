@@ -20,6 +20,9 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.runComposeUiTest
@@ -28,14 +31,16 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
-import id.homebase.photobase.gallery.PhotoShelf
-import id.homebase.photobase.gallery.PhotoBin
-import id.homebase.photobase.gallery.PhotoBinServer
+import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
 import id.homebase.photobase.gallery.galleryItem
+import id.homebase.photobase.gallery.galleryTestFile
+import id.homebase.photobase.gallery.newVersion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.resetMain
@@ -123,7 +128,7 @@ class PhotoGallerySelectionTest {
         Dispatchers.setMain(Dispatchers.Unconfined)
         val viewModel = PhotoGalleryViewModel(
             source = { _, _ -> loaded },
-            bin = PhotoBin(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
+            mover = PhotoMover(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
         setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
@@ -132,18 +137,50 @@ class PhotoGallerySelectionTest {
         onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
 
         onNodeWithText("1 selected").assertExists()
-        onNodeWithText("Move to bin").assertExists()
+        for (action in listOf("Add to favorites", "Add to album", "Archive", "Move to bin")) onNodeWithContentDescription(action).assertExists()
         onNodeWithContentDescription("Clear selection").performClick()
-        onNodeWithText("Move to bin").assertDoesNotExist()
-        assertEquals(PhotoShelf.Library, viewModel.shelf)
+        onNodeWithContentDescription("Move to bin").assertDoesNotExist()
+        assertEquals(PhotoGallery.Library, viewModel.gallery)
+    }
+
+    @Test
+    fun moveToBinAsksFirstAndCancelKeepsTheSelection() = runComposeUiTest {
+        Dispatchers.setMain(Dispatchers.Unconfined)
+        val moved = mutableListOf<Uuid>()
+        val server = object : PhotoMoveServer by NoServer {
+            override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>): List<PerFileResult> {
+                moved += files.map { it.fileId }
+                return files.map { PerFileResult(it.fileId) }
+            }
+        }
+        val viewModel = PhotoGalleryViewModel(
+            source = { _, _ -> loaded },
+            mover = PhotoMover(server, filesOf = { ids -> ids.map { galleryTestFile(0, fileId = it).newVersion() } }, binned = { emptyList() }, sync = {}),
+            libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
+        )
+        setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
+        waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Photo").fetchSemanticsNodes().size == photos.size }
+        onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
+
+        onNodeWithContentDescription("Move to bin").performClick()
+        onNodeWithText("Move 1 photo to the bin?").assertExists()
+        onNodeWithText("Cancel").performClick()
+        onNodeWithText("1 selected").assertExists()
+        assertEquals(emptyList(), moved, "nothing moves until the user says yes")
+
+        onNodeWithContentDescription("Move to bin").performClick()
+        onNode(hasText("Move to bin") and hasAnyAncestor(isDialog())).performClick()
+        waitUntil(timeoutMillis = 5_000) { moved.isNotEmpty() }
+        assertEquals(listOf(photos[0].fileId), moved)
     }
 
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 }
 
-private object NoServer : PhotoBinServer {
+private object NoServer : PhotoMoveServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = emptyList<PerFileResult>()
     override suspend fun softDelete(files: List<FileVersionTag>) = emptyList<PerFileResult>()
+    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>) = emptyList<PerFileResult>()
     override suspend fun header(fileId: Uuid): HomebaseFile? = null
 }

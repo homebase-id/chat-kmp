@@ -140,6 +140,34 @@
         <item quantity="one">Moved %1$d to the bin.</item>
         <item quantity="other">Moved %1$d to the bin.</item>
     </plurals>
+    <plurals name="photobase_library_count">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
+    <plurals name="photobase_favorites_added">
+        <item quantity="one">Added %1$d to favorites.</item>
+        <item quantity="other">Added %1$d to favorites.</item>
+    </plurals>
+    <plurals name="photobase_favorites_removed">
+        <item quantity="one">Removed %1$d from favorites.</item>
+        <item quantity="other">Removed %1$d from favorites.</item>
+    </plurals>
+    <plurals name="photobase_album_added">
+        <item quantity="one">Added %1$d to the album.</item>
+        <item quantity="other">Added %1$d to the album.</item>
+    </plurals>
+    <plurals name="photobase_album_removed">
+        <item quantity="one">Removed %1$d from the album.</item>
+        <item quantity="other">Removed %1$d from the album.</item>
+    </plurals>
+    <plurals name="photobase_archive_archived">
+        <item quantity="one">Archived %1$d.</item>
+        <item quantity="other">Archived %1$d.</item>
+    </plurals>
+    <plurals name="photobase_archive_unarchived">
+        <item quantity="one">Moved %1$d back to the library.</item>
+        <item quantity="other">Moved %1$d back to the library.</item>
+    </plurals>
     <plurals name="photobase_bin_restored">
         <item quantity="one">Restored %1$d.</item>
         <item quantity="other">Restored %1$d.</item>
@@ -155,6 +183,18 @@
     <plurals name="photobase_bin_refused">
         <item quantity="one">%1$d couldn't be changed.</item>
         <item quantity="other">%1$d couldn't be changed.</item>
+    </plurals>
+    <plurals name="photobase_bin_cant_undo">
+        <item quantity="one">This can't be undone, and the photo won't be backed up again from a phone that still has it.</item>
+        <item quantity="other">This can't be undone, and the photos won't be backed up again from a phone that still has them.</item>
+    </plurals>
+    <plurals name="photobase_bin_move_confirm_title">
+        <item quantity="one">Move %1$d photo to the bin?</item>
+        <item quantity="other">Move %1$d photos to the bin?</item>
+    </plurals>
+    <plurals name="photobase_bin_move_confirm_text">
+        <item quantity="one">It moves to the bin on all your devices and stays there until you empty it.</item>
+        <item quantity="other">They move to the bin on all your devices and stay there until you empty it.</item>
     </plurals>
     <plurals name="photobase_bin_delete_confirm_title">
         <item quantity="one">Delete %1$d photo forever?</item>

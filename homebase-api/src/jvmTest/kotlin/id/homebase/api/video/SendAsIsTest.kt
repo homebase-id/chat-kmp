@@ -68,7 +68,7 @@ class SendAsIsTest {
             return output
         }
 
-        override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader, onProgress: VideoProgressListener?): SegmentedVideo? = null
+        override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader?, onProgress: VideoProgressListener?): SegmentedVideo? = null
     }
 
     private object SdrProbe : VideoProber {
