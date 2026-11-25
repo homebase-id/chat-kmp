@@ -57,3 +57,36 @@ headersOnShelf:
 SELECT jsonHeader FROM DriveMainIndex
 WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
   AND archivalStatus = :archivalStatus;
+
+-- The photos carrying a local tag, by the same days as above. Few photos carry one, so CROSS JOIN starts from the
+-- tag rows and finds each photo by its fileId.
+taggedDayCounts:
+SELECT CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
+FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m
+  ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+WHERE t.identityId = :identityId AND t.driveId = :driveId AND t.tagId = :tagId
+  AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN :archivalStatuses
+  AND m.userDate BETWEEN -62167132800000 AND 253402214399999
+GROUP BY day
+ORDER BY day DESC;
+
+taggedPhotosOnDay:
+SELECT count(*)
+FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m
+  ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+WHERE t.identityId = :identityId AND t.driveId = :driveId AND t.tagId = :tagId
+  AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN :archivalStatuses
+  AND m.userDate >= (CAST(:day AS INTEGER) - 1) * 86400000
+  AND m.userDate < (CAST(:day AS INTEGER) + 2) * 86400000
+  AND CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) = :day;
+
+taggedPhotosOnDays:
+SELECT CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, m.jsonHeader
+FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m
+  ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId
+WHERE t.identityId = :identityId AND t.driveId = :driveId AND t.tagId = :tagId
+  AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN :archivalStatuses
+  AND m.userDate >= (CAST(:fromDay AS INTEGER) - 1) * 86400000
+  AND m.userDate < (CAST(:toDay AS INTEGER) + 2) * 86400000
+  AND CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) BETWEEN :fromDay AND :toDay
+ORDER BY m.userDate DESC, m.rowId DESC;

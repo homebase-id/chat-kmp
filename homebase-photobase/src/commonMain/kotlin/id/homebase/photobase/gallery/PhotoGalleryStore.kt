@@ -25,14 +25,14 @@ class PhotoGalleryStore internal constructor(
     val shelf: PhotoShelf = PhotoShelf.Library,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGallerySource {
-    private val status = shelf.status.value.toLong()
+    private val filter = shelf.filter
 
     // Called from each gallery view model's own reading thread.
     private val unparsable = mutableSetOf<Int>()
     private val unparsableLock = Mutex()
 
     override suspend fun photosOnDays(fromDay: Int, toDay: Int): Map<Int, List<PhotoGalleryItem>> =
-        db.photoDays.headersOnDays(identityId(), photosDriveId, status, fromDay, toDay)
+        db.photoDays.headersOnDays(identityId(), photosDriveId, filter, fromDay, toDay)
             .mapNotNull { row -> row.toGalleryItem()?.let { row.day to it } }
             .groupBy({ it.first }, { it.second })
 
@@ -48,11 +48,11 @@ class PhotoGalleryStore internal constructor(
         null
     }
 
-    suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, status)
+    suspend fun dayCounts(): List<DayCount> = db.photoDays.dayCounts(identityId(), photosDriveId, filter)
 
     suspend fun dayOf(userDate: Long): Int? = db.photoDays.dayOf(userDate)
 
-    suspend fun photosOn(day: Int): Int = db.photoDays.photosOn(identityId(), photosDriveId, status, day)
+    suspend fun photosOn(day: Int): Int = db.photoDays.photosOn(identityId(), photosDriveId, filter, day)
 
     /** The device's copy of those of [fileIds] it holds, on any shelf; one that won't parse is left out. */
     suspend fun filesOf(fileIds: Collection<Uuid>): List<HomebaseFile> =
@@ -60,7 +60,7 @@ class PhotoGalleryStore internal constructor(
 
     /** The device's copy of every photo on this shelf. */
     suspend fun filesOnShelf(): List<HomebaseFile> =
-        parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, status))
+        parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, shelf.status.value.toLong()))
 
     // A bin action asks from Main; a few thousand headers take seconds to parse.
     private suspend fun parsedOffMain(headers: List<String>): List<HomebaseFile> =

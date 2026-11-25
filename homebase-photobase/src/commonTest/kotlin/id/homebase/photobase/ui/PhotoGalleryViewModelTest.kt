@@ -517,6 +517,14 @@ class PhotoGalleryViewModelTest {
 
         override suspend fun softDelete(files: List<FileVersionTag>) = files.map { PerFileResult(it.fileId) }
 
+        val hearts = mutableMapOf<Uuid, Boolean>()
+
+        override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+            failure?.let { throw it }
+            fileIds.forEach { hearts[it] = on }
+            return fileIds.map { PerFileResult(it) }
+        }
+
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 
@@ -728,6 +736,89 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(ArchivalStatus.Archived, server.status[photo])
         listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun heartingTheSelectionShowsTheHeartsAtOnceAndUndoTakesThemAway() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val picked = library.photos.getValue(3).take(2).mapTo(HashSet()) { it.fileId }
+        picked.forEach { viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(it)) }
+        assertFalse(viewModel.uiState.value.selectedAreFavorites())
+
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true))
+        advanceUntilIdle()
+
+        assertEquals(picked.associateWith { true }, server.hearts)
+        val hearted = viewModel.uiState.value.loaded.getValue(3).filter { it.favorite }.mapTo(HashSet()) { it.fileId }
+        assertEquals(picked, hearted, "before the sync brings them back")
+        val done = assertIs<PhotoGalleryEvent.Moved>(events.single())
+        assertEquals(MoveAction.Favorite, done.action)
+        assertEquals(PhotoGalleryUiAction.UndoFavorite(picked, favorite = false), done.undo)
+
+        viewModel.onAction(done.undo!!)
+        advanceUntilIdle()
+        assertEquals(picked.associateWith { false }, server.hearts)
+        assertTrue(viewModel.uiState.value.loaded.getValue(3).none { it.favorite })
+        assertNull(assertIs<PhotoGalleryEvent.Moved>(events.last()).undo)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun undoingAHeartOnAMixedSelectionLeavesThePhotosThatWereFavoritesBefore() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server)
+        val events = mutableListOf<PhotoGalleryEvent>()
+        val listening = launch { viewModel.events.collect { events += it } }
+        val (before, added) = library.photos.getValue(3).take(2).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true, fileId = before))
+        advanceUntilIdle()
+        events.clear()
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(before))
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(added))
+
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true))
+        advanceUntilIdle()
+
+        assertEquals(PhotoGalleryUiAction.UndoFavorite(setOf(added), favorite = false), assertIs<PhotoGalleryEvent.Moved>(events.single()).undo)
+        listening.cancel()
+        screen.cancel()
+    }
+
+    @Test
+    fun theViewersHeartTakesOnlyItsPhotoAndLeavesTheSelection() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val (viewModel, screen) = moverViewModel(library, server)
+        val (open, picked) = library.photos.getValue(3).take(2).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(picked))
+
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true, fileId = open))
+        advanceUntilIdle()
+
+        assertEquals(mapOf(open to true), server.hearts)
+        assertEquals(setOf(picked), viewModel.uiState.value.selected)
+        screen.cancel()
+    }
+
+    @Test
+    fun selectionIsAllFavoritesOnlyWhenEveryPickedPhotoHeldIsOne() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val (viewModel, screen) = moverViewModel(library, Server())
+        val (a, b) = library.photos.getValue(3).take(2).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.SetFavorite(true, fileId = a))
+        advanceUntilIdle()
+
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(a))
+        assertTrue(viewModel.uiState.value.selectedAreFavorites())
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(b))
+        assertFalse(viewModel.uiState.value.selectedAreFavorites())
         screen.cancel()
     }
 

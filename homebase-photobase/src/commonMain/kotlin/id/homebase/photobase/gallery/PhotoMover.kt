@@ -31,6 +31,9 @@ interface PhotoMoveServer {
 
     suspend fun softDelete(files: List<FileVersionTag>): List<PerFileResult>
 
+    /** Adds or removes [tag] in each file's local tags, on top of the ones it has. */
+    suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult>
+
     /** Null when the server hasn't the file. */
     suspend fun header(fileId: Uuid): HomebaseFile?
 }
@@ -45,6 +48,11 @@ class HttpPhotoMoveServer(
 
     override suspend fun softDelete(files: List<FileVersionTag>) =
         this.files.softDeleteFiles(driveId, files, TombstoneOptions(keepUniqueId = true)).results
+
+    override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+        val tags = listOf(tag)
+        return this.files.updateLocalTags(driveId, fileIds, add = if (on) tags else emptyList(), remove = if (on) emptyList() else tags).results
+    }
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
 }
@@ -69,6 +77,34 @@ class PhotoMover(
     suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)
 
+    /**
+     * Hearts [fileIds], or takes the heart away, wherever each is. No version is checked: a heart is the same whoever set
+     * it, and another device's heart on the same photo stands beside this one.
+     */
+    suspend fun setFavorite(fileIds: Collection<Uuid>, favorite: Boolean): PhotoMoveResult {
+        val tally = Tally(to = null)
+        try {
+            for (answer in send(fileIds.distinct(), tally) { server.setLocalTag(PhotobaseProtocol.FavoriteTag, favorite, it) }) {
+                when (answer.errorCode) {
+                    null -> {
+                        tally.done++
+                        tally.written += answer.fileId
+                    }
+                    OdinClientErrorCode.FileNotFound -> tally.changedElsewhere++
+                    else -> {
+                        tally.failed++
+                        Logger.w(tag = TAG) { "photo ${answer.fileId} refused: ${answer.errorCode}" }
+                    }
+                }
+            }
+        } finally {
+            sync()
+        }
+        return tally.result().also {
+            Logger.i(tag = TAG) { "${if (favorite) "favorite" else "not favorite"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
+        }
+    }
+
     /** Deletes for good what the bin shows, not what reached the server since. */
     suspend fun empty(): PhotoMoveResult = binned().let { files -> write(files.map { it.fileId }, files, ArchivalStatus.Removed, to = null) }
 
@@ -91,9 +127,10 @@ class PhotoMover(
         }
         ready += reconsider(unsure, from, tally)
         if (ready.isEmpty()) return tally.result()
+        val call: suspend (List<FileVersionTag>) -> List<PerFileResult> = { batch -> to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch) }
         try {
-            val again = answer(send(ready, tally), from, tally)
-            if (again.isNotEmpty()) answer(send(again, tally), from, tally, retry = false)
+            val again = answer(send(ready, tally, call), from, tally)
+            if (again.isNotEmpty()) answer(send(again, tally, call), from, tally, retry = false)
         } finally {
             sync()
         }
@@ -103,11 +140,11 @@ class PhotoMover(
     }
 
     /** Sends [files] a batch at a time; one that fails after others went through fails the rest, not the call. */
-    private suspend fun send(files: List<FileVersionTag>, tally: Tally): List<PerFileResult> {
+    private suspend fun <T> send(files: List<T>, tally: Tally, call: suspend (List<T>) -> List<PerFileResult>): List<PerFileResult> {
         val answers = mutableListOf<PerFileResult>()
         for (batch in files.chunked(DriveFileHttpProvider.FILE_BATCH)) {
             try {
-                answers += tally.to?.let { server.setArchivalStatus(it, batch) } ?: server.softDelete(batch)
+                answers += call(batch)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
