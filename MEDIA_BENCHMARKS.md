@@ -274,7 +274,7 @@ The FFmpegKit frameworks embedded in the app were 16.4 MB of arm64 binaries (18.
 | Pixel 8 | native C, NEON | **924 MB/s** | 52 MB/s | 2026-11-16 |
 | Desktop JVM | Kotlin port | 141 MB/s | — | 2026-11-16 |
 | iPhone 15 Plus, debug framework (#2587) | native C, NEON (homebase-blake3's sources, through cinterop) | **1511–1805 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 140 → 52 ms, HLS of a 10 MB send 383 → 100 ms | 48–49 MB/s over 256 MB (iPhone 15: 43–45) | 2026-11-20 |
-| iPhone 15 Plus, release framework | native C, NEON | **1565–1880 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 36–37 ms, HLS of a 10 MB send 59–63 ms | not measured: the bench runs the port only when C fails its self-check | 2026-11-24 |
+| iPhone 15 Plus, release framework | native C, NEON | **1565–1880 MB/s** over 256 MB; MP4 encrypt of a 5 MB send 36–37 ms, HLS of a 10 MB send 59–63 ms | **612–620 MB/s** over 256 MB (desktop JVM 141) | 2026-11-24 |
 
 For scale: AES-CBC runs at 681 MB/s on the Pixel 5. A 32-bit app is installed with `adb install --abi armeabi-v7a`.
 
