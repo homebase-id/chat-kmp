@@ -10,6 +10,8 @@ import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.config.OWNER_CONNECTION_ACCEPTED_TYPE_ID
 import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
 import id.homebase.core.config.OWNER_FOLLOWER_TYPE_ID
+import id.homebase.core.config.OWNER_RISK_REPORT_GENERATED_TYPE_ID
+import id.homebase.core.config.OWNER_SHARD_REQUESTED_TYPE_ID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -59,6 +61,26 @@ class CompanionAppUrlTest {
             NotificationNavigationEvent.OpenUrl(
                 "https://frodo.dotyou.cloud/apps/community/redirect/channel-1/msg-9"
             ),
+            event,
+        )
+    }
+
+    @Test
+    fun ownerRiskReport_opensSecurityOverview() {
+        val event =
+            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_RISK_REPORT_GENERATED_TYPE_ID, "y")
+        assertEquals(
+            NotificationNavigationEvent.OpenUrl("https://frodo.dotyou.cloud/owner/security/overview"),
+            event,
+        )
+    }
+
+    @Test
+    fun ownerShardRequested_opensReleaseShards() {
+        val event =
+            buildCompanionAppUrlEvent(OWNER_APP_ID, ownDomain, OWNER_SHARD_REQUESTED_TYPE_ID, "y")
+        assertEquals(
+            NotificationNavigationEvent.OpenUrl("https://frodo.dotyou.cloud/owner/security/release-shards"),
             event,
         )
     }
