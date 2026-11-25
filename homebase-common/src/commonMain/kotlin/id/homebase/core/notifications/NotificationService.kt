@@ -25,6 +25,8 @@ import id.homebase.core.config.FEED_APP_ID
 import id.homebase.core.config.MAIL_APP_ID
 import id.homebase.core.config.OWNER_APP_ID
 import id.homebase.core.config.OWNER_CONNECTION_REQUEST_TYPE_ID
+import id.homebase.core.config.OWNER_RISK_REPORT_GENERATED_TYPE_ID
+import id.homebase.core.config.OWNER_SHARD_REQUESTED_TYPE_ID
 import id.homebase.core.localization.TranslationUtil
 import id.homebase.resources.MR
 import id.homebase.resources.chat_preview_sender_prefix
@@ -90,8 +92,14 @@ internal fun buildCompanionAppUrlEvent(
                 "https://$ownDomain/apps/community/redirect/$typeId/$tagId"
             )
 
-        OWNER_APP_ID ->
-            NotificationNavigationEvent.OpenUrl("https://$ownDomain/owner/connections")
+        OWNER_APP_ID -> {
+            val path = when (typeId) {
+                OWNER_SHARD_REQUESTED_TYPE_ID -> "security/release-shards"
+                OWNER_RISK_REPORT_GENERATED_TYPE_ID -> "security/overview"
+                else -> "connections"
+            }
+            NotificationNavigationEvent.OpenUrl("https://$ownDomain/owner/$path")
+        }
 
         MAIL_APP_ID ->
             NotificationNavigationEvent.OpenUrl("https://$ownDomain/apps/mail/inbox/$typeId")
