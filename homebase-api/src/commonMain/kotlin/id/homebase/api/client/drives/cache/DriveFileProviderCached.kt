@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.ByteApiResponse
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.cache.clearIncludingOrphans
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadSizePolicy
@@ -394,20 +395,6 @@ class DriveFileProviderCached(
         return readThrough(thumbCacheFor(driveId), cacheKey, thumbnailSemaphore, "ThumbIO", cancelWhenUnwatched) {
             delegate.getThumbBytesRawNetwork(driveId, fileId, payloadKey, width, height, lastModified)
         }
-    }
-
-    /** Brings a thumbnail into the cache if it isn't there, without reading one that already is. */
-    suspend fun ensureThumbCached(
-            driveId: Uuid,
-            fileId: Uuid,
-            payloadKey: String,
-            width: Int,
-            height: Int,
-            lastModified: Long? = null
-    ) {
-        val cacheKey = buildThumbCacheKey(driveId, fileId, payloadKey, width, height, lastModified)
-        val held = thumbCacheFor(driveId).openSnapshot(cacheKey.toDiskKey())?.use { true } ?: false
-        if (!held) getThumbBytesRaw(driveId, fileId, payloadKey, width, height, lastModified)
     }
 
     /**
@@ -885,31 +872,31 @@ class DriveFileProviderCached(
             fetchScope.coroutineContext.cancelChildren()
             inFlight.clear()
         }
-        // Coil's DiskCache.clear() is documented as thread-safe; it serialises
-        // internally against in-flight readers/writers.
+        // Coil's DiskCache.clear() is thread-safe; clearIncludingOrphans then deletes only files
+        // that existed before the clear.
         try {
-            payloadDiskCache.clear()
+            payloadDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "payload cache clear failed" }
         }
         try {
-            thumbDiskCache.clear()
+            thumbDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "thumb cache clear failed" }
         }
         try {
-            dedicatedThumbDiskCache?.clear()
+            dedicatedThumbDiskCache?.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Logger.w(tag = "DriveFileProviderCached", throwable = e) { "dedicated thumb cache clear failed" }
         }
         try {
-            hlsChunkDiskCache.clear()
+            hlsChunkDiskCache.clearIncludingOrphans()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

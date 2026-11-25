@@ -43,9 +43,9 @@ fun Throwable.isTransientNetworkFailure(): Boolean {
 
 /**
  * True when [this] is an engine connect-time failure that is NOT an [IOException] and thus
- * bypasses the IOException-shaped catch/classify paths. Ktor CIO (Desktop/JVM) throws
+ * bypasses the IOException-shaped catch/classify paths. Ktor CIO throws
  * `java.nio.channels.UnresolvedAddressException` (an `IllegalArgumentException`, not an
- * `IOException`) on DNS failure / no network — the Desktop variant of the OkHttp
+ * `IOException`) on DNS failure / no network — the CIO variant of the OkHttp
  * `UnknownHostException` already covered above.
  *
  * Matched by qualified class name because this code is in `commonMain`, which cannot

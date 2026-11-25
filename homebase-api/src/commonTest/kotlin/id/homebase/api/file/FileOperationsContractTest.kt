@@ -13,6 +13,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import okio.Path.Companion.toPath
 
 abstract class FileOperationsContractTest {
     abstract fun provider(): FileOperationsProvider
@@ -172,10 +173,7 @@ abstract class FileOperationsContractTest {
         val b = p.writeBytesToTempFile(bytes("two"), "pre_", ".bin").also { created += it }
         val dir = AppCacheDirs.scratchPath(p.getCacheDirectory(), CacheAudit.UPLOAD_TEMP_DIR_NAME)
         assertNotEquals(a, b)
-        for (f in listOf(a, b)) {
-            assertTrue(f.startsWith("$dir/pre_"), f)
-            assertTrue(f.endsWith(".bin"), f)
-        }
+        for (f in listOf(a, b)) assertIn(dir, "pre_", ".bin", f)
         assertEquals("one", p.readFileBytes(a).decodeToString())
     }
 
@@ -186,10 +184,7 @@ abstract class FileOperationsContractTest {
         val b = p.writeBytesToShareOutboundFile(bytes("two"), ".txt").also { created += it }
         val dir = AppCacheDirs.scratchPath(p.getCacheDirectory(), SHARE_OUTBOUND_DIR_NAME)
         assertNotEquals(a, b)
-        for (f in listOf(a, b)) {
-            assertTrue(f.startsWith("$dir/share_"), f)
-            assertTrue(f.endsWith(".txt"), f)
-        }
+        for (f in listOf(a, b)) assertIn(dir, "share_", ".txt", f)
         assertEquals("two", p.readFileBytes(b).decodeToString())
     }
 
@@ -212,11 +207,17 @@ abstract class FileOperationsContractTest {
         )) {
             assertNotEquals(paths[0], paths[1])
             for (f in paths) {
-                assertTrue(f.startsWith("${dir.trimEnd('/')}/$prefix"), f)
-                assertTrue(f.endsWith(suffix), f)
+                assertIn(dir, prefix, suffix, f)
                 assertFalse(p.sourceExists(f), "reservation must not create $f")
             }
         }
+    }
+
+    // Compared as paths: Windows hands back its own separator.
+    private fun assertIn(dir: String, prefix: String, suffix: String, file: String) {
+        val path = file.toPath()
+        assertEquals(dir.toPath(), path.parent, file)
+        assertTrue(path.name.startsWith(prefix) && path.name.endsWith(suffix), file)
     }
 
     private data class Reserved(val paths: List<String>, val dir: String, val prefix: String, val suffix: String)

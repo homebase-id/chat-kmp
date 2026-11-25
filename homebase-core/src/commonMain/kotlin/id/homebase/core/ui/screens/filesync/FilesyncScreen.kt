@@ -1,5 +1,8 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.core.widget.ConfirmDialog
+import id.homebase.core.widget.NameDialog
+import id.homebase.core.widget.SelectionTopBar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -53,7 +56,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -211,8 +213,11 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     }
     var showNewFolder by remember { mutableStateOf(false) }
     if (showNewFolder) {
-        NewFolderDialog(
-            onCreate = { name ->
+        NameDialog(
+            title = stringResource(MR.string.filesync_new_folder),
+            label = stringResource(MR.string.filesync_new_folder_name),
+            confirmLabel = stringResource(MR.string.create),
+            onConfirm = { name ->
                 showNewFolder = false
                 viewModel.onAction(FilesyncUiAction.CreateFolder(name))
             },
@@ -220,7 +225,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
         )
     }
     uiState.confirmDelete?.let { nodes ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             text = if (nodes.size == 1) {
                 stringResource(MR.string.filesync_remove_confirm, nodes.single().name)
             } else {
@@ -234,7 +239,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     }
     uiState.movePicker?.let { FilesyncMoveDialog(it, viewModel::onAction) }
     uiState.sharing.losingAccess?.let { people ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             title = stringResource(MR.string.filesync_move_losing_title),
             text = stringResource(MR.string.filesync_move_losing_body, people.joinToString { it.domainName }),
             confirmLabel = stringResource(MR.string.filesync_move_anyway),
@@ -255,7 +260,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     if (!isExpandedLayout()) FilesyncSharedFilesSheet(uiState.sharing, uiState.transfer, sharedUploads, viewModel::onAction)
     var askRestore by remember { mutableStateOf<FilesyncNode?>(null) }
     askRestore?.let { node ->
-        FilesyncConfirmDialog(
+        ConfirmDialog(
             text = stringResource(MR.string.filesync_restore_confirm, node.name),
             confirmLabel = stringResource(MR.string.filesync_restore),
             onConfirm = {
@@ -328,7 +333,7 @@ private fun FilesyncCompactBrowser(scope: FilesyncBrowserScope) {
     Scaffold(
         topBar = {
             if (selecting) {
-                FilesyncSelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
+                SelectionTopBar(uiState.selected.size, onClear = { scope.onAction(FilesyncUiAction.ClearSelection) }) {
                     // Material's three: the first action, select all, and the rest behind More.
                     val first = uiState.bulkActions.firstOrNull()
                     if (first != null) {
@@ -645,31 +650,6 @@ private fun UploadCard(content: @Composable androidx.compose.foundation.layout.R
 internal fun crumbNames(path: List<FilesyncCrumb>): List<String> {
     val root = stringResource(MR.string.filesync_root)
     return path.map { it.name ?: root }
-}
-
-@Composable
-private fun NewFolderDialog(onCreate: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.filesync_new_folder)) },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(stringResource(MR.string.filesync_new_folder_name)) },
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onCreate(name.trim()) }, enabled = name.isNotBlank()) {
-                Text(stringResource(MR.string.create))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
-        },
-    )
 }
 
 @Composable

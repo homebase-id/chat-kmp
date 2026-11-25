@@ -54,6 +54,8 @@ data class ServerFile(
                 sharedSecretEncryptedKeyHeader.open(driveId, sharedSecret, externalFileKey?.let { key -> { locked -> key.open(fileId, fileMetadata.globalTransitId, shares.orEmpty(), locked) } })
             } catch (e: FileDecryptionException.Withheld) {
                 throw e
+            } catch (e: FileDecryptionException.WrongDriveKey) {
+                throw e
             } catch (e: CancellationException) {
                 // Only an outside key suspends on the network; any other path keeps reporting as it did.
                 if (externalFileKey != null) throw e
@@ -109,13 +111,38 @@ suspend fun EncryptedKeyHeader.open(
 ): KeyHeader =
     when (type) {
         EncryptionType.Aes -> decryptAesToKeyHeader(sharedSecret)
-        EncryptionType.ZkDrive -> decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId)))
+        EncryptionType.ZkDrive -> openWithDriveKey(driveId)
         EncryptionType.Sealed -> openSealed(driveId)
         EncryptionType.FileKey, EncryptionType.Share -> {
             val key = (external ?: throw FileDecryptionException.NoFileKey())(encryptedAesKey) ?: throw FileDecryptionException.Withheld()
             KeyHeader(iv, key.toByteArray().toSecureByteArray())
         }
     }
+
+private suspend fun EncryptedKeyHeader.openWithDriveKey(driveId: Uuid): KeyHeader {
+    val rawKey = zkDriveKey(driveId)
+    val driveKey = SecureByteArray(rawKey)
+    // Only a well-formed header and key that still don't decrypt mean another key; a format this version can't
+    // read, a damaged header or a damaged key fail as before.
+    val wellFormed = encryptionVersion == 1 && iv.size == 16 && encryptedAesKey.size == LOCKED_KEY_HEADER_BYTES &&
+        rawKey.size in AES_KEY_SIZES
+    if (!wellFormed) return decryptAesToKeyHeader(driveKey)
+    return try {
+        decryptAesToKeyHeader(driveKey)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Error) {
+        throw e
+    } catch (e: Throwable) {
+        // Throwable: on the web a rejected decrypt arrives as a bare Throwable.
+        throw FileDecryptionException.WrongDriveKey(e)
+    }
+}
+
+private val AES_KEY_SIZES = setOf(16, 24, 32)
+
+// A 16-byte IV and a 16-byte key, padded to the next AES block.
+private const val LOCKED_KEY_HEADER_BYTES = 48
 
 /**
  * The key a key header doesn't carry: a comment's file's, or a shared file's, unlocked from its [shares]' row. Null
@@ -288,6 +315,10 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
 
     class ContentDecryptionFailed(cause: Throwable) :
         FileDecryptionException("Failed to decrypt file content", cause)
+
+    /** The drive key this device holds doesn't open the key header: the file was locked with another key. */
+    class WrongDriveKey(cause: Throwable) :
+        FileDecryptionException("The drive key doesn't open this key header", cause)
 
     class NoDriveKey(driveId: Uuid) :
         FileDecryptionException("This device holds no key for the zero-knowledge drive $driveId")

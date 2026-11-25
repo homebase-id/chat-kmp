@@ -107,6 +107,13 @@ class PayloadHashTest {
     }
 
     @Test
+    fun anUnencryptedUploadCarriesAHashWithNoIv() {
+        val hash = PayloadHash("blake3", Base64Bytes(byteArrayOf(0x73)), Base64Bytes(byteArrayOf(0x73)))
+        val plain = PayloadFile(key = "pst_mdi_00", filePath = "/x", hash = hash)
+        assertEquals(hash, UploadManifest.build(listOf(plain)).payloadDescriptors?.single()?.hash)
+    }
+
+    @Test
     fun aDescriptorWithoutAHashOmitsIt() {
         assertFalse(OdinSystemSerializer.serialize(PayloadDescriptor(key = "sync_data")).contains("hash"))
         val parsed = OdinSystemSerializer.deserialize<PayloadDescriptor>(

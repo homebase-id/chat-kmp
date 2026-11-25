@@ -56,6 +56,7 @@ kotlin {
             api(project(":homebase-upload"))
             implementation(project(":homebase-common"))
             implementation(project(":homebase-chat"))
+            implementation(libs.atomicfu)
 
             implementation(libs.kermit)
             implementation(libs.jetbrains.compose.runtime)
@@ -86,6 +87,8 @@ kotlin {
             implementation(libs.androidx.work.testing)
         }
         jvmTest.dependencies {
+            implementation(compose.desktop.currentOs)
+            implementation(libs.jetbrains.compose.ui.test)
             implementation(libs.ktor.client.mock)
             implementation(libs.sqldelight.sqlite.driver.get().toString()) {
                 exclude(group = "org.xerial", module = "sqlite-jdbc")

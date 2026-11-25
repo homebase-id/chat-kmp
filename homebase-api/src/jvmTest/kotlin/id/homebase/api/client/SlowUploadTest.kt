@@ -2,6 +2,7 @@ package id.homebase.api.client
 
 import kotlinx.coroutines.test.runTest
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 import kotlin.test.Test
@@ -14,7 +15,11 @@ class SlowUploadTest {
 
     @Test
     fun slowButProgressingUpload_isNotFailed() = runTest(timeout = 120.seconds) {
-        val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        // Windows grows loopback buffers to hold more than the 3 s stall limit of this trickle; capped, progress keeps coming.
+        val server = ServerSocket().apply {
+            receiveBufferSize = 64 * 1024
+            bind(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 1)
+        }
         thread(isDaemon = true) {
             server.accept().use { socket ->
                 val input = socket.getInputStream()

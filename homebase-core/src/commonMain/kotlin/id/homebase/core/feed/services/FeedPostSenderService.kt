@@ -72,7 +72,7 @@ class FeedPostSenderService(
             caption = text,
             slug = slug,
             reactAccess = reactAccess,
-            primaryMediaKey = mediaBundle.payloads.firstOrNull()?.key,
+            primaryMedia = mediaBundle.payloads.firstOrNull()?.let { PrimaryMediaFile(it.key, type = it.contentType) },
         )
         val overflowPayload = overflowText?.let {
             PayloadFile(
@@ -127,7 +127,7 @@ class FeedPostSenderService(
         caption: String,
         slug: String,
         reactAccess: ReactAccess,
-        primaryMediaKey: String?,
+        primaryMedia: PrimaryMediaFile?,
     ): Pair<String, String?> {
         fun serialize(cap: String) = OdinSystemSerializer.serialize(
             PostContent(
@@ -138,7 +138,7 @@ class FeedPostSenderService(
                 caption = cap,
                 slug = slug,
                 reactAccess = reactAccess,
-                primaryMediaKey = primaryMediaKey,
+                primaryMediaFile = primaryMedia,
             ),
         )
         val full = serialize(caption)

@@ -1,6 +1,8 @@
 package id.homebase.core.vault
 
+import org.junit.Assume.assumeTrue
 import java.io.File
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,6 +26,8 @@ class LinuxAvailabilityTest {
 
     @Test
     fun `ignores a non-executable match`() {
+        // Windows has no executable bit, and this check only runs on Linux.
+        assumeTrue("posix" in FileSystems.getDefault().supportedFileAttributeViews())
         val bin = Files.createTempDirectory("path-bin").toFile()
         File(bin, "pkcheck").apply { writeText(""); setExecutable(false) }
         try {

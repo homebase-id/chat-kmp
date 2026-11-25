@@ -113,6 +113,22 @@ adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/image-bench.txt
 
 For a before/after comparison, copy the bench into a worktree of the base commit and run both APKs back to back, letting the phone cool in between.
 
+### Photos grid database on an Android phone
+
+`PhotoGridDbBench` (homebase-api androidDeviceTest) builds a 40K-photo library plus 50K chat rows in a
+SQLCipher database through the production upsert path, then times the queries a Photos grid needs: photos per
+day, a photo count, and a page of headers near a date, each through `SqlDriver.executeQuery` with a fixed
+identifier (prepared once, as SQLDelight's generated queries are), against today's `QueryBatch` page. The
+database is kept between runs (about 3 minutes to build on a Pixel 5); `-e photoGridRebuild true` builds it again.
+
+```bash
+./gradlew :homebase-api:assembleAndroidDeviceTest
+adb install -r -t homebase-api/build/outputs/apk/androidTest/homebase-api-androidTest.apk
+adb shell am instrument -w -r -e class id.homebase.api.sync.database.PhotoGridDbBench -e photoGridBench true \
+  id.homebase.api.test/androidx.test.runner.AndroidJUnitRunner
+adb shell cat /sdcard/Android/data/id.homebase.api.test/cache/photo-grid-bench.txt
+```
+
 ### Media on an iPhone
 
 `MediaBenchmarks` (homebase-api nativeMain), run from Xcode by `iosAppTests/MediaBenchmarkTests`, takes the iPhone's
@@ -418,6 +434,111 @@ before `ce6f4e731`, after `836763240`; full lines on #2566). Generated 8000×600
 
 A single 48 MP photo peaks at about 1.0–1.4 GB. The three-at-once rows above are still to measure.
 
+### 2026-11-23, Photos grid database (PhotoGridDbBench), Pixel 5 (Android 14), synthetic 40K photos
+
+40,000 photos on 2,519 days over 10 years, bursty, headers averaging 2,760 characters of JSON (four thumbnails,
+the tiny, 8% Live photos, 10% videos), plus 50,000 chat rows: 323 MB. Medians of 15; Europe/Copenhagen.
+
+| Query | Existing indexes | With a Photos index `(identityId,driveId,fileType,fileState,userDate DESC,rowId)` |
+|---|---|---|
+| Photos per day, `GROUP BY date(userDate/1000,'unixepoch','localtime')` | 58.7 ms | 59.0 ms |
+| The same, first query on a fresh connection | 305 ms | 61 ms (run second, so not cold) |
+| Photos per day, dates from SQL, grouped with kotlinx-datetime | | 1,101 ms |
+| Photo count | 18.2 ms | 18.1 ms |
+| 100 headers near 7 years back, fixed SQL | 6.0 ms | 1.8 ms |
+| 30 headers (one screen), fixed SQL | | 0.7 ms |
+| Parse 100 headers into `HomebaseFile` | | 33.7 ms |
+| 100 headers + parse, fixed SQL | | 35.8 ms |
+| 100 headers through `QueryBatch` (today's gallery), which parses them | 43.1 ms (p90 182) | |
+
+- **The table is enough.** Counting per day uses `Idx3` already as a covering index; the Photos index only
+  speeds up the header page (6.0 → 1.8 ms).
+- **The day list is small:** 2,519 days as two `IntArray`s is 19 KB, so it can be held in memory once the
+  gallery has opened.
+- **Group in SQL, not in Kotlin:** kotlinx-datetime's `toLocalDateTime` over 40K dates took 1.1 s, against
+  59 ms for SQLite's `localtime`, and the two agreed on every day.
+- **Parsing is the cost of a page, not SQL:** 34 ms of a 36 ms page. A grid reading only what a tile needs
+  would make it cheaper.
+- Not measured: a truly cold read (the OS page cache can't be dropped without root), so the 305 ms first query
+  includes an unknown share of connection setup.
+
+### 2026-11-24, the shipped day queries (PhotoGridDbBench), same phone and library
+
+`PhotoDays.sq` runs on today's indexes. The bench now also times it, and checks it counts the same days as its own
+SQL. Medians of 15, after the phone cooled (thermal status 0).
+
+| Query | Existing indexes |
+|---|---|
+| All days, `PhotoDays.dayCounts` (shipped) | 65.1 ms |
+| All days, the bench's own SQL, same run | 62.6 ms |
+| First day counts on a fresh connection | 80.2 ms |
+| One day, `PhotoDays.dayOf`, the median day (7 photos) | 2.4 ms |
+| One day, `PhotoDays.dayOf`, the busiest day (1,813 photos) | 42.0 ms |
+
+- **A day's count costs about 23 µs per photo on it:** the range on `userDate` comes from `Idx2`, but each row is
+  read for its `fileType` and `fileState`. A Photos index would make it covering; at these numbers it isn't needed,
+  because `PhotoDayIndex` counts a day only while the gallery is open, once per day per batch of arriving photos,
+  off the main thread.
+- **The 305 ms first query of 2026-11-23 was the OS cache:** 80 ms this time without the Photos index.
+- **Unexplained:** parsing 100 headers took 61 ms in both runs today against 34 ms on 2026-11-23, and the
+  `QueryBatch` page 114 ms against 43 ms, on a cool phone. The SQL parts didn't change.
+- **One day's count by `dayCounts`' own day expression** (`photosOnDay`, over a UTC range with a spare day each
+  side), replacing local midnights from `strftime(…, 'utc')`, which SQLite's guessed summer time made disagree with
+  the day counts before 1970 in some zones (Pacific/Kiritimati): median day 3.8 ms (was 2.7), busiest 46.5 ms (was
+  42.8). A photo's day alone (`dayNumberOf`, no table) is 2.2 ms through the read lane.
+- **Leaving out photos SQLite has no date for** (a `userDate` outside the years 0 to 9999, which `date()` turns into
+  NULL), measured on all days:
+  - `HAVING day IS NOT NULL`: 82.0 ms.
+  - `AND userDate BETWEEN …`: 924 ms. SQLite switches to `Idx2` for the range, which doesn't cover `fileType` and
+    `fileState`, so it reads all 40,000 rows.
+  - `AND +userDate BETWEEN …` (shipped): 64.8 ms. The `+` stops SQLite using an index for that term, so it stays on
+    the covering index.
+
+### 2026-11-24, the library and the bin (PhotoGridDbBench), same phone and library
+
+The bin is a photo with `archivalStatus = 2`, so every day query also filters on `archivalStatus` (0 for the library).
+`Idx3` doesn't hold that column, so the filter took SQLite off its covering index. Medians of 15, thermal status 0.
+
+| Query | Before | Filtered, today's indexes | Filtered, with `IdxPhotoShelf` (shipped) |
+|---|---|---|---|
+| All days, library | 62.6 ms | 937 ms | 63.4 ms |
+| All days, bin (empty) | | 855 ms | 4.1 ms |
+| One day, busiest day (1,813 photos) | 47.4 ms | | 8.5 ms |
+| One day, median day | 3.9 ms | | 4.5 ms |
+| Building the index, once per install | | | 1,488 ms |
+
+- **`IdxPhotoShelf(identityId, driveId, archivalStatus, fileState, userDate) WHERE fileType = 7201 AND
+  fileSystemType = 0`:** photos only, so chat writes don't keep it. A query uses a partial index only when it names
+  the same terms itself, so the photo queries say `fileType = 7201` rather than taking it as a parameter.
+- **No version bump:** `Schema.create` runs every `CREATE INDEX IF NOT EXISTS` on each open, so an installed app
+  builds it at its first start with this version: 1.5 s on this 562 MB database, inside the database open at
+  startup. A device with no photos still reads the table, but builds an empty index.
+
+### 2026-11-25, shrinking images for the screen (display-lanczos), desktop JVM (Windows 10)
+
+Coil's own Skia decoder shrinks with nearest-neighbour on desktop and iOS. Each mode below decoded the
+same photos in the running app (`desktopApp:run`, mode switched through a local experiment). The times
+include the JPEG decode itself, because Skia reads the pixels only when the shrink starts.
+
+| Decode | Mitchell | Mipmaps (linear) | Lanczos (`scaleDown`) |
+|---|---|---|---|
+| 1152x2048 to 547x973 | 35–63 ms | 57–67 ms | 235–258 ms |
+| 2268x4032 to 547x974 | 100–126 ms | 138–175 ms | 306–323 ms |
+| Thumbnails and avatars (240–490 px) | – | 1–7 ms | 2–30 ms |
+
+By eye, Mitchell looked as jagged as nearest-neighbour; mipmaps looked smooth, softer than Lanczos.
+On the stripe test, mipmaps fail (see "Tried").
+
+Memory, from a throwaway JVM test that polls heap use, 8000x6000 JPEG through `decodeForDisplay`:
+
+| Shown at | Heap peak | Time |
+|---|---|---|
+| 4096x3072 | +344 MB | 4.5 s |
+| 1920x1440 | +71 MB | 1.1 s |
+
+Under 4× nothing halves first, so the Kotlin Lanczos copies all 48 MP to the heap; the native full
+decode comes on top. So decodes in which Lanczos reads more than 24 MP run one at a time.
+
 ## Findings
 
 - **SQLite mode is right.** WAL, `synchronous=NORMAL`, `busy_timeout=5000`,
@@ -494,3 +615,6 @@ A single 48 MP photo peaks at about 1.0–1.4 GB. The three-at-once rows above a
 | 2026-10-26 | iOS encrypts its database: SQLCipher 4.19.0 (Zetetic's `SQLCipher.swift` package in iosApp; the same xcframework, fetched by checksum, for the simulator test binary) replaces the system `libsqlite3`, which ignored `PRAGMA key`. Raw-key mode from the start: a random 32-byte key under the same SecureStorage name as Android and desktop, set first in sqliter's `onCreateConnection` on every connection. An existing plaintext file is checkpointed, copied with `sqlcipher_export` into an encrypted file (plus `user_version`), checked, and renamed over the original; if that fails the plaintext file opens unencrypted and the next launch tries again | Phone cost: next row. `IosDatabaseEncryptionTest` on the iOS simulator: header encrypted, no-key open fails, migrated rows and `user_version` kept | Yes |
 | 2026-10-26 | iOS SQLCipher on the phone (iPhone 15, `iosApp Dev`, debug K/N framework, demo frodo: 8.4 MB, 1,947 `DriveMainIndex` rows, 310 messages, 70 conversations). Before: 004c805e5 plaintext, plus an uncommitted change that moves `QueryBatch`'s JSON decode off the read lane, so `SlowDbRead` counts don't compare; after: this branch installed over it. Medians of 3 cold starts, ms after `APP STARTUP` from `homebase.log` | One-time export on the first launch: DB init 6–7 → 99, `initializeApp` 30–35 → 167. Later launches, before → after: DB init 6–7 → 6–9; `initializeApp` 30–35 → 32–35; `ComposeView` built 374 → 379; `App()` first composition 389 → 394; list data ready (70 items) 429 → 420; `loadBasicConversations` 46–61 → 37–53; WebSocket `drainOnce` 5.5 → 6.1 (8 drains); unread counts 5–6 → 6. Process start → `APP STARTUP` 112–114 after (device syslog; no like-for-like before). The file starts with a random salt, no plaintext strings in the file or WAL, no `-encrypting` left over, the export ran once | Yes |
 | 2026-10-26 | Rich text: one markdown parse per message (`ChatMarkdownParseCache`, LRU 256 keyed by content, default instance via `LocalChatMarkdownParseCache`). Before, a block bubble ran 3 `MarkdownParser` passes per composition entry (`markdownHasBlockElements`, `withChatHardLineBreaks`, mikepenz `rememberMarkdownState`) and an inline bubble 3 (same two, then `buildMarkdownAnnotatedString`), plus `MessageBubbleRaw`'s own `markdownHasBlockElements`: 4 per bubble, all repeated when the LazyColumn recycled the item. After: 1 parse for a body with no paragraph soft breaks, 2 for one with (the promoted text has different offsets, so it is parsed again), once per content for the life of the cache. `ChatMarkdownParseCacheTest` counts the cache's parse seam: 1 across restyle and dispose/re-add. The search-highlight path still strips with its own CommonMark parse (different flavour, active only while searching) | Parse count, not timed on a device | Yes |
+| 2026-11-25 | Display shrink on desktop and iOS with Skia's Mitchell instead of Coil's nearest-neighbour | Looked as jagged by eye; the stripe table in THUMBNAILS.md has it at 69 | No |
+| 2026-11-25 | Display shrink with Skia's linear with mipmaps | Smooth by eye on a photo shrunk about 4×, at half Lanczos' cost. Square 1-pixel stripes: 71 at 1.25×, 73 at 1.97×, 63 at 2.5×, 127 at 3×, 73 at 4.1×, 0 only from 6× | No |
+| 2026-11-25 | Mipmaps only above 24 MP, to bound memory | The photos it catches are shrunk less than 4×, where mipmaps alias; one large decode at a time bounds the memory and keeps Lanczos | No |

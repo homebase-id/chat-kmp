@@ -47,14 +47,17 @@ Every signal is one `POST /api/v2/live-relay` with `{channelKey, recipients, blo
   While a call is unanswered every blob the caller sends must therefore be a complete offer. The caller holds its
   local ICE candidates (`CallEffect.HoldIce`) instead of trickling them and re-publishes the offer with the candidates
   folded into the SDP (`SdpCandidates`), silent, with `seq` 1, 2, ... (debounced by `OFFER_REPUBLISH_MS`). Only when an
-  `Answer` selects a device does the caller flush the held candidates as `ice` signals and trickle from then on. A
+  `Answer` selects a device does the caller trickle from then on, first the held candidates the answered offer
+  (`Answer.offerSeq`) lacked. Trickled `ice` is cumulative: each post repeats every candidate before it in `candidates`,
+  one post at a time off the controller's inbox, so the relay's last blob is complete. A peer whose offer or answer lacks
+  `iceBatch` gets one candidate per signal instead. The receiver dedups, and an ICE restart starts a fresh list. A
   second callee device that rings first (`Ringing`) changes nothing; a push-woken device reads the retained offer.
   The callee keeps the newest `seq` for the call it is ringing on and ignores older or equal ones.
 - **replay**: the controller remembers the last 32 ended call ids and drops any signal or ring push for them, so a
   replayed offer of a finished call neither rings nor answers `Busy`.
 - **receive**: `BackendEvent.LiveRelayReceived` becomes `InboundSignal(senderOdinId, signal, receivedAt)`.
   The state machine rejects offers older than the ring timeout, which also covers the event bus replay.
-- A relay refusal (non-2xx) for an `Offer` fails the call with `NoRoute`; for ICE or hangup it is only logged.
+- A relay refusal (non-2xx) for an `Offer` fails the call with `NoRoute`; ICE is retried with backoff; a hangup is only logged.
 - `LiveRelayCallSignalingTest` decrypts the request body in a ktor MockEngine and asserts the exact JSON shape.
 
 STUN: `deviceHandshakeSuccess.stunUrls` is stored by `StunUrlStore` (created at app start, so a late-created

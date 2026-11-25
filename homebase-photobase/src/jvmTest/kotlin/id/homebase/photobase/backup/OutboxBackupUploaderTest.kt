@@ -870,7 +870,7 @@ private object CopyingCompressor : VideoCompressor {
     override suspend fun compress(inputPath: String, onProgress: VideoProgressListener?, trimStartMs: Long?, trimEndMs: Long?, quality: VideoQuality, keepMetadata: Boolean): String =
         File.createTempFile("copy", ".mp4").also { File(inputPath).copyTo(it, overwrite = true) }.path
 
-    override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader, onProgress: VideoProgressListener?): SegmentedVideo? = null
+    override suspend fun segmentAndEncrypt(inputPath: String, keyHeader: KeyHeader?, onProgress: VideoProgressListener?): SegmentedVideo? = null
 }
 
 private object NoProbe : VideoProber {
@@ -881,7 +881,7 @@ private object NoProbe : VideoProber {
 }
 
 private class PreviewingEncryptor : PayloadBundleEncryptor {
-    override suspend fun stageBundle(bundle: PayloadBundle?) = bundle ?: EMPTY_BUNDLE
+    override suspend fun stageBundle(uniqueId: Uuid, bundle: PayloadBundle?, scope: CoroutineScope) = bundle ?: EMPTY_BUNDLE
     override suspend fun discard(bundle: PayloadBundle) = Unit
 
     var calls = 0

@@ -9,6 +9,7 @@ import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.request.maxBitmapSize
+import id.homebase.api.file.contentTypeFromBytes
 import okio.FileSystem
 import okio.use
 import org.jetbrains.skia.Bitmap
@@ -25,7 +26,7 @@ import org.jetbrains.skia.impl.use
  * thumbnail never allocates its ~48 MB full-resolution bitmap. Skia's decoder and
  * UIImage both decode at full size first, which let a batch of picked photos exhaust memory.
  *
- * Register before SkiaImageDecoder so it gets first crack at these sources.
+ * Register before DisplayImageDecoder so it gets first crack at these sources.
  */
 class ImageIODecoder(
     private val source: ImageSource,
@@ -84,17 +85,12 @@ class ImageIODecoder(
 
 /**
  * The iOS decoders, in the app's order: animated GIF/WebP first, then ImageIO for HEIC and JPEG at the
- * requested size. Anything else falls through to Coil's own Skia decoder.
+ * requested size, then [DisplayImageDecoder] for the other still images.
  */
 fun ComponentRegistry.Builder.addNativeImageDecoders(): ComponentRegistry.Builder =
-    add(AnimatedSkiaDecoder.Factory()).add(ImageIODecoder.Factory())
+    add(AnimatedSkiaDecoder.Factory()).add(ImageIODecoder.Factory()).add(DisplayImageDecoder.Factory())
 
 private fun isJpegSource(result: SourceFetchResult): Boolean {
     if (result.mimeType == "image/jpeg") return true
-    return try {
-        val header = result.source.source().peek().readByteArray(3)
-        header[0] == 0xFF.toByte() && header[1] == 0xD8.toByte() && header[2] == 0xFF.toByte()
-    } catch (_: Exception) {
-        false
-    }
+    return result.peekHeader(12)?.let(::contentTypeFromBytes) == "image/jpeg"
 }

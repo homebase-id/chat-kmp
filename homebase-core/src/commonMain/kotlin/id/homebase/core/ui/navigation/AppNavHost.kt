@@ -238,6 +238,8 @@ import id.homebase.core.filesync.FilesyncPreferences
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
+import id.homebase.photobase.gallery.PhotoGallery
+import id.homebase.photobase.ui.PhotoLibraryScreen
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -2339,6 +2341,7 @@ fun AppNavHost(
                                             viewModel = koinViewModel(),
                                             onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
+                                            onOpenLibrary = { navController.navigate(Route.PhotoLibrary) },
                                         )
                                     }
                                 }
@@ -2461,6 +2464,30 @@ fun AppNavHost(
                             composable<Route.PhotoBackupStatus> {
                                 if (isAuthenticated) {
                                     BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                }
+                            }
+
+                            composable<Route.PhotoLibrary> {
+                                if (isAuthenticated) {
+                                    PhotoLibraryScreen(
+                                        viewModel = koinViewModel(),
+                                        onOpen = { navController.navigate(Route.PhotoGalleryView(it.key)) },
+                                        onBack = { navController.popBackStack() },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoGalleryView> { backStackEntry ->
+                                val gallery = PhotoGallery.ofKey(backStackEntry.toRoute<Route.PhotoGalleryView>().key)
+                                // A key no gallery has, from older saved navigation: nothing to show, so leave.
+                                if (gallery == null) LaunchedEffect(Unit) { navController.popBackStack() }
+                                if (isAuthenticated && gallery != null) {
+                                    PhotoGalleryScreen(
+                                        viewModel = koinViewModel(parameters = { parametersOf(gallery) }),
+                                        onOpenBackupSettings = null,
+                                        backupIndicator = {},
+                                        onBack = { navController.popBackStack() },
+                                    )
                                 }
                             }
 

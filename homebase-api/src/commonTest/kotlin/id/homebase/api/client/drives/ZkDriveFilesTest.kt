@@ -37,6 +37,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.http.HttpStatusCode
+import io.ktor.client.engine.mock.respond
+import id.homebase.api.common.OdinId
+import id.homebase.api.client.auth.ApiCredentials
 
 class ZkDriveFilesTest {
 
@@ -263,7 +267,7 @@ class ZkDriveFilesTest {
               "serverMetadata": {}
             }
         """
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val file = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret)).searchResults.single()
 
@@ -345,7 +349,7 @@ class ZkDriveFilesTest {
         val byShare = ExternalFileKey { id, globalTransitId, shares, lockedFileKey ->
             ShareKeys.openFileKey(circleKey, lockedFileKey, owner, id, globalTransitId, shares.single().circleId).toSecureByteArray()
         }
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val shared = queries.mapQueryBatchResponse("""{"searchResults":[$json]}""", SecureByteArray(sharedSecret), byShare).searchResults.single()
 
@@ -367,7 +371,7 @@ class ZkDriveFilesTest {
         """
         val opens = Uuid.random()
         val byShare = ExternalFileKey { id, _, _, _ -> if (id == opens) file.aesKey else null }
-        val queries = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+        val queries = offlineQueries()
 
         val page = queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")},${json(Uuid.random(), "other.pdf")}]}""", SecureByteArray(sharedSecret), byShare)
 
@@ -378,6 +382,73 @@ class ZkDriveFilesTest {
         assertFailsWith<FileDecryptionException> {
             queries.mapQueryBatchResponse("""{"searchResults":[${json(opens, "plan.pdf")}]}""", SecureByteArray(sharedSecret), broken)
         }
+    }
+
+    private fun offlineQueries() = DriveQueryProvider(HttpClient(MockEngine { error("no requests") }), CredentialsManager())
+
+    /** A vault file as the server returns it, its key header locked with [lockedWith]. */
+    private suspend fun vaultFile(name: String, lockedWith: ByteArray = driveKey, version: Int = 1): String {
+        val fileKey = KeyHeader.newRandom16()
+        val keyHeader = EncryptedKeyHeader.encryptKeyHeaderAes(fileKey, fileKey.iv, SecureByteArray(lockedWith.copyOf()))
+        return """
+            {
+              "fileId": "${Uuid.random()}", "driveId": "$vault", "fileState": "active", "fileSystemType": "standard",
+              "sharedSecretEncryptedKeyHeader": { "encryptionVersion": $version, "type": "zkDrive", "iv": "${Base64.encode(keyHeader.iv)}", "encryptedAesKey": "${Base64.encode(keyHeader.encryptedAesKey)}" },
+              "fileMetadata": { "isEncrypted": true, "versionTag": "${Uuid.random()}", "appData": { "uniqueId": "${Uuid.random()}", "fileType": 1, "content": "${Base64.encode(fileKey.encryptDataAes(name.encodeToByteArray()))}" } },
+              "serverMetadata": {}
+            }
+        """
+    }
+
+    private suspend fun synced(vararg files: String) =
+        offlineQueries().mapQueryBatchResponse("""{"searchResults":[${files.joinToString(",")}]}""", SecureByteArray(sharedSecret), skipUnreadable = true)
+
+    @Test
+    fun aSyncSkipsAFileLockedWithAnotherKeyAndKeepsTheRest() = runTest {
+        unlockVault()
+        val stray = vaultFile("stray", lockedWith = ByteArrayUtil.getRndByteArray(16))
+
+        assertEquals(listOf("passport", "licence"), synced(vaultFile("passport"), stray, vaultFile("licence")).searchResults.map { it.fileMetadata.appData.content })
+        assertFailsWith<FileDecryptionException>("any other query still fails") {
+            offlineQueries().mapQueryBatchResponse("""{"searchResults":[$stray]}""", SecureByteArray(sharedSecret))
+        }
+    }
+
+    @Test
+    fun aSyncStillFailsWhileTheDriveKeyHasntArrived() = runTest {
+        ZkKeyStore.openDriveKeys(context())
+        // Skipped, a fresh login would read every zero-knowledge file twice: before its key arrives and after.
+        assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { synced(vaultFile("passport")) }
+    }
+
+    @Test
+    fun aSyncStillFailsOnAKeyHeaderInANewerFormat() = runTest {
+        unlockVault()
+        // An app update may read it; skipped, the cursor would be past it for good.
+        assertFailsWith<FileDecryptionException.KeyHeaderDecryptionFailed> { synced(vaultFile("passport", version = 2)) }
+    }
+
+    @Test
+    fun aSyncStillFailsOnARowThatWontDecodeAtAll() = runTest {
+        unlockVault()
+        assertFailsWith<IllegalStateException> { synced("""{"fileId":{}}""") }
+    }
+
+    @Test
+    fun theSyncsSharedRequestSkipsTooSoOneDrivesFileCantFailTheOthers() = runTest {
+        unlockVault()
+        val credentials = CredentialsManager()
+        credentials.setActiveCredentials(ApiCredentials.create(OdinId("test.homebase.id"), "token", SecureByteArray(sharedSecret.copyOf())))
+        fun section(name: String, file: String) =
+            """{"name":"$name","invalidDrive":false,"status":"ok","queryTime":0,"includeMetadataHeader":true,"cursorState":"c","hasMoreRows":false,"searchResults":[$file]}"""
+        val body = """{"results":[${section("photos", vaultFile("stray", lockedWith = ByteArrayUtil.getRndByteArray(16)))},${section("chat", vaultFile("licence"))}]}"""
+        val queries = DriveQueryProvider(HttpClient(MockEngine { respond(body, HttpStatusCode.OK) }), credentials)
+
+        val results = queries.queryBatchCollection(QueryBatchCollectionRequest(queries = emptyList(), maxRecords = 10), skipUnreadable = true)
+            .results.associateBy { it.name }
+
+        assertEquals(emptyList(), results.getValue("photos").searchResults)
+        assertEquals(listOf("licence"), results.getValue("chat").searchResults.map { it.fileMetadata.appData.content })
     }
 
     private suspend fun unlockVault() {

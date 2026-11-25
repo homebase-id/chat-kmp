@@ -20,6 +20,12 @@ expect fun formatMediumDate(instant: Instant): String
  */
 expect fun formatMediumDateNoYear(instant: Instant): String
 
+/**
+ * Locale-aware short month and year of [instant] in the device time zone, e.g. "Mar 2019" / "mar. 2019" /
+ * "März 2019". All platforms honor the locale's order and month form. Never blank.
+ */
+expect fun formatMonthYear(instant: Instant): String
+
 fun formateDateTime(instant: Instant): String {
     return formatShortDate(instant) + " " + formatTime(instant)
 }

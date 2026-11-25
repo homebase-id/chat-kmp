@@ -3,6 +3,7 @@ package id.homebase.api.client.profile
 import co.touchlab.kermit.Logger
 import coil3.disk.DiskCache
 import id.homebase.api.client.cache.CacheStats
+import id.homebase.api.client.cache.clearIncludingOrphans
 import id.homebase.api.client.contacts.PublicAvatarRevisions
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.publicImageUrl
@@ -206,12 +207,12 @@ internal class PublicProfileProviderCached(
 
     suspend fun clearCaches() {
         try {
-            profileDiskCache.clear()
+            profileDiskCache.clearIncludingOrphans()
         } catch (e: Exception) {
             Logger.w(tag = "PublicProfileIO", throwable = e) { "profile cache clear failed" }
         }
         try {
-            imageDiskCache.clear()
+            imageDiskCache.clearIncludingOrphans()
         } catch (e: Exception) {
             Logger.w(tag = "PublicProfileIO", throwable = e) { "image cache clear failed" }
         }
