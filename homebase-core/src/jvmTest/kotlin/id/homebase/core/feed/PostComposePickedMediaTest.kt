@@ -22,4 +22,10 @@ class PostComposePickedMediaTest {
         val image = assertIs<AttachmentPendingFile.FileImage>(picked("picked.heic").toPendingMedia())
         assertEquals("image/heic", image.sourceContentType)
     }
+
+    @Test
+    fun aVideoThePlatformCannotOpenBecomesAFile() {
+        val file = assertIs<AttachmentPendingFile.File>(picked("picked.mkv").toPendingMedia { false })
+        assertEquals("video/x-matroska", file.sourceContentType)
+    }
 }

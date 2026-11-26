@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
@@ -704,8 +705,13 @@ private fun CirclesDialog(
     )
 }
 
-internal fun PlatformFile.toPendingMedia(): AttachmentPendingFile {
+internal fun PlatformFile.toPendingMedia(
+    canReadVideo: (String) -> Boolean = VideoCompressionService::canRead,
+): AttachmentPendingFile {
     val type = contentType()
-    return if (type.startsWith("video/")) AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
-    else AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+    return when {
+        canReadVideo(type) -> AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
+        type.startsWith("image/") -> AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+        else -> AttachmentPendingFile.File(Uuid.generateV7(), this, sourceContentType = type)
+    }
 }

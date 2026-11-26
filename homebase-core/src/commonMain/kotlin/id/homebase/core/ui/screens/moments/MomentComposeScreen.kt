@@ -44,6 +44,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
+import id.homebase.core.ui.screens.feed.toPendingMedia
 import id.homebase.chat.widget.MediaAttachmentEditor
 import id.homebase.chat.widget.secondaryChromeEnter
 import id.homebase.chat.widget.secondaryChromeExit
@@ -120,14 +121,7 @@ fun MomentComposeScreen(
         mode = FileKitMode.Multiple(),
     ) { files ->
         if (files.isNullOrEmpty()) return@rememberFilePickerLauncher
-        val pending = files.map { f ->
-            val ct = f.contentType()
-            if (ct.startsWith("video/")) {
-                AttachmentPendingFile.FileVideo(Uuid.generateV7(), f, thumbnailBytes = null)
-            } else {
-                AttachmentPendingFile.FileImage(Uuid.generateV7(), f, sourceContentType = ct)
-            }
-        }
+        val pending = files.map { it.toPendingMedia() }
         viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(pending))
     }
 
@@ -143,13 +137,7 @@ fun MomentComposeScreen(
 
     val cameraLauncher = rememberCameraManager(CameraModes.PhotoAndVideo) { file ->
         file?.let {
-            val ct = it.contentType()
-            val pending = if (ct.startsWith("video/")) {
-                AttachmentPendingFile.FileVideo(Uuid.generateV7(), it, thumbnailBytes = null)
-            } else {
-                AttachmentPendingFile.FileImage(Uuid.generateV7(), it, sourceContentType = ct)
-            }
-            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(pending)))
+            viewModel.onAction(MomentComposeUiAction.AttachmentsAdded(listOf(it.toPendingMedia())))
         }
     }
 
