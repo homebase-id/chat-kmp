@@ -97,7 +97,15 @@ class AlbumShareViewModel(
     }
 
     private suspend fun finishSigningIn(openOwnerPage: Boolean) {
-        val missing = guarded { missingPermissionsUrl() }
+        // Not known is not granted: a check that failed stops here, not at the first share.
+        val missing = try {
+            missingPermissionsUrl()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "album $albumId: Photos' permissions not read" }
+            return _events.send(AlbumShareEvent.Failed)
+        }
         if (missing != null) {
             if (openOwnerPage) _events.send(AlbumShareEvent.OpenUrl(missing))
             return

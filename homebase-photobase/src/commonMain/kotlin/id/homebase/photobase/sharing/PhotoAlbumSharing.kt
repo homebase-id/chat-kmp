@@ -73,6 +73,13 @@ sealed interface AlbumAudience {
     data class Group(val circleId: Uuid, val name: String, override val members: List<OdinId>) : AlbumAudience
 }
 
+/** Unique among an album's audiences, as a label isn't: two groups may share a name. */
+val AlbumAudience.key: String
+    get() = when (this) {
+        is AlbumAudience.Person -> "person-${odinId.domainName}"
+        is AlbumAudience.Group -> "group-$circleId"
+    }
+
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
 /** A share made: the circle it went to, and the members whose key waits for them to set up Photos. */
@@ -246,7 +253,7 @@ class PhotoAlbumSharing(
         val rows = albumRecord(albumId)?.shares.orEmpty().takeIf { it.isNotEmpty() } ?: return
         val photos = filesOf(fileIds)
         if (on) {
-            val requests = photos.flatMap { photo -> rows.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) } }
+            val requests = photos.filter { it.fileMetadata.appData.archivalStatus != ArchivalStatus.Removed }.flatMap { photo -> rows.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) } }
             requests.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
                 withRetryResult(RETRY, TAG) { circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk) }.getOrThrow()
             }
@@ -298,10 +305,24 @@ class PhotoAlbumSharing(
         remove.forEach { circles.asApp.removeFromCircle(circleId, it) }
     }
 
-    /** Brings the tags of every shared album's photos together, so an added photo of a member's shows here too. */
+    /**
+     * Brings the tags of every shared album's photos together, so an added photo of a member's shows here too, then
+     * shares each of its photos a row missed: one tagged on a device not signed in to Photobase, or while offline.
+     */
     suspend fun bringSharedAlbumsTogether() {
         circles.requireSignedIn()
-        albumRecords().filter { !it.shares.isNullOrEmpty() }.mapNotNull { it.fileMetadata.appData.uniqueId }.forEach { albums.bringTagsTogether(it) }
+        for (recordFile in albumRecords().filter { !it.shares.isNullOrEmpty() }) {
+            val albumId = recordFile.fileMetadata.appData.uniqueId ?: continue
+            albums.bringTagsTogether(albumId)
+            val rows = recordFile.shares.orEmpty()
+            val missing = albumPhotos(albumId, includeBinned = false).flatMap { photo ->
+                val shared = photo.shares.orEmpty().mapTo(HashSet()) { it.circleId }
+                rows.filter { it.circleId !in shared }.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) }
+            }
+            missing.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
+                withRetryResult(RETRY, TAG) { circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk) }.getOrThrow()
+            }
+        }
     }
 
     /** The people who have shared albums with this identity and been kept ([keepSharer]), newest first. */

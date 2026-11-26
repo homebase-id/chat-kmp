@@ -106,7 +106,13 @@ class PhotoMemberWrites internal constructor(
             val made = PhotoAdd(album.owner, album.id, uniqueId, globalTransitId, name)
             // Waiting before it's queued: the outbox may finish it before enqueue returns.
             lock.withLock { pending[uniqueId] = made to album }
-            when (val outcome = enqueue(deposit)) {
+            val outcome = try {
+                enqueue(deposit)
+            } catch (e: Throwable) {
+                lock.withLock { pending.remove(uniqueId) }
+                throw e
+            }
+            when (outcome) {
                 is UploadOutcome.Enqueued -> add = made
                 else -> {
                     lock.withLock { pending.remove(uniqueId) }

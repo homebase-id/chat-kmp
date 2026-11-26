@@ -30,7 +30,7 @@ class PendingCommentsTest {
     fun anEditShowsItsBodyUntilTheDriveHasIt() {
         val pending = PendingComments()
         val mine = comment(1, body = "Nice")
-        pending.edited(mine.id, "Nice light")
+        pending.edited(mine, "Nice light")
 
         assertEquals(listOf(mine.copy(body = "Nice light")), pending.over(photo, listOf(mine)))
         assertEquals(listOf(mine.copy(body = "Nice light")), pending.over(photo, listOf(mine.copy(body = "Nice light"))))
@@ -41,7 +41,7 @@ class PendingCommentsTest {
     fun aDeletedCommentStaysHiddenWhileTheDriveStillHasIt() {
         val pending = PendingComments()
         val mine = comment(1)
-        pending.deleted(mine.id)
+        pending.deleted(mine)
 
         assertEquals(emptyList(), pending.over(photo, listOf(mine)))
         assertEquals(emptyList(), pending.over(photo, emptyList()))
@@ -52,8 +52,23 @@ class PendingCommentsTest {
         val pending = PendingComments()
         val mine = comment(1)
         pending.posted(mine)
-        pending.deleted(mine.id)
+        pending.deleted(mine)
 
         assertEquals(emptyList(), pending.over(photo, emptyList()))
+    }
+
+    @Test
+    fun readingAnotherPhotosCommentsKeepsThisOnesWrites() {
+        val pending = PendingComments()
+        val mine = comment(1, body = "Nice")
+        val other = comment(2, photoId = Uuid.random())
+        pending.deleted(mine)
+        pending.edited(other, "Edited")
+
+        pending.over(Uuid.random(), emptyList())
+        pending.over(other.photoId, listOf(other))
+
+        assertEquals(emptyList(), pending.over(photo, listOf(mine)), "still deleted")
+        assertEquals(listOf(other.copy(body = "Edited")), pending.over(other.photoId, listOf(other)), "still edited")
     }
 }

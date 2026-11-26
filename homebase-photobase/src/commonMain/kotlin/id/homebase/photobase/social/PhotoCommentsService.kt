@@ -158,7 +158,7 @@ class PhotoCommentsService(
                 owner, drive, globalTransitId, commentedFileKeyHeader(keyHeader.iv), metadata, payloads = emptyList(),
                 fileSystemType = FileSystemType.Comment,
             )
-            pendingLock.withLock { pending.edited(comment.id, body) }
+            pendingLock.withLock { pending.edited(comment, body) }
         } else {
             uploads.updateFileByUniqueId(
                 UpdateFileByUniqueIdRequest(
@@ -188,7 +188,7 @@ class PhotoCommentsService(
             peerUploads.sendDeleteRequest(
                 owner, GlobalTransitIdFileIdentifier(globalTransitId, TargetDrive(drive, PhotobaseProtocol.DriveType)), FileSystemType.Comment,
             )
-            pendingLock.withLock { pending.deleted(comment.id) }
+            pendingLock.withLock { pending.deleted(comment) }
         } else {
             files.deleteFiles(drive, listOf(comment.fileId), fileSystemType = FileSystemType.Comment)
         }
@@ -208,31 +208,39 @@ class PhotoCommentsService(
  * a read straight after doesn't have it. Each is shown as written until a read does, kept for the app's run only.
  */
 internal class PendingComments {
-    private val posted = LinkedHashMap<Uuid, PhotoComment>()
-    private val bodies = HashMap<Uuid, String>()
-    private val deleted = HashSet<Uuid>()
+    // Each photo's own: a read of one photo's comments says nothing of another's.
+    private class OfPhoto {
+        val posted = LinkedHashMap<Uuid, PhotoComment>()
+        val bodies = HashMap<Uuid, String>()
+        val deleted = HashSet<Uuid>()
+    }
+
+    private val photos = HashMap<Uuid, OfPhoto>()
+
+    private fun of(comment: PhotoComment) = photos.getOrPut(comment.photoId) { OfPhoto() }
 
     fun posted(comment: PhotoComment) {
-        posted[comment.id] = comment
+        of(comment).posted[comment.id] = comment
     }
 
-    fun edited(commentId: Uuid, body: String) {
-        if (commentId in posted) posted[commentId] = posted.getValue(commentId).copy(body = body) else bodies[commentId] = body
+    fun edited(comment: PhotoComment, body: String) = with(of(comment)) {
+        if (comment.id in posted) posted[comment.id] = posted.getValue(comment.id).copy(body = body) else bodies[comment.id] = body
     }
 
-    fun deleted(commentId: Uuid) {
-        if (posted.remove(commentId) == null) deleted += commentId
-        bodies -= commentId
+    fun deleted(comment: PhotoComment) = with(of(comment)) {
+        if (posted.remove(comment.id) == null) deleted += comment.id
+        bodies -= comment.id
     }
 
-    /** [stored], the photo's comments as its owner's drive has them, with the writes it doesn't have yet. */
+    /** [stored], photo [photoId]'s comments as its owner's drive has them, with the writes it doesn't have yet. */
     fun over(photoId: Uuid, stored: List<PhotoComment>): List<PhotoComment> {
+        val held = photos[photoId] ?: return stored
         val byId = stored.associateBy { it.id }
-        posted.keys.removeAll { it in byId }
-        deleted.retainAll(byId.keys)
-        bodies.keys.removeAll { id -> byId[id]?.body.let { it == null || it == bodies[id] } }
-        val shown = stored.filter { it.id !in deleted }.map { c -> bodies[c.id]?.let { c.copy(body = it) } ?: c }
-        return (shown + posted.values.filter { it.photoId == photoId }).sortedBy { it.userDateMs }
+        held.posted.keys.removeAll { it in byId }
+        held.deleted.retainAll(byId.keys)
+        held.bodies.keys.removeAll { id -> byId[id]?.body.let { it == null || it == held.bodies[id] } }
+        val shown = stored.filter { it.id !in held.deleted }.map { c -> held.bodies[c.id]?.let { c.copy(body = it) } ?: c }
+        return (shown + held.posted.values).sortedBy { it.userDateMs }
     }
 }
 

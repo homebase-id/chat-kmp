@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsSectionHeader
 import id.homebase.core.widget.SettingsTopBar
 import id.homebase.photobase.sharing.PhotoAlbumAccess
+import id.homebase.photobase.sharing.key
 import id.homebase.photobase.sharing.label
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_share_access_add
@@ -134,7 +135,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onBack: () -> Unit) {
                     )
                 }
             }
-            items(recipients.orEmpty(), key = { it.audience.label }) { recipient ->
+            items(recipients.orEmpty(), key = { it.audience.key }) { recipient ->
                 ListItem(
                     headlineContent = { Text(recipient.audience.label) },
                     supportingContent = { Text(stringResource(recipient.access.title)) },

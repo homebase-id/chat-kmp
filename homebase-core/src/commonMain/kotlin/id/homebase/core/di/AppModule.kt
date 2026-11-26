@@ -1592,7 +1592,10 @@ val appModule = module {
             restore = { PhotobaseSession.restoreFor(credentials) },
             signInUrl = { onDone -> PhotobaseSession.signInUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, onDone) },
             missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
-            tell = { people, shared, access -> get<ShareMessages>().send(people, albumShareInvite(albumId, shared.albumName, access)) },
+            // An invite without the album's name would show every recipient "update the app": they aren't told.
+            tell = { people, shared, access ->
+                if (shared.albumName.isBlank()) people else get<ShareMessages>().send(people, albumShareInvite(albumId, shared.albumName, access))
+            },
         )
     }
     single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
