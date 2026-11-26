@@ -1136,7 +1136,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { FeedPreferences(get()) }
     single { photoBackupController() }
-    single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
+    single { PhotoBackupEntry { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB
@@ -1778,7 +1778,9 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         get<OutboxSync>().holdBulkSends = {
             // Runs inside chat's send loop, which a backup problem must not take down.
             try {
-                settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
+                // Without a bulk Photos row there's nothing to hold, so a phone that never backs up skips the device probe.
+                settings.settings.value.wifiOnly && get<DatabaseManager>().outbox.existsBulkByDrive(PhotobaseProtocol.DriveAlias) &&
+                    !backup.probe.state().isUnmetered
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

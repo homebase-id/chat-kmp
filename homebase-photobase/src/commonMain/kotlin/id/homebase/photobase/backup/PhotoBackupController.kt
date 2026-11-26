@@ -38,6 +38,9 @@ class PhotoBackupController(
 
     val settings: StateFlow<BackupSettings> get() = settingsStore.settings
 
+    /** Off for sure: stored as off, not a failed read showing the defaults. */
+    val isSurelyOff: Boolean get() = !settingsStore.settings.value.enabled && !settingsStore.readFailed
+
     fun onAppForeground() {
         inForeground = true
         val run = run ?: return

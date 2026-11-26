@@ -4,11 +4,8 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 
-/**
- * How shared app code reaches backup. While [enabled] says no the controller isn't built, and a
- * failure in backup stops here, so it can't take startup, push handling or logout down with it.
- */
-class PhotoBackupEntry(private val enabled: () -> Boolean, controller: () -> PhotoBackupController) {
+/** How shared app code reaches backup: a failure in backup stops here, so it can't take startup, push handling or logout down with it. */
+class PhotoBackupEntry(controller: () -> PhotoBackupController) {
     private val controller by lazy(controller)
 
     fun onProcessStart() = guarded { it.onProcessStart() }
@@ -27,7 +24,7 @@ class PhotoBackupEntry(private val enabled: () -> Boolean, controller: () -> Pho
 
     private inline fun guarded(call: (PhotoBackupController) -> Unit) {
         try {
-            if (enabled()) call(controller)
+            call(controller)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

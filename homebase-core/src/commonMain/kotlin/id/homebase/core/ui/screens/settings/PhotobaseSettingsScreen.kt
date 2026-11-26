@@ -13,7 +13,6 @@ import androidx.compose.foundation.verticalScroll
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.PhotosOutlined
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,7 +38,6 @@ import id.homebase.photobase.ui.PhotobaseSetupViewModel
 import id.homebase.photobase.ui.PushIntervalRow
 import id.homebase.resources.MR
 import id.homebase.resources.photobase_label
-import id.homebase.resources.photobase_settings_in_testing
 import id.homebase.resources.photobase_settings_open
 import id.homebase.resources.settings_photobase_icon_desc
 import org.jetbrains.compose.resources.stringResource
@@ -157,17 +155,5 @@ internal fun PhotobaseSettingsUi(
                 Column(modifier = Modifier.widthIn(max = AppsContentMaxWidth).fillMaxWidth()) { section() }
             }
         }
-    }
-}
-
-@Composable
-internal fun PhotobaseInTestingUi(onBack: () -> Unit) {
-    SettingsDetailScaffold(title = stringResource(MR.string.photobase_label), onBack = onBack) {
-        Text(
-            text = stringResource(MR.string.photobase_settings_in_testing),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(16.dp).testTag("photobaseInTesting"),
-        )
     }
 }

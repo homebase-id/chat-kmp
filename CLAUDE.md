@@ -45,7 +45,8 @@ the same PR, or as a linked issue when it's too big to hold the fix back.
 
 **Performance.** Before measuring or optimising anything (cold start, opening conversations,
 sending, DB queries, indexes), read [`OPTIMIZE.md`](OPTIMIZE.md): how to run the DB benchmark,
-the baselines, and what has already been tried. Record new results and failed ideas there.
+the baselines, and what has already been tried. Record new results and failed ideas there. The Photos
+database (gallery days, shelves, albums) has its own: [`PHOTOS_OPTIMIZE.md`](PHOTOS_OPTIMIZE.md).
 
 **Images and thumbnails.** Before changing how images are sized, scaled, encoded, picked for
 display or stripped of metadata, read [`THUMBNAILS.md`](THUMBNAILS.md): the settings, the size

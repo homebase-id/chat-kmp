@@ -74,11 +74,4 @@ class PhotobaseSettingsScreenTest {
         onNodeWithTag("photobaseOpenButton").performSemanticsAction(SemanticsActions.OnClick)
         assertTrue(opened)
     }
-
-    @Test
-    fun whileDarkThePageOnlySaysHowToTurnItOn() = runComposeUiTest {
-        setContent { MaterialTheme { PhotobaseInTestingUi(onBack = {}) } }
-        onNodeWithTag("photobaseInTesting").assertExists()
-        onNodeWithTag("photobaseIconToggle").assertDoesNotExist()
-    }
 }
