@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onSubscription
@@ -49,6 +50,7 @@ class CallControllerTest {
         var sendHangs = false
         var iceSendMs = 0L
         var dropIncomingIce = false
+        val network = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
         private val link = net.endpoint(id)
         val controller = CallController(
             selfOdinId = id,
@@ -67,6 +69,7 @@ class CallControllerTest {
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
             deviceId = device,
+            networkChanges = network,
         )
         val phase get() = controller.state.value.phase
         val state get() = controller.state.value
@@ -531,6 +534,7 @@ class CallControllerTest {
             CallSignal.Ringing("c"),
             CallSignal.Answer("c", "sdp"),
             CallSignal.Ice("c", "cand", "0", 1),
+            CallSignal.Ice.of("c", listOf(LocalCandidate("cand", "0", 0)), CallSignal.Answer("c", "sdp", offerSeq = 2, iceBatch = true)),
             CallSignal.Hangup("c", HangupReason.Busy),
         )
         all.forEach { assertEquals(it, CallSignalCodec.decode(CallSignalCodec.encode(it))) }
@@ -660,6 +664,90 @@ class CallControllerTest {
         assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
         assertEquals(1, a.engines.single().restarts)
         assertEquals(1, b.engines.single().restarts)
+    }
+
+    @Test
+    fun aFlappingNetworkRestartsIceOnceItSettles() = runTest {
+        val (net, a, b) = pair()
+        runCurrent()
+        assertEquals(0, b.network.subscriptionCount.value, "not watched outside a call")
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+
+        repeat(3) {
+            b.network.emit(Unit)
+            advanceTimeBy(500)
+        }
+        assertEquals(0, a.engines.single().restarts)
+
+        advanceTimeBy(NETWORK_SETTLE_MS)
+        assertEquals(1, net.sent.count { it.from == sam && it.signal is CallSignal.RestartRequest })
+        assertEquals(1, a.engines.single().restarts)
+        assertEquals(1, b.engines.single().restarts)
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
+    }
+
+    @Test
+    fun aRestartAlreadyAnsweredIsNotAnsweredAgainWhenItComesInsideTheCandidates() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.engines.single().simulateDrop()
+        runCurrent()
+        val restart = net.sent.last { it.from == frodo && it.signal is CallSignal.Restart }.signal as CallSignal.Restart
+        val answers = { net.sent.count { it.from == sam && it.signal is CallSignal.RestartAnswer } }
+        assertEquals(1, answers())
+
+        net.deliver(sam, frodo, CallSignal.Ice.of(restart.callId, listOf(LocalCandidate("candidate:7 1 udp 1 192.0.2.7 9 typ host")), restart))
+        runCurrent()
+        assertEquals(1, answers())
+        assertEquals(1, b.engines.single().restarts)
+
+        net.deliver(sam, frodo, restart)
+        runCurrent()
+        assertEquals(2, answers(), "a resent restart is still answered")
+    }
+
+    @Test
+    fun anAnswerToAnEarlierRestartDoesNotSettleThePendingOne() = runTest {
+        val numberedRestarts: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override suspend fun restartIce() = "${fake.restartIce()}\r\na=ice-ufrag:u${fake.restarts}\r\n"
+            }
+        }
+        val (net, a, b) = pair(wrapA = numberedRestarts)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.engines.single().simulateDrop()
+        runCurrent()
+        val first = net.sent.last { it.from == sam && it.signal is CallSignal.RestartAnswer }.signal as CallSignal.RestartAnswer
+        assertEquals("u1", first.offerUfrag)
+        a.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, a.phase)
+
+        a.offline = false
+        b.offline = true
+        a.engines.single().simulateDrop()
+        runCurrent()
+        assertTrue(a.state.restartPending)
+        val callId = a.state.callId!!
+        net.deliver(frodo, sam, CallSignal.Ice.of(callId, listOf(LocalCandidate("candidate:8 1 udp 1 192.0.2.8 9 typ host")), first.copy(device = b.device)))
+        net.deliver(frodo, sam, first.copy(device = b.device))
+        runCurrent()
+        assertTrue(a.state.restartPending, "an answer to u1 must not settle the u2 restart")
+
+        net.deliver(frodo, sam, first.copy(offerUfrag = "u2", device = b.device))
+        runCurrent()
+        assertEquals(false, a.state.restartPending)
     }
 
     @Test

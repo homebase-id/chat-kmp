@@ -1,62 +1,62 @@
-@file:OptIn(ExperimentalEncodingApi::class)
-
 package id.homebase.core.image
 
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.BlurEffect
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.graphicsLayer
-import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.DefaultAlpha
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import co.touchlab.kermit.Logger
 import coil3.ImageLoader
+import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.compose.LocalPlatformContext
-import coil3.compose.SubcomposeAsyncImage
-import coil3.compose.SubcomposeAsyncImageContent
 import coil3.memory.MemoryCache
 import coil3.request.ImageRequest
+import coil3.request.crossfade
+import id.homebase.api.serialization.Base64Bytes
 import id.homebase.core.ui.assets.HomebaseIcons
 import id.homebase.core.ui.assets.Warning
 import id.homebase.resources.MR
 import id.homebase.resources.error
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.getKoin
 import org.koin.compose.koinInject
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Progressive image component for Homebase drives.
  *
  * Displays images with progressive loading using Coil3:
- * 1. Shows embedded tinyThumb immediately (blurred)
+ * 1. Shows the embedded tinyThumb immediately
  * 2. Loads server thumbnail/full image via Coil (with caching)
- * 3. Animates blur reduction as high-res loads
+ * 3. Crossfades from the tiny to the sharp image once it loads
  *
  * Supports SVG, GIF, click and long-press gestures.
  *
@@ -69,7 +69,6 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * @param onClick Callback for tap gesture
  * @param onLongPress Callback for long-press with position
  */
-@OptIn(ExperimentalResourceApi::class)
 @Composable
 fun HomebaseImage(
     imageData: HomebaseImageData,
@@ -89,24 +88,13 @@ fun HomebaseImage(
     stepUpToPayload: Boolean = true,
     /** Shows only the embedded preview and fetches nothing, unless the thumbnail is already in memory. */
     deferLoad: Boolean = false,
-    /** The sender's own file, drawn sharp instead of the blurred preview while the sent copy loads and if it can't. */
+    /** The sender's own file, drawn sharp instead of the preview while the sent copy loads and if it can't. */
     standIn: String? = null,
 ) {
     // Get ImageLoader with HomebaseImageFetcher from Koin DI
     val imageLoader: ImageLoader = koinInject()
     val koin = getKoin()
-
-    // Decode preview thumbnail for immediate display
-    val previewBitmap =
-        remember(imageData.previewThumbnail) {
-            imageData.previewThumbnail?.content?.let {
-                try {
-                    it.bytes.decodeToImageBitmap()
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        }
+    val preview = rememberPreview(imageData.previewThumbnail?.content)
 
     // Paint the already-decoded thumbnail synchronously on the first frame
     // instead of the tiny embedded preview. The thumbnail cache key is
@@ -123,195 +111,170 @@ fun HomebaseImage(
     // Starts false for every image: the thumbnail shows first, so a slow payload never holds it back.
     var steppedUp by remember(imageData) { mutableStateOf(false) }
     var stepUpFailed by remember(imageData) { mutableStateOf(false) }
-    var displaySize by remember(imageData) { mutableStateOf<ImageSize?>(null) }
+    val displaySize = remember(imageData) { mutableStateOf<ImageSize?>(null) }
     val mayStepUp = stepUpToPayload && imageData.mayStepUp
-    var lastSharpPainter by remember(imageData) { mutableStateOf<Painter?>(null) }
     val thumbnailKey = remember(imageData) { HomebaseImageKeyer.thumbnailCacheKey(imageData) }
-    val model: Any = remember(imageData, platformContext, steppedUp) {
-        if (!imageData.isPending) {
-            ImageRequest.Builder(platformContext)
-                .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
-                .placeholderMemoryCacheKey(thumbnailKey)
-                .build()
-        } else {
-            imageData
-        }
+    // Not over a placeholder or stand-in, which go at once and would flash blank; fixed per image so dropping the stand-in doesn't restart the load.
+    val crossfade = remember(imageData) { preview?.image != null && standIn == null }
+    val model = remember(imageData, platformContext, steppedUp, crossfade) {
+        ImageRequest.Builder(platformContext)
+            .data(if (steppedUp) imageData.copy(loadFullPayload = true) else imageData)
+            .apply { if (!imageData.isPending) placeholderMemoryCacheKey(thumbnailKey) }
+            .crossfade(crossfade)
+            .build()
     }
-
-    val customModified = modifier.mediaGestures(
-        onClick, onLongPress, mediaSharedKey(imageData.fileId, imageData.payloadKey), sharedTransitionScope, animatedVisibilityScope,
-    )
-
-    @Composable
-    fun PreviewOrPlaceholder(modifier: Modifier, colorFilter: ColorFilter? = null) {
-        if (previewBitmap != null) {
-            Image(
-                bitmap = previewBitmap,
-                contentDescription = contentDescription,
-                contentScale = contentScale,
-                alignment = alignment,
-                colorFilter = colorFilter,
-                modifier = modifier,
-            )
-        } else {
-            placeholder?.invoke()
-        }
+    // Composition reads it only through the two flags below, so a load moving on doesn't recompose the image.
+    val loadState = remember(imageData) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+    val lastSharpPainter = remember(imageData) { mutableStateOf<Painter?>(null) }
+    val drawsImage = remember(loadState, preview) {
+        derivedStateOf { loadState.value.painter.let { it != null && it !== preview } }
+    }
+    // A failure with a sharp image still on screen, such as a failed step-up, shows no error.
+    val failed = remember(loadState, drawsImage) {
+        derivedStateOf { loadState.value is AsyncImagePainter.State.Error && !drawsImage.value }
     }
 
     // A stand-in that can't be read (a swept temp file, a lapsed picker grant) gives way to the preview and error icon.
     var standInFailed by remember(standIn) { mutableStateOf(false) }
     val showsStandIn = standIn != null && !standInFailed
 
-    @Composable
-    fun StandInOrPreview(blur: Modifier) {
-        if (showsStandIn) {
-            LocalFileImage(standIn!!, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
-        } else {
-            PreviewOrPlaceholder(Modifier.fillMaxSize().then(blur))
+    if (onLoaded != null) {
+        LaunchedEffect(imageData) {
+            snapshotFlow { loadState.value is AsyncImagePainter.State.Success }.first { it }
+            onLoaded()
+        }
+    }
+
+    val full = remember(imageData) { imageData.copy(loadFullPayload = true) }
+    if (mayStepUp && !steppedUp && !stepUpFailed) {
+        LaunchedEffect(imageData, contentScale) {
+            snapshotFlow {
+                loadState.value is AsyncImagePainter.State.Success &&
+                    displaySize.value?.let { shouldStepUpToPayload(it, imageData, crop = contentScale.crops()) } == true
+            }.first { it }
+            val loader = koin.getOrNull<HomebaseImageLoader>()
+            if (loader?.hasStepUpFailed(full) == true) {
+                stepUpFailed = true
+                return@LaunchedEffect
+            }
+            // The wait is what keeps a fling from downloading every payload it passes:
+            // scrolling away cancels this before it fires.
+            if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
+            steppedUp = true
+        }
+    }
+    // Outside the step-up gate, so a pager page that stops stepping up mid-download still records the failure.
+    if (steppedUp) {
+        LaunchedEffect(full) {
+            snapshotFlow { (loadState.value as? AsyncImagePainter.State.Error)?.result?.request?.data == full }.first { it }
+            koin.getOrNull<HomebaseImageLoader>()?.markStepUpFailed(full)
+            stepUpFailed = true
+            steppedUp = false
         }
     }
 
     val deferred = deferLoad && !imageData.isPending &&
         remember(thumbnailKey) { imageLoader.memoryCache?.get(MemoryCache.Key(thumbnailKey)) == null }
-    if (deferred) {
-        PreviewOrPlaceholder(customModified.animatedBlur(remember { mutableStateOf(PREVIEW_BLUR_DP) }), colorFilter)
-        return
-    }
+    // The stand-in is drawn under the image, so the tiny on top would hide it.
+    SideEffect { preview?.hidden = showsStandIn && !deferred }
 
-    SubcomposeAsyncImage(
-        model = model,
-        imageLoader = imageLoader,
-        contentDescription = contentDescription,
-        modifier = if (mayStepUp) customModified.onSizeChanged { displaySize = ImageSize(it.width, it.height) } else customModified,
-        contentScale = contentScale,
-        colorFilter = colorFilter
-    ) {
-        val state by painter.state.collectAsStateWithLifecycle()
-        if (onLoaded != null && state is AsyncImagePainter.State.Success) LaunchedEffect(Unit) { onLoaded() }
+    val boxModifier = modifier.mediaGestures(
+        onClick, onLongPress, mediaSharedKey(imageData.fileId, imageData.payloadKey), sharedTransitionScope, animatedVisibilityScope,
+    ).let { if (mayStepUp) it.onSizeChanged { size -> displaySize.value = ImageSize(size.width, size.height) } else it }
 
-        val measured = displaySize
-        if (mayStepUp) (state as? AsyncImagePainter.State.Success)?.let { lastSharpPainter = it.painter }
-        val canStepUp = mayStepUp && state is AsyncImagePainter.State.Success && !steppedUp && !stepUpFailed &&
-            measured != null && shouldStepUpToPayload(measured, imageData, crop = contentScale.crops())
-        if (canStepUp) {
-            // The wait is what keeps a fling from downloading every payload it passes:
-            // scrolling away cancels this before it fires.
-            LaunchedEffect(Unit) {
-                val full = imageData.copy(loadFullPayload = true)
-                val loader = koin.getOrNull<HomebaseImageLoader>()
-                if (loader?.hasStepUpFailed(full) == true) {
-                    stepUpFailed = true
-                    return@LaunchedEffect
-                }
-                if (loader?.isFullPayloadCached(full) != true) delay(STEP_UP_SETTLE_MILLIS)
-                steppedUp = true
+    Box(boxModifier, contentAlignment = alignment, propagateMinConstraints = true) {
+        // Under the image: Coil may already draw a photo from memory on this first frame.
+        if (placeholder != null && (deferred || !showsStandIn) && preview?.image == null && !drawsImage.value) placeholder()
+        if (deferred) {
+            preview?.let { Image(it, contentDescription, Modifier.fillMaxSize(), alignment, contentScale, colorFilter = colorFilter) }
+        } else {
+            if (standIn != null && !standInFailed && !drawsImage.value) {
+                // The image on top carries the description.
+                LocalFileImage(standIn, null, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
             }
-        }
-        if (steppedUp && state is AsyncImagePainter.State.Error) {
-            LaunchedEffect(Unit) {
-                koin.getOrNull<HomebaseImageLoader>()?.markStepUpFailed(imageData.copy(loadFullPayload = true))
-                stepUpFailed = true
-                steppedUp = false
-            }
-        }
-
-        // Blur only the low-res embedded preview; cached thumbnails and full
-        // images are already sharp so the target is 0f for those states.
-        val hasSharpImage = showsStandIn || state is AsyncImagePainter.State.Success ||
-            (state is AsyncImagePainter.State.Loading &&
-                (state as AsyncImagePainter.State.Loading).painter != null)
-
-        val blurRadius = animateFloatAsState(
-            targetValue = if (hasSharpImage) 0f else PREVIEW_BLUR_DP,
-            animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-            label = "blur"
-        )
-
-        // Applied to every branch so the animation transitions smoothly
-        // across state changes (e.g. blurred preview → sharp full image).
-        val blurMod = Modifier.animatedBlur(blurRadius)
-
-        val failedStepUpFallback = lastSharpPainter.takeIf { steppedUp && state is AsyncImagePainter.State.Error }
-        if (failedStepUpFallback != null) {
-            Image(
-                painter = failedStepUpFallback,
+            AsyncImage(
+                model = model,
                 contentDescription = contentDescription,
-                contentScale = contentScale,
-                alignment = alignment,
+                imageLoader = imageLoader,
                 modifier = Modifier.fillMaxSize(),
-            )
-            return@SubcomposeAsyncImage
-        }
-
-        when (state) {
-            is AsyncImagePainter.State.Loading -> {
-                val loadingPainter = (state as AsyncImagePainter.State.Loading).painter
-                if (loadingPainter != null) {
-                    // Cached thumbnail available via placeholderMemoryCacheKey
-                    Image(
-                        painter = loadingPainter,
-                        contentDescription = contentDescription,
-                        contentScale = contentScale,
-                        alignment = alignment,
-                        modifier = Modifier.fillMaxSize().then(blurMod)
-                    )
-                } else {
-                    StandInOrPreview(blurMod)
-                }
-            }
-
-            is AsyncImagePainter.State.Empty -> StandInOrPreview(blurMod)
-
-            is AsyncImagePainter.State.Success -> {
-                SubcomposeAsyncImageContent(
-                    modifier = Modifier.fillMaxSize().then(blurMod),
-                    contentScale = contentScale,
-                    alignment = alignment
-                )
-            }
-
-            is AsyncImagePainter.State.Error -> if (showsStandIn) {
-                StandInOrPreview(blurMod)
-            } else {
-                val errorState = state as AsyncImagePainter.State.Error
-                println("HomebaseImage Error: ${errorState.result.throwable.message}")
-
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    PreviewOrPlaceholder(Modifier.fillMaxSize().then(blurMod))
-
-                    // Show error overlay on top
-                    if (error != null) {
-                        error.invoke()
-                    } else {
-                        // Default error icon if no custom error composable provided
-                        Icon(
-                            imageVector = HomebaseIcons.Warning,
-                            contentDescription = stringResource(MR.string.error),
-                            tint = Color.Gray,
-                            modifier = Modifier.size(24.dp)
-                        )
+                // A reload or failed step-up keeps the sharp image already shown instead of dropping back to the tiny.
+                transform = { state ->
+                    when (state) {
+                        is AsyncImagePainter.State.Loading -> if (state.painter == null) state.copy(painter = lastSharpPainter.value ?: preview) else state
+                        is AsyncImagePainter.State.Error -> state.copy(painter = lastSharpPainter.value ?: preview)
+                        else -> state
                     }
+                },
+                onState = { state ->
+                    loadState.value = state
+                    // Includes a thumbnail Coil drew from memory while loading, so a failure keeps it.
+                    if (state.painter.let { it != null && it !== preview }) lastSharpPainter.value = state.painter
+                    if (state is AsyncImagePainter.State.Error && !steppedUp) {
+                        Logger.w(tag = "HomebaseImage") { "Image failed to load: ${state.result.throwable.message}" }
+                    }
+                },
+                alignment = alignment,
+                contentScale = contentScale,
+                colorFilter = colorFilter,
+            )
+        }
+        if (!showsStandIn && failed.value) {
+            Box(Modifier.matchParentSize(), contentAlignment = Alignment.Center) {
+                if (error != null) {
+                    error.invoke()
+                } else {
+                    // Default error icon if no custom error composable provided
+                    Icon(
+                        imageVector = HomebaseIcons.Warning,
+                        contentDescription = stringResource(MR.string.error),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
             }
         }
     }
 }
 
-// Same effect as Modifier.blur, but the radius is read in the draw phase so the fade doesn't recompose the image.
-private fun Modifier.animatedBlur(radiusDp: State<Float>): Modifier = graphicsLayer {
-    val radius = radiusDp.value
-    if (radius >= 0.5f) {
-        val px = radius.dp.toPx()
-        renderEffect = BlurEffect(px, px, TileMode.Clamp)
-        clip = true
-    } else {
-        renderEffect = null
-        clip = false
+@OptIn(ExperimentalResourceApi::class)
+@Composable
+private fun rememberPreview(bytes: Base64Bytes?): PreviewPainter? {
+    if (bytes == null) return null
+    return remember(bytes) {
+        PreviewPainter(
+            try {
+                BitmapPainter(bytes.bytes.decodeToImageBitmap())
+            } catch (_: Exception) {
+                null
+            },
+        )
+    }
+}
+
+// Not a RememberObserver, so Coil drawing it as a placeholder never restarts the tiny's load.
+private class PreviewPainter(val image: Painter?) : Painter() {
+    var hidden: Boolean by mutableStateOf(false)
+    private var alpha = DefaultAlpha
+    private var colorFilter: ColorFilter? = null
+
+    override val intrinsicSize: Size get() = image?.intrinsicSize ?: Size.Unspecified
+
+    override fun applyAlpha(alpha: Float): Boolean {
+        this.alpha = alpha
+        return true
+    }
+
+    override fun applyColorFilter(colorFilter: ColorFilter?): Boolean {
+        this.colorFilter = colorFilter
+        return true
+    }
+
+    override fun DrawScope.onDraw() {
+        if (!hidden) image?.run { draw(size, alpha, colorFilter) }
     }
 }
 
 private const val STEP_UP_SETTLE_MILLIS = 600L
-private const val PREVIEW_BLUR_DP = 10f
 
 // Coil's own mapping: everything but Fit and Inside fills the view, so the fetcher sees it as a crop too.
 internal fun ContentScale.crops(): Boolean = this != ContentScale.Fit && this != ContentScale.Inside

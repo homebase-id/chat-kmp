@@ -22,7 +22,7 @@ import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,14 +99,14 @@ fun AdaptiveSheet(
     dismissible: Boolean = true,
     expandFully: Boolean = false,
     maxWidth: Dp = 520.dp,
-    contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.windowInsets },
+    contentWindowInsets: @Composable () -> WindowInsets = { BottomSheetDefaults.modalWindowInsets },
     content: @Composable AdaptiveSheetScope.() -> Unit,
 ) {
     ReportOverlay()
     val currentOnDismiss = rememberUpdatedState(onDismiss)
     val scope = rememberCoroutineScope()
     val dismissing = remember { mutableStateOf(false) }
-    val wide = currentWindowAdaptiveInfo().windowSizeClass
+    val wide = currentWindowAdaptiveInfoV2().windowSizeClass
         .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
     if (wide) {

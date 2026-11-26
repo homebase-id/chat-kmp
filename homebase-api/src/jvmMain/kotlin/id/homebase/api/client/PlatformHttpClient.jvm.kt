@@ -10,6 +10,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 
 /**
  * Not CIO: it reuses a connection only for pipelined GET/HEAD without custom timeouts.
@@ -27,7 +28,11 @@ internal fun desktopHttpClient(
     engine {
         // Ktor's OkHttp clients share one pool by default, and closing any client evicts it.
         val pool = ConnectionPool()
-        config { connectionPool(pool) }
+        config {
+            connectionPool(pool)
+            eventListener(ServerIpCaptureEventListener())
+            dispatcher(Dispatcher().apply { maxRequests = MAX_REQUESTS_PER_HOST; maxRequestsPerHost = MAX_REQUESTS_PER_HOST })
+        }
         if (trustManager != null) {
             val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustManager), null) }
             config { sslSocketFactory(tls.socketFactory, trustManager) }

@@ -108,13 +108,18 @@ fun foldAgentUiReplies(messages: List<MessageUiModel>): Pair<List<MessageUiModel
     }
 }
 
-/** The tree as plain text, one line per text node and table row (cells tab-separated), in reading order. */
+/** The tree as plain text, one line per text node, list item line, fact and table row (cells tab-separated), in reading order. */
 internal fun AgentUiTree.plainText(): String = buildList { root.collectText(this) }.joinToString("\n")
 
 private fun AgentUiNode.collectText(out: MutableList<String>) {
     when (this) {
         is AgentUiNode.Text -> markdown.takeIf { it.isNotBlank() }?.let(out::add)
         is AgentUiNode.Table -> (listOf(header) + rows).filter { it.isNotEmpty() }.forEach { out += it.joinToString("\t") }
+        is AgentUiNode.Facts -> items.forEach { f -> out += listOf(f.label, f.value).filter { it.isNotBlank() }.joinToString("\t") }
+        is AgentUiNode.ListItem -> {
+            listOfNotNull(title.takeIf { it.isNotBlank() }, subtitle, caption).forEach(out::add)
+            children()?.forEach { it.collectText(out) }
+        }
         else -> children()?.forEach { it.collectText(out) }
     }
 }

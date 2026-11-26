@@ -923,6 +923,25 @@ class PhotoGalleryViewModelTest {
     }
 
     @Test
+    fun theViewersPhotoGoesInAloneAndTheSelectionStays() = runTest {
+        val library = Library(1..3, perDay = 4)
+        val server = Server()
+        val albums = Albums()
+        val (viewModel, screen) = moverViewModel(library, server, albums = albums)
+        val (selected, viewed, viewedToo) = library.photos.getValue(3).take(3).map { it.fileId }
+        viewModel.onAction(PhotoGalleryUiAction.ToggleSelected(selected))
+        val album = Uuid.random()
+
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToAlbum(album, fileId = viewed))
+        viewModel.onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum("Summer", fileId = viewedToo))
+        advanceUntilIdle()
+
+        assertEquals(mapOf((album to viewed) to true, (albums.made.single() to viewedToo) to true), server.tagged)
+        assertEquals(setOf(selected), viewModel.uiState.value.selected)
+        screen.cancel()
+    }
+
+    @Test
     fun anAlbumThatCantBeMadeGivesTheSelectionBack() = runTest {
         val library = Library(1..3, perDay = 4)
         val server = Server()

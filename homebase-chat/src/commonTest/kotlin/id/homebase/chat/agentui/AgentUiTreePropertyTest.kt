@@ -19,12 +19,13 @@ private fun depth(n: AgentUiNode): Int = 1 + (n.children()?.maxOfOrNull { depth(
 class AgentUiTreePropertyTest {
     private val types = listOf(
         "column", "row", "card", "text", "image", "chip", "divider", "list", "table",
-        "progress", "button", "toggle", "textInput", "select", "multiSelect", "bogus", "", "COLUMN",
+        "progress", "button", "toggle", "textInput", "select", "multiSelect", "listItem", "facts", "badge", "bogus", "", "COLUMN",
     )
     private val keys = listOf(
         "id", "type", "children", "markdown", "style", "tone", "spacing", "direction", "payloadKey",
         "alt", "label", "selected", "header", "rows", "value", "action", "multiline", "maxLength",
-        "options", "fallback", "include", "root", "nodes", "min", "max",
+        "options", "fallback", "include", "root", "nodes", "min", "max", "url", "copy", "title", "subtitle",
+        "caption", "trailing", "items",
     )
     private val imageKeys = setOf("chat_web0", "chat_web1")
     private val oddStrings = listOf(

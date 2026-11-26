@@ -1,6 +1,7 @@
 package id.homebase.chat.services.calling
 
 import com.shepeliev.webrtckmp.BundlePolicy
+import com.shepeliev.webrtckmp.ContinualGatheringPolicy
 import com.shepeliev.webrtckmp.RtcpMuxPolicy
 import id.homebase.api.client.calling.CallIceServer
 import org.junit.Assert.assertEquals
@@ -13,6 +14,7 @@ class WebRtcKmpConfigurationTest {
 
         assertEquals(BundlePolicy.MaxBundle, config.bundlePolicy)
         assertEquals(RtcpMuxPolicy.Require, config.rtcpMuxPolicy)
+        assertEquals(ContinualGatheringPolicy.GatherContinually, config.continualGatheringPolicy)
         assertEquals(listOf("stun:stun.example.org:3478"), config.iceServers.single().urls)
     }
 }

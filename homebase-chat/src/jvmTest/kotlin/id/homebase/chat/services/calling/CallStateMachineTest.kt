@@ -44,6 +44,34 @@ class CallStateMachineTest {
         assertEquals(hangupEffects(notify, self), t.effects)
     }
 
+    private val candidate = LocalCandidate("cand", "0", 0)
+    private val addCandidate = CallEffect.AddIce("cand", "0", 0)
+
+    @Test
+    fun iceCarryingTheAnswerAppliesItBeforeItsCandidates() {
+        val t = machine.step(outgoing, fromSam(CallSignal.Ice.of(c, listOf(candidate), CallSignal.Answer(c, "ans", offerSeq = 1))))
+        assertEquals(CallPhase.Connecting, t.state.phase)
+        val apply = t.effects.indexOf(CallEffect.ApplyRemoteAnswer("ans", 1))
+        assertTrue(apply >= 0 && apply < t.effects.indexOf(addCandidate), "answer before candidates: ${t.effects}")
+        assertEquals(listOf(addCandidate), machine.step(connecting, fromSam(CallSignal.Ice.of(c, listOf(candidate), CallSignal.Answer(c, "ans")))).effects)
+    }
+
+    @Test
+    fun iceCarryingARestartAnswersItAsCarriedBeforeItsCandidates() {
+        val callee = CallState(phase = CallPhase.Connected, callId = c, peer = sam, direction = CallDirection.Incoming)
+        val t = machine.step(callee, fromSam(CallSignal.Ice.of(c, listOf(candidate), CallSignal.Restart(c, "r"))))
+        assertEquals(listOf(CallEffect.AnswerRestart("r", carried = true), addCandidate), t.effects)
+    }
+
+    @Test
+    fun iceCarryingARestartAnswerAppliesItOnlyWhileTheRestartIsPending() {
+        val carried = fromSam(CallSignal.Ice.of(c, listOf(candidate), CallSignal.RestartAnswer(c, "ra")))
+        val t = machine.step(reconnecting, carried)
+        assertEquals(false, t.state.restartPending)
+        assertEquals(CallEffect.ApplyRemoteAnswer("ra"), t.effects.first())
+        assertEquals(listOf(addCandidate), machine.step(t.state, carried).effects)
+    }
+
     @Test
     fun setupStatesAreInTheExpectedPhases() {
         assertEquals(CallPhase.Outgoing, outgoing.phase)

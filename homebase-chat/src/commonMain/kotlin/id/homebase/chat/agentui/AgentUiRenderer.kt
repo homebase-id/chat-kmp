@@ -19,12 +19,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -73,6 +77,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -87,9 +92,11 @@ import id.homebase.core.util.onSecondaryPress
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
+import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_chosen
 import id.homebase.resources.chat_agent_ui_open_image
+import id.homebase.resources.chat_agent_ui_opens_link
 import id.homebase.resources.chat_image_unavailable
 import id.homebase.resources.copied
 import id.homebase.resources.error
@@ -108,6 +115,7 @@ data class AgentUiActionRequest(
 )
 
 private val ListItemWidth = 260.dp
+private val TrailingMaxWidth = 160.dp
 
 private const val CopiedMillis = 2000L
 
@@ -197,14 +205,14 @@ private fun toneColor(tone: Tone): Color = when (tone) {
 private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier) {
     when (node) {
         is AgentUiNode.Column -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(node.spacing.dp())) {
-            Children(node.children, env)
+            Children(node.children, env, divideListItems = true)
         }
         is AgentUiNode.Row -> FlowRow(
             modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(node.spacing.dp()),
             verticalArrangement = Arrangement.spacedBy(node.spacing.dp()),
             itemVerticalAlignment = Alignment.CenterVertically,
-        ) { Children(node.children, env) }
+        ) { Children(node.children, env, divideListItems = false) }
         is AgentUiNode.Card -> CardView(node, env, modifier)
         // Selectable on a pointer device like a text bubble's body; not in a preview, where nothing may take the press.
         is AgentUiNode.Text -> SelectableOnDesktop(enabled = env.onLongClick != null) {
@@ -225,7 +233,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
         is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
         is AgentUiNode.ListNode -> when (node.direction) {
             ListDirection.Vertical -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Children(node.children, env)
+                Children(node.children, env, divideListItems = true)
             }
             ListDirection.Horizontal -> LazyRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(node.children, key = { it.id }) { child -> Box(Modifier.width(ListItemWidth)) { NodeView(child, env) } }
@@ -237,6 +245,9 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
             if (node.value == null) LinearProgressIndicator(Modifier.fillMaxWidth())
             else LinearProgressIndicator(progress = { node.value }, modifier = Modifier.fillMaxWidth())
         }
+        is AgentUiNode.ListItem -> ListItemView(node, env, modifier)
+        is AgentUiNode.Facts -> SelectableOnDesktop(enabled = env.onLongClick != null) { FactsView(node, modifier) }
+        is AgentUiNode.Badge -> BadgeView(node, modifier)
         is AgentUiNode.Button -> ButtonView(node, env, modifier)
         is AgentUiNode.Toggle -> ToggleView(node, env, modifier)
         is AgentUiNode.TextInput -> TextInputView(node, env, modifier)
@@ -249,13 +260,82 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun Children(children: List<AgentUiNode>, env: Env) {
-    for (child in children) key(child.id) { NodeView(child, env) }
+private fun Children(children: List<AgentUiNode>, env: Env, divideListItems: Boolean) {
+    children.forEachIndexed { i, child ->
+        key(child.id) {
+            if (divideListItems && child is AgentUiNode.ListItem && children.getOrNull(i - 1) is AgentUiNode.ListItem) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            NodeView(child, env)
+        }
+    }
+}
+
+@Composable
+private fun ListItemView(node: AgentUiNode.ListItem, env: Env, modifier: Modifier) {
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        // The weight goes on a Box: inside SelectableOnDesktop the Column is not the Row's child.
+        Box(Modifier.weight(1f)) {
+            SelectableOnDesktop(enabled = env.onLongClick != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (node.title.isNotBlank()) Text(node.title, style = MaterialTheme.typography.titleSmall)
+                    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                    node.subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
+                    node.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
+                }
+            }
+        }
+        node.trailing?.let { NodeView(it, env, Modifier.widthIn(max = TrailingMaxWidth)) }
+    }
+}
+
+@Composable
+private fun FactsView(node: AgentUiNode.Facts, modifier: Modifier) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (fact in node.items) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    fact.label,
+                    Modifier.weight(2f).alignByBaseline(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(fact.value, Modifier.weight(3f).alignByBaseline(), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// Translucent tints read on any card container in light and dark; primary and error use their M3 container roles.
+@Composable
+private fun BadgeView(node: AgentUiNode.Badge, modifier: Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val tint = LocalContentColor.current
+    val (container, content) = when (node.tone) {
+        BadgeTone.Neutral -> scheme.onSurfaceVariant.copy(alpha = 0.12f) to tint
+        BadgeTone.Primary -> scheme.primaryContainer to scheme.onPrimaryContainer
+        BadgeTone.Success -> HomebaseTheme.extendedColors.success.copy(alpha = 0.24f) to tint
+        BadgeTone.Warning -> HomebaseTheme.extendedColors.warning.copy(alpha = 0.24f) to tint
+        BadgeTone.Error -> scheme.errorContainer to scheme.onErrorContainer
+    }
+    Surface(modifier, shape = CircleShape, color = container, contentColor = content) {
+        Text(
+            node.label,
+            Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
 private fun CardBody(children: List<AgentUiNode>, env: Env, spacing: Arrangement.Vertical, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = spacing) { Children(children, env) }
+    Column(modifier.fillMaxWidth(), verticalArrangement = spacing) { Children(children, env, divideListItems = true) }
 }
 
 @Composable
@@ -342,6 +422,7 @@ private fun AgentChip(
 internal const val ErrorIconTag = "agentui-error-icon"
 internal const val ChosenIconTag = "agentui-chosen-icon"
 internal const val CopiedIconTag = "agentui-copied-icon"
+internal const val LinkIconTag = "agentui-link-icon"
 
 private val ChipHeight = 32.dp
 
@@ -436,9 +517,11 @@ private fun TableView(node: AgentUiNode.Table, modifier: Modifier) {
 @Composable
 private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
     val copyText = node.copy
-    val chosen = copyText == null && node.action?.id in env.answered
-    val busy = copyText == null && !chosen && node.action?.id in env.pending
+    val url = node.url
+    val chosen = node.action?.id in env.answered
+    val busy = !chosen && node.action?.id in env.pending
     val clipboard = LocalClipboard.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     var copied by remember(copyText) { mutableStateOf(false) }
     LaunchedEffect(copied) {
@@ -447,11 +530,13 @@ private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
             copied = false
         }
     }
-    // A copy button acts on the device only: it never sends an action, so it stays usable after a send.
-    val enabled = if (copyText != null) env.copyEnabled
+    // Copy and link buttons act on the device only: they never send an action, so they stay usable after a send.
+    val enabled = if (copyText != null || url != null) env.copyEnabled
     else node.action != null && env.usable(node.action) && env.tree.selectionCountsOk(node.action) { env.inputs[it] }
     val onClick = {
-        if (copyText != null) {
+        if (url != null) {
+            runCatching { uriHandler.openUri(url) }.onFailure { Logger.w(it, tag = "AgentUi") { "open link failed node=${node.id}" } }
+        } else if (copyText != null) {
             scope.launch {
                 try {
                     clipboard.setClipEntry(clipEntryOf(copyText))
@@ -480,6 +565,14 @@ private fun ButtonView(node: AgentUiNode.Button, env: Env, modifier: Modifier) {
             Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         }
         Text(if (copied) stringResource(MR.string.copied) else node.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (url != null) {
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+            Icon(
+                Icons.AutoMirrored.Outlined.OpenInNew,
+                contentDescription = stringResource(MR.string.chat_agent_ui_opens_link),
+                modifier = Modifier.size(ButtonDefaults.IconSize).testTag(LinkIconTag),
+            )
+        }
     }
     // A sent action stays disabled, but keeps its colours so it reads as in progress, not unavailable.
     fun ButtonColors.busyAware() = if (busy || chosen) copy(disabledContainerColor = containerColor, disabledContentColor = contentColor) else this

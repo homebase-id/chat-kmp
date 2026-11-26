@@ -66,6 +66,7 @@ import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_comment_denied_anonymous
 import id.homebase.resources.feed_comment_denied_no_access
 import id.homebase.resources.feed_comment_denied_unknown
+import id.homebase.resources.feed_open_link_failed
 import id.homebase.resources.feed_post_block
 import id.homebase.resources.feed_post_detail_comments_disabled
 import id.homebase.resources.feed_post_report
@@ -95,6 +96,7 @@ fun PostDetailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val uriHandler = getUriHandler()
+    val openLinkFailedMessage = stringResource(MR.string.feed_open_link_failed)
     // Pure view state; null == closed.
     var overlay by remember { mutableStateOf<FullScreenOverlay?>(null) }
     // Hoisted above [FeedMediaFullScreenHost]: opening the viewer swaps this screen out of the composition, so
@@ -107,7 +109,9 @@ fun PostDetailScreen(
             when (event) {
                 is PostDetailEvent.NavigateBack -> onBack()
                 is PostDetailEvent.NavigateToAuthor -> onAuthorClick(event.odinId)
-                is PostDetailEvent.OpenUrl -> uriHandler.openUrl(event.url)
+                is PostDetailEvent.OpenUrl ->
+                    uriHandler.openUrl(event.url) { scope.launch { snackbarHostState.showSnackbar(openLinkFailedMessage) } }
+                is PostDetailEvent.OpenUrlFailed -> scope.launch { snackbarHostState.showSnackbar(openLinkFailedMessage) }
                 is PostDetailEvent.ShowSnackbar -> {
                     scope.launch {
                         snackbarHostState.showSnackbar(event.message ?: actionFailedMessage)
