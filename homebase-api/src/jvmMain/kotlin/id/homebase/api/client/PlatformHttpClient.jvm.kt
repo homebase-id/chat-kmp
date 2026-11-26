@@ -27,7 +27,10 @@ internal fun desktopHttpClient(
     engine {
         // Ktor's OkHttp clients share one pool by default, and closing any client evicts it.
         val pool = ConnectionPool()
-        config { connectionPool(pool) }
+        config {
+            connectionPool(pool)
+            eventListener(ServerIpCaptureEventListener())
+        }
         if (trustManager != null) {
             val tls = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustManager), null) }
             config { sslSocketFactory(tls.socketFactory, trustManager) }
