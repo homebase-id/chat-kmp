@@ -247,8 +247,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     // A second device's answer means it missed the first relay (or raced it), so it is told again; anything else it sends is dropped.
     private fun otherCalleeDevice(s: CallState, sig: CallSignal): CallTransition {
         Logger.i(tag = TAG) { "call=${s.callId} dropped ${sig::class.simpleName} from unchosen device ${sig.device}" }
-        val answered = sig is CallSignal.Answer || (sig as? CallSignal.Ice)?.signal is CallSignal.Answer
-        if (!answered || !s.phase.isInCall) return CallTransition(s)
+        if (sig !is CallSignal.Answer || !s.phase.isInCall) return CallTransition(s)
         return CallTransition(s, listOf(relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = s.peerDevice)))
     }
 

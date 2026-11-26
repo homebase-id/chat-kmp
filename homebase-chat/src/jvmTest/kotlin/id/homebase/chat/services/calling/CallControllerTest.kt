@@ -687,6 +687,42 @@ class CallControllerTest {
     }
 
     @Test
+    fun anAnswerToAnEarlierRestartDoesNotSettleThePendingOne() = runTest {
+        val numberedRestarts: (FakeCallEngine) -> CallEngine = { fake ->
+            object : CallEngine by fake {
+                override suspend fun restartIce() = "${fake.restartIce()}\r\na=ice-ufrag:u${fake.restarts}\r\n"
+            }
+        }
+        val (net, a, b) = pair(wrapA = numberedRestarts)
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.engines.single().simulateDrop()
+        runCurrent()
+        val first = net.sent.last { it.from == sam && it.signal is CallSignal.RestartAnswer }.signal as CallSignal.RestartAnswer
+        assertEquals("u1", first.offerUfrag)
+        a.engines.single().simulateRecover()
+        runCurrent()
+        assertEquals(CallPhase.Connected, a.phase)
+
+        a.offline = false
+        b.offline = true
+        a.engines.single().simulateDrop()
+        runCurrent()
+        assertTrue(a.state.restartPending)
+        val callId = a.state.callId!!
+        net.deliver(frodo, sam, CallSignal.Ice.of(callId, listOf(LocalCandidate("candidate:8 1 udp 1 192.0.2.8 9 typ host")), first.copy(device = b.device)))
+        net.deliver(frodo, sam, first.copy(device = b.device))
+        runCurrent()
+        assertTrue(a.state.restartPending, "an answer to u1 must not settle the u2 restart")
+
+        net.deliver(frodo, sam, first.copy(offerUfrag = "u2", device = b.device))
+        runCurrent()
+        assertEquals(false, a.state.restartPending)
+    }
+
+    @Test
     fun callerOfflineWhileReconnectingRestartsIceOnceTheNetworkReturns() = runTest {
         val (net, a, b) = pair()
         a.controller.startCall(sam, video = false)

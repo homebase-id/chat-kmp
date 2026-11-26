@@ -87,8 +87,14 @@ sealed class CallSignal {
     @Serializable @SerialName("restart")
     data class Restart(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
 
+    /** [offerUfrag] is the ICE ufrag of the [Restart] answered; null from an older build. */
     @Serializable @SerialName("restart_answer")
-    data class RestartAnswer(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
+    data class RestartAnswer(
+        override val callId: String,
+        val sdp: String,
+        override val device: String? = null,
+        val offerUfrag: String? = null,
+    ) : CallSignal()
 
     /** Callee's ask for a [Restart]: only the caller offers, so the callee cannot restart ICE itself. */
     @Serializable @SerialName("restart_request")

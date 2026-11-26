@@ -211,9 +211,7 @@ class CallController(
     }
 
     private suspend fun send(peer: String, signal: CallSignal) {
-        // The relay keeps only each sender's last blob: no candidate may follow the hangup, and the chosen device must
-        // still get the whole list after the caller tells its siblings the call was answered elsewhere, and the list that
-        // carries an answer, restart or restart answer must be posted after it.
+        // The relay keeps only each sender's last blob, so the candidate list, which carries the signal, goes after it.
         val ice = iceSender?.takeIf { it.peer == peer }
         if (ice?.closed == true) ice.join()
         val carried = signal is CallSignal.Answer || signal is CallSignal.Restart || signal is CallSignal.RestartAnswer
@@ -265,8 +263,9 @@ class CallController(
         else -> signal::class.simpleName.orEmpty()
     }
 
-    private suspend fun process(event: CallEvent) {
-        if (isReplayOfEndedCall(event)) return
+    private suspend fun process(received: CallEvent) {
+        if (isReplayOfEndedCall(received)) return
+        val event = withoutEarlierRestartAnswer(received) ?: return
         val before = _state.value
         val transition = machine.reduce(before, event, clock())
         _state.value = transition.state
@@ -286,6 +285,17 @@ class CallController(
         if (callId !in endedCalls) return false
         log.i { "ignored replay for ended call=$callId (${event::class.simpleName})" }
         return true
+    }
+
+    // The relay replays the callee's last blob on every socket reconnect, and an answer to an earlier restart must not settle this one.
+    private fun withoutEarlierRestartAnswer(event: CallEvent): CallEvent? {
+        val inbound = (event as? CallEvent.Signal)?.inbound ?: return event
+        val sig = inbound.signal
+        val answer = sig as? CallSignal.RestartAnswer ?: (sig as? CallSignal.Ice)?.signal as? CallSignal.RestartAnswer ?: return event
+        val answered = answer.offerUfrag ?: return event
+        if (answered == restartOfferSdp?.let(SdpCandidates::iceUfrag)) return event
+        log.i { "ignored restart answer for an earlier restart call=${sig.callId}" }
+        return if (sig is CallSignal.Ice) CallEvent.Signal(inbound.copy(signal = sig.copy(signal = null))) else null
     }
 
     private fun rememberEnded(callId: String) {
@@ -440,7 +450,7 @@ class CallController(
                     if (effect.offerSdp != answeredRestartOffer) newIceGeneration()
                     answeredRestartOffer = effect.offerSdp
                     val sdp = engine().answerRestart(effect.offerSdp)
-                    sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp))
+                    sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp, offerUfrag = SdpCandidates.iceUfrag(effect.offerSdp)))
                 }
                 is CallEffect.AddIce -> when {
                     !remoteIce.add(effect) -> Unit
