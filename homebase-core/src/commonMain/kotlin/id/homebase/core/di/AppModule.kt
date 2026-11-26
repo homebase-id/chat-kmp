@@ -1135,7 +1135,7 @@ val appModule = module {
     single { FilesyncPreferences(get()) }
     single { FeedPreferences(get()) }
     single { photoBackupController() }
-    single { PhotoBackupEntry({ get<DeveloperPreferences>().photobaseEnabled.value }) { get<PhotoBackupController>() } }
+    single { PhotoBackupEntry { get<PhotoBackupController>() } }
     single<PhotoBackupTrigger> { PhotoBackupTrigger { remaining, isBackupPush -> get<PhotoBackupEntry>().onWake(remaining, isBackupPush) } }
     single { PhotobasePreferences(get()) }
     // Far bigger than chat's 300 MB because it holds a library: at Small's measured 14-20 KB

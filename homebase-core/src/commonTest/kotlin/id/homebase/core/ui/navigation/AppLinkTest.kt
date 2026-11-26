@@ -26,13 +26,6 @@ class AppLinkTest {
     }
 
     @Test
-    fun photobaseLinkIsOnlyAvailableWhenItIsOn() {
-        assertTrue(AppLink.Photobase.isAvailable(photobaseEnabled = true))
-        assertFalse(AppLink.Photobase.isAvailable(photobaseEnabled = false))
-        assertTrue(AppLink.Filesync.isAvailable(photobaseEnabled = false))
-    }
-
-    @Test
     fun fromSlug_rejectsUnknownAndFullRouteNames() {
         assertNull(AppLink.fromSlug(""))
         assertNull(AppLink.fromSlug("#"))

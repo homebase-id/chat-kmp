@@ -54,7 +54,6 @@ internal class AppsPageLinks(
     /** False while calls are unavailable: there's nothing to open. */
     val callsAvailable: Boolean,
     /** False while Photobase is dark-launched off. */
-    val photobaseAvailable: Boolean,
     val photoBackup: PhotoBackupLinks?,
     // The app's own instance: a second one would run its own verify loop.
     val locationViewModel: LocationViewModel,
@@ -118,15 +117,13 @@ internal fun AppsPageContent(
 
         AppsPage.Calls -> CallsSettingsUi(onBack = onBack, onOpenCalls = open)
 
-        AppsPage.Photobase -> if (links.photobaseAvailable) {
+        AppsPage.Photobase -> {
             PhotobaseSettingsScreen(
                 viewModel = koinViewModel(viewModelStoreOwner = settingsOwner),
                 onBack = onBack,
                 backup = links.photoBackup,
                 onOpenPhotos = open,
             )
-        } else {
-            PhotobaseInTestingUi(onBack)
         }
     }
 }

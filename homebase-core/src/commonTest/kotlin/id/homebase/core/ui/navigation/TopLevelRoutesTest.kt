@@ -26,7 +26,6 @@ class TopLevelRoutesTest {
         contactBookVisible = false,
         emailVisible = false,
         everyApp = false,
-        photobaseAvailable = true,
         emailAvailable = true,
     )
 
@@ -37,14 +36,14 @@ class TopLevelRoutesTest {
 
     @Test
     fun aWideRailShowsEveryAvailableAppWhateverTheSwitches() {
-        fun rail(photobaseAvailable: Boolean, emailAvailable: Boolean) = topLevelRoutesFor(
+        fun rail(emailAvailable: Boolean) = topLevelRoutesFor(
             momentsVisible = false, vaultVisible = false,
             locationVisible = false, contactBookVisible = false, emailVisible = false,
             filesyncVisible = false, photobaseVisible = false, feedVisible = false,
-            everyApp = true, photobaseAvailable = photobaseAvailable, emailAvailable = emailAvailable,
+            everyApp = true, emailAvailable = emailAvailable,
         ).map { it.route }
-        assertEquals(AppsPage.entries.map { it.appRoute }.filter { it != Route.WebDrop }.distinct() + Route.Home, rail(true, true))
-        assertEquals(listOf(Route.Photobase, Route.Email).toSet(), (rail(true, true) - rail(false, false).toSet()).toSet())
+        assertEquals(AppsPage.entries.map { it.appRoute }.filter { it != Route.WebDrop }.distinct() + Route.Home, rail(true))
+        assertEquals(setOf(Route.Email), (rail(true) - rail(false).toSet()).toSet())
     }
 
     @Test
@@ -54,8 +53,7 @@ class TopLevelRoutesTest {
             locationVisible = true, contactBookVisible = true, emailVisible = true,
             filesyncVisible = true, photobaseVisible = true, feedVisible = true,
             everyApp = false,
-            photobaseAvailable = true,
-            emailAvailable = true,
+                emailAvailable = true,
         ).map { it.route }
         val settingsOrder = AppsPage.entries.map { it.appRoute }.distinct().filter { it in every }
         assertEquals(settingsOrder + Route.Home, every)
@@ -71,8 +69,7 @@ class TopLevelRoutesTest {
             emailVisible = false,
             feedVisible = false,
             everyApp = false,
-            photobaseAvailable = true,
-            emailAvailable = true,
+                emailAvailable = true,
         )
         assertEquals(listOf(Route.ChatList, Route.Home), routes.map { it.route })
     }
@@ -106,8 +103,7 @@ class TopLevelRoutesTest {
             filesyncVisible = true,
             photobaseVisible = true,
             everyApp = false,
-            photobaseAvailable = true,
-            emailAvailable = true,
+                emailAvailable = true,
         )
         all.forEach { topLevel ->
             runOnIdle { nav.navigate(topLevel.route) }

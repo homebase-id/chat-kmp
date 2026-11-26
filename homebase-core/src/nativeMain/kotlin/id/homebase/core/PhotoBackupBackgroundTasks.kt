@@ -3,7 +3,6 @@ package id.homebase.core
 import co.touchlab.kermit.Logger
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
-import id.homebase.core.settings.DeveloperPreferences
 import id.homebase.photobase.backup.BackupBudget
 import id.homebase.photobase.backup.BackupRunRequest
 import id.homebase.photobase.backup.BackupTrigger
@@ -22,14 +21,6 @@ import platform.BackgroundTasks.BGTaskScheduler
 
 private val scope = supervisedScope("photo-backup-tasks", ioDispatcher)
 
-/** The switch lives in the database, so it reads as off until that opens. */
-fun isPhotobaseEnabled(): Boolean = isDatabaseOpen() && try {
-    KoinPlatformTools.defaultContext().get().get<DeveloperPreferences>().photobaseEnabled.value
-} catch (e: Exception) {
-    Logger.e(tag = "PhotoBackupTasks", throwable = e) { "could not read the Photobase switch" }
-    false
-}
-
 /** From `didFinishLaunching`, before it returns, whatever else the launch is doing. iOS kills an app that registers later. */
 fun registerPhotoBackupBackgroundTasks() {
     val scheduler = BGTaskScheduler.sharedScheduler
@@ -47,9 +38,9 @@ fun startListeningForPhotoBackupUploads() {
 }
 
 private fun handle(task: BGTask, request: BackupRunRequest) {
-    // First, so nothing below can end the chain. A closed database can't say the switch is off, so it keeps the chain alive.
-    if (!isDatabaseOpen() || isPhotobaseEnabled()) submitBackupTasks()
-    if (!isPhotobaseEnabled()) {
+    // First, so nothing below can end the chain.
+    submitBackupTasks()
+    if (!isDatabaseOpen()) {
         task.setTaskCompletedWithSuccess(false)
         return
     }
