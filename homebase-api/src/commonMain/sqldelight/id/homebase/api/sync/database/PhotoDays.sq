@@ -58,9 +58,8 @@ SELECT jsonHeader FROM DriveMainIndex
 WHERE identityId = :identityId AND driveId = :driveId AND fileSystemType = 0 AND fileType = 7201 AND fileState = 1
   AND archivalStatus = :archivalStatus;
 
--- The photos carrying a local tag, by the same days as above. The tag's rows become rowIds through the fileId index
--- without reading a photo; the shelf index then finds the photos and keeps those, so only shown photos' rows are read.
--- 88 ms, not 280, for 10,000 tagged of 40,000 on a Pixel 5 (PHOTOS_OPTIMIZE.md). The + keeps each term a filter.
+-- The photos carrying a local tag, by the same days as above. The tag becomes rowIds by the fileId index, read from no
+-- photo, and the shelf index keeps those: only the photos returned are read (PHOTOS_OPTIMIZE.md). + makes a filter.
 taggedDayCounts:
 SELECT CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER) AS day, count(*) AS photos
 FROM DriveMainIndex m

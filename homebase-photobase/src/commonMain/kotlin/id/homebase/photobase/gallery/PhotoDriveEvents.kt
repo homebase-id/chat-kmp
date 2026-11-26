@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.DriveState
@@ -28,6 +29,17 @@ fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.D
         else -> null
     }
 }
+
+/** Only the arrivals that may change a tag: a photo whose local metadata was never written carries none. */
+fun Flow<PhotoChange>.thatMayChangeTags(): Flow<PhotoChange> = mapNotNull { change ->
+    when (change) {
+        PhotoChange.RoundFinished -> change
+        is PhotoChange.FilesArrived -> change.files.filter { it.mayChangeTags() }.takeIf { it.isNotEmpty() }?.let(PhotoChange::FilesArrived)
+    }
+}
+
+// A deleted photo's tombstone keeps no local metadata, and takes its tags with it.
+internal fun HomebaseFile.mayChangeTags(): Boolean = fileMetadata.localAppData?.versionTag != null || fileState != FileState.Active
 
 /** How many records the running sync has brought in, or null when the drive isn't syncing right now. */
 fun DriveState?.syncedSoFar(): Int? = (this as? DriveState.Synchronizing)?.count

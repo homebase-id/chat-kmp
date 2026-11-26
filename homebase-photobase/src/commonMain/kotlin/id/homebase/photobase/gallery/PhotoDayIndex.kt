@@ -202,6 +202,7 @@ fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: C
     dayOf = store::dayOf,
     photosOn = store::photosOn,
     countedFor = store::daysCountedFor,
-    changes = changes,
+    // A backup's new photos can't be in an album yet, and counting one of its days costs a whole album lookup.
+    changes = if (store.gallery is PhotoGallery.Tagged) changes.thatMayChangeTags() else changes,
     scope = scope,
 )

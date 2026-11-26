@@ -131,8 +131,7 @@ class PhotoGridDbBench {
         )
         val ids = Random(11)
         for (set in sets) {
-            dbm.driver.execute(null, "DROP INDEX IF EXISTS $TAG_INDEX", 0)
-            dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+            clearAlbums(dbm.driver)
             val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
             // Rows went in shuffled, so rowId order spreads a tag over the years; a trip is a run of consecutive photos.
             tag(dbm.driver, favorites, "rowId DESC", set.favorites, 0)
@@ -169,9 +168,7 @@ class PhotoGridDbBench {
             measure("Library, two steps: counts + newest date per album, then the newest header of each") { coversInTwoSteps(dbm.driver, albums) }
             dbm.driver.execute(null, "DROP INDEX IF EXISTS $PHOTO_ID_INDEX", 0)
         }
-        dbm.driver.execute(null, "DROP INDEX IF EXISTS $PHOTO_ID_INDEX", 0)
-        dbm.driver.execute(null, "DROP INDEX IF EXISTS $TAG_INDEX", 0)
-        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        clearAlbums(dbm.driver)
         dbm.close()
         log("done")
     }
@@ -181,13 +178,8 @@ class PhotoGridDbBench {
     fun measureAlbumQueries() = runBlocking {
         assumeTrue("Pass photoAlbumQueriesBench=true to run", args.getString("photoAlbumQueriesBench") == "true")
         var dbm = library("photo-album-queries-bench.txt")
-        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
-        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
-        val ids = Random(11)
-        val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
-        tag(dbm.driver, favorites, "rowId DESC", 5_000, 0)
-        val trips = List(50) { i -> Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "userDate DESC", 400, i * (PHOTOS / 50)) } }
-        val big = Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "rowId", 10_000, 0) }
+        clearAlbums(dbm.driver)
+        val (favorites, trips, big) = tagHeavySet(dbm.driver)
         val albums = trips + big
         log("heavy: 5,000 favorites, 50 trips of 400, an album of 10,000")
         dbm.close()
@@ -229,12 +221,7 @@ class PhotoGridDbBench {
             assertEquals(shipped, rawDays(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX)))
             plan(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX))
             measure("photos first by date ($SHELF_ID_INDEX), keep those in the album") { rawDays(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX)) }
-            // The grid's first screen: the album's newest days up to about 100 photos.
-            var upTo = 0
-            var photos = 0
-            while (upTo < shipped.lastIndex && photos < 100) photos += shipped[upTo++].second
-            val from = shipped[upTo].first
-            val to = shipped.first().first
+            val (from, to, upTo) = firstScreen(shipped)
             val window = "m.userDate >= ${(from - 1L) * DAY_MS} AND m.userDate < ${(to + 2L) * DAY_MS} AND $DAY BETWEEN $from AND $to"
             val shippedPage = rawHeaders(dbm.driver, "SELECT m.jsonHeader $TAG_JOIN WHERE ${taggedWhere(tag)} AND $window ORDER BY m.userDate DESC, m.rowId DESC")
             measure("page of ${upTo + 1} days, before: tag rows first") {
@@ -270,8 +257,7 @@ class PhotoGridDbBench {
             dbm.driver.execute(null, "PRAGMA cache_size = -2000", 0)
         }
 
-        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
-        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        clearAlbums(dbm.driver)
         dbm.close()
         log("done")
     }
@@ -281,13 +267,8 @@ class PhotoGridDbBench {
     fun measureAlbumRowIds() = runBlocking {
         assumeTrue("Pass photoAlbumRowIdsBench=true to run", args.getString("photoAlbumRowIdsBench") == "true")
         var dbm = library("photo-album-rowids-bench.txt")
-        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
-        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
-        val ids = Random(11)
-        val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
-        tag(dbm.driver, favorites, "rowId DESC", 5_000, 0)
-        val trips = List(50) { i -> Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "userDate DESC", 400, i * (PHOTOS / 50)) } }
-        val big = Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "rowId", 10_000, 0) }
+        clearAlbums(dbm.driver)
+        val (favorites, trips, big) = tagHeavySet(dbm.driver)
         val albums = trips + big
         log("heavy: 5,000 favorites, 50 trips of 400, an album of 10,000; no new index")
         dbm.close()
@@ -318,11 +299,7 @@ class PhotoGridDbBench {
             plan(driver, sortedRows)
             measure("day counts: the album's rows in rowId order") { rawDays(driver, sortedRows) }
 
-            var upTo = 0
-            var photos = 0
-            while (upTo < shipped.lastIndex && photos < 100) photos += shipped[upTo++].second
-            val from = shipped[upTo].first
-            val to = shipped.first().first
+            val (from, to, upTo) = firstScreen(shipped)
             val window = "m.userDate >= ${(from - 1L) * DAY_MS} AND m.userDate < ${(to + 2L) * DAY_MS} AND $DAY BETWEEN $from AND $to"
             val shippedPage = "SELECT m.jsonHeader $TAG_JOIN WHERE ${taggedWhere(tag)} AND $window ORDER BY m.userDate DESC, m.rowId DESC"
             val page = rawHeaders(driver, shippedPage)
@@ -369,7 +346,6 @@ class PhotoGridDbBench {
             0,
         ).value.toMap()
 
-
         fun inKotlin(): Map<String, Pair<Long, String>> {
             val tagged = driver.executeQuery(null, rowIds("t.tagId IN ($tagList)", tagColumn = true).replace("SELECT t.tagId,", "SELECT hex(t.tagId),"),
                 { c -> QueryResult.Value(c.collect { it.getString(0)!! to it.getLong(1)!! }) }, 0).value
@@ -394,12 +370,36 @@ class PhotoGridDbBench {
         assertEquals(expected.mapValues { it.value.first }, inKotlin().mapValues { it.value.first })
         measure("album rowIds and shelf dates read separately, counted in Kotlin, then the newest headers by rowId") { inKotlin() }
 
-        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        clearAlbums(dbm.driver)
         dbm.close()
         log("done")
     }
 
     private fun hex(id: Uuid) = "X'${id.toHexString()}'"
+
+    /** Drops every bench index and the photos' tags, so each bench starts from, and leaves, the plain library. */
+    private fun clearAlbums(driver: SqlDriver) {
+        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
+        driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+    }
+
+    /** The heavy set: 5,000 favorites, 50 trips of 400 and an album of 10,000, the same ids each run. */
+    private fun tagHeavySet(driver: SqlDriver): Triple<Uuid, List<Uuid>, Uuid> {
+        val ids = Random(11)
+        val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
+        tag(driver, favorites, "rowId DESC", 5_000, 0)
+        val trips = List(50) { i -> Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(driver, it, "userDate DESC", 400, i * (PHOTOS / 50)) } }
+        val big = Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(driver, it, "rowId", 10_000, 0) }
+        return Triple(favorites, trips, big)
+    }
+
+    /** The grid's first screen: the newest days up to about 100 photos, as (oldest day, newest day, index of the oldest). */
+    private fun firstScreen(days: List<Pair<Int, Int>>): Triple<Int, Int, Int> {
+        var upTo = 0
+        var photos = 0
+        while (upTo < days.lastIndex && photos < 100) photos += days[upTo++].second
+        return Triple(days[upTo].first, days.first().first, upTo)
+    }
 
     private fun photoFilters() =
         "m.identityId = $ME AND m.driveId = $DRIVE AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN (0, 1) " +
@@ -478,12 +478,7 @@ class PhotoGridDbBench {
             val filter = PhotoFilter.Tagged(tag, shown)
             val days = photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter)
             measure("$name (${days.sumOf { it.photos }} photos on ${days.size} days): day counts") { photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter) }
-            // The grid's first screen: the newest days up to about 100 photos.
-            var upTo = 0
-            var photos = 0
-            while (upTo < days.lastIndex && photos < 100) photos += days[upTo++].photos
-            val from = days[upTo].day
-            val to = days.first().day
+            val (from, to, upTo) = firstScreen(days.map { it.day to it.photos })
             measure("$name: headers of its newest ${upTo + 1} days") { photoDays.headersOnDays(IDENTITY, PHOTOS_DRIVE, filter, from, to) }
             val busiest = days.maxBy { it.photos }.day
             measure("$name: one day's count, busiest day") { photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, filter, busiest) }
