@@ -91,7 +91,8 @@ class PhotoCommentsService(
     private val drive = PhotobaseProtocol.DriveAlias
     // A write here reads the photo's comments again; others' come at the next open.
     private val written = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
-    private val pending = PendingComments()
+    // Per identity: another account signed in later in the run has its own.
+    private val pending = HashMap<OdinId?, PendingComments>()
     private val pendingLock = Mutex()
 
     /** The photo's comments, oldest first, read again after each write from here. */
@@ -118,7 +119,7 @@ class PhotoCommentsService(
             // A comment is encrypted with its photo's key, under its own IV.
             externalFileKey = { _, _, _, _ -> photo.keyHeader.aesKey },
         ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toPhotoComment(self) }
-        return if (photo.owner == null) stored else pendingLock.withLock { pending.over(photo.globalTransitId, stored) }
+        return if (photo.owner == null) stored else pendingLock.withLock { pendingOf(self).over(photo.globalTransitId, stored) }
     }
 
     suspend fun post(photo: PhotoTarget, body: String, commentId: Uuid = Uuid.random()) {
@@ -140,7 +141,7 @@ class PhotoCommentsService(
         )
         if (guest) {
             val posted = PhotoComment(commentId, Uuid.NIL, photo.globalTransitId, senderOdinId = null, body, now, globalTransitId = sent?.globalTransitId)
-            pendingLock.withLock { pending.posted(posted) }
+            pendingLock.withLock { pendingOf(activeIdentity()).posted(posted) }
         }
         written.emit(photo.globalTransitId)
     }
@@ -158,7 +159,7 @@ class PhotoCommentsService(
                 owner, drive, globalTransitId, commentedFileKeyHeader(keyHeader.iv), metadata, payloads = emptyList(),
                 fileSystemType = FileSystemType.Comment,
             )
-            pendingLock.withLock { pending.edited(comment, body) }
+            pendingLock.withLock { pendingOf(activeIdentity()).edited(comment, body) }
         } else {
             uploads.updateFileByUniqueId(
                 UpdateFileByUniqueIdRequest(
@@ -188,12 +189,16 @@ class PhotoCommentsService(
             peerUploads.sendDeleteRequest(
                 owner, GlobalTransitIdFileIdentifier(globalTransitId, TargetDrive(drive, PhotobaseProtocol.DriveType)), FileSystemType.Comment,
             )
-            pendingLock.withLock { pending.deleted(comment) }
+            pendingLock.withLock { pendingOf(activeIdentity()).deleted(comment) }
         } else {
             files.deleteFiles(drive, listOf(comment.fileId), fileSystemType = FileSystemType.Comment)
         }
         written.emit(photo.globalTransitId)
     }
+
+    private fun pendingOf(identity: OdinId?) = pending.getOrPut(identity) { PendingComments() }
+
+    private suspend fun activeIdentity(): OdinId? = credentialsManager.getActiveCredentials()?.domain
 
     // The photo's key under a new IV, copied because an upload may clear the key header it's given.
     private fun PhotoTarget.commentKeyHeader() = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey.toByteArray().toSecureByteArray())

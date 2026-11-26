@@ -246,14 +246,15 @@ class PhotoAlbumSharing(
      * Photos [fileIds] were put in album [albumId] or taken out: an added one is shared like the album, and a removed one
      * stops being shared with each of its circles unless another album the photo is in is shared with it too.
      */
-    suspend fun albumTagChanged(albumId: Uuid, on: Boolean, fileIds: Collection<Uuid>) {
+    suspend fun albumTagChanged(albumId: Uuid, on: Boolean, fileIds: Collection<Uuid>, restoredFromBin: Boolean = false) {
         if (fileIds.isEmpty()) return
         // A change can come before the sharing screen has ever opened in this run.
         if (!PhotobaseSession.restoreFor(appCredentials)) return
         val rows = albumRecord(albumId)?.shares.orEmpty().takeIf { it.isNotEmpty() } ?: return
         val photos = filesOf(fileIds)
         if (on) {
-            val requests = photos.filter { it.fileMetadata.appData.archivalStatus != ArchivalStatus.Removed }.flatMap { photo -> rows.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) } }
+            // A restore's own copies still say Bin until the sync.
+            val requests = photos.filter { restoredFromBin || it.fileMetadata.appData.archivalStatus != ArchivalStatus.Removed }.flatMap { photo -> rows.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) } }
             requests.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
                 withRetryResult(RETRY, TAG) { circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk) }.getOrThrow()
             }
@@ -271,7 +272,7 @@ class PhotoAlbumSharing(
     suspend fun photosBinned(photosByAlbum: Map<Uuid, Set<Uuid>>, binned: Boolean) {
         if (photosByAlbum.isEmpty()) return
         if (!PhotobaseSession.restoreFor(appCredentials)) return
-        if (!binned) return photosByAlbum.forEach { (album, fileIds) -> albumTagChanged(album, on = true, fileIds) }
+        if (!binned) return photosByAlbum.forEach { (album, fileIds) -> albumTagChanged(album, on = true, fileIds, restoredFromBin = true) }
         val rows = photosByAlbum.flatMap { (album, fileIds) ->
             albumPhotos(album, includeBinned = true).filter { it.fileId in fileIds }.flatMap { photo -> photo.shares.orEmpty().map { photo.fileId to it.circleId } }
         }

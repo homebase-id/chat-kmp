@@ -37,20 +37,21 @@ class PhotoActionService(
 ) {
     private val drive = PhotobaseProtocol.DriveAlias
     private val toggled = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
-    // The last read of each target's reactions: a toggle needs only to know whether the emoji is ours.
-    private val lastRead = HashMap<Uuid, PhotoReactions>()
+    // The last read of each target's reactions, per identity: a toggle needs only to know whether the emoji is ours.
+    private val lastRead = HashMap<Pair<OdinId?, Uuid>, PhotoReactions>()
     private val lastReadLock = Mutex()
 
     /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
     suspend fun toggleReaction(photo: PhotoTarget, emoji: String) {
         if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        val known = lastReadLock.withLock { lastRead[photo.globalTransitId] } ?: read(photo)
+        val key = credentialsManager.getActiveCredentials()?.domain to photo.globalTransitId
+        val known = lastReadLock.withLock { lastRead[key] } ?: read(photo)
         val on = on(photo)
         val mine = emoji in known.own
         if (mine) on.delete(reaction) else on.add(reaction)
         // Before the re-read lands, so a second tap undoes this one.
-        lastReadLock.withLock { lastRead[photo.globalTransitId] = known.copy(own = if (mine) known.own - emoji else known.own + emoji) }
+        lastReadLock.withLock { lastRead[key] = known.copy(own = if (mine) known.own - emoji else known.own + emoji) }
         toggled.emit(photo.globalTransitId)
     }
 
@@ -66,7 +67,7 @@ class PhotoActionService(
         val summary = async { on.summary() }
         val own = async { on.own(self) }
         PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct())
-            .also { read -> lastReadLock.withLock { lastRead[photo.globalTransitId] = read } }
+            .also { read -> lastReadLock.withLock { lastRead[self to photo.globalTransitId] = read } }
     }
 
     // Where the target's reactions are: here by file id, or on its owner's drive over peer by global transit id.

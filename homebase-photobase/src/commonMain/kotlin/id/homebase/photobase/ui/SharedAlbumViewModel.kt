@@ -94,20 +94,15 @@ class SharedAlbumViewModel(
     /** Adds [files], picked on this device, to the album; each one's outcome comes as an event. */
     fun addPhotos(files: List<PlatformFile>) {
         val album = _uiState.value.album?.takeIf { it.canAdd } ?: return
-        val writes = memberWrites
-        val ops = fileOps
-        viewModelScope.launch {
-            for (file in files) {
-                try {
-                    // Copied while the picker's grant is live: Android and iOS revoke it later.
-                    val path = (if (isDesktop()) file else file.materializeForUpload(ops)).toUploadPath(ops)
-                    writes.add(album, path, file.contentType(), file.name, file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds())
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Logger.w(tag = TAG, throwable = e) { "a photo for $owner's album $albumId wasn't queued" }
-                    _events.send(SharedAlbumEvent.AddFailed)
-                }
+        // The app's scope: building a photo takes a while, and leaving the screen mustn't drop the rest.
+        appScope.launch {
+            // Every one copied first, while the picker's grant is live: Android and iOS revoke it later.
+            val picked = files.mapNotNull { file ->
+                attempt { (if (isDesktop()) file else file.materializeForUpload(fileOps)).toUploadPath(fileOps) }
+                    ?.let { path -> Triple(file, path, file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds()) }
+            }
+            for ((file, path, modifiedMs) in picked) {
+                attempt { memberWrites.add(album, path, file.contentType(), file.name, modifiedMs) }
             }
         }
     }
@@ -196,6 +191,17 @@ class SharedAlbumViewModel(
             ?.let { PhotoTarget(owner = owner, fileId = it.file.fileId, globalTransitId = photoId, keyHeader = it.file.keyHeader) }
 
     private fun HomebaseFile.addedBy(): OdinId? = fileMetadata.senderOdinId?.takeIf { !it.domainName.equals(owner.domainName, ignoreCase = true) }
+
+    private suspend fun <T> attempt(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "a photo for $owner's album $albumId wasn't queued" }
+            _events.send(SharedAlbumEvent.AddFailed)
+            null
+        }
 
     private suspend fun <T> guarded(block: suspend () -> T): T? =
         try {
