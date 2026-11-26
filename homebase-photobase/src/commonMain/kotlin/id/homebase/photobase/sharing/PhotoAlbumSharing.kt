@@ -114,7 +114,11 @@ data class AlbumShared(
     val waiting: List<OdinId>,
     val pending: List<OdinId> = emptyList(),
     val refused: List<OdinId> = emptyList(),
-)
+) {
+    /** Who [audience] is told about it: everyone it reaches, the pending too, since their invite opens once they join. */
+    fun told(audience: AlbumAudience): List<OdinId> =
+        (audience.members + (audience as? AlbumAudience.Group)?.pending.orEmpty() + pending).distinct() - refused.toSet()
+}
 
 /** An album [owner] shares with this identity, as their drive holds it. */
 data class SharedAlbum(
@@ -233,6 +237,8 @@ class PhotoAlbumSharing(
         } else {
             val toRecipients = enrollAll(recipients, reachable)
             if (toRecipients.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(toRecipients.refused.toList())
+            // Before their own circle is made: nothing would be shared through it.
+            if (toRecipients.pending.isNotEmpty()) throw PhotoSharingException.Pending(toRecipients.pending.toList())
             val individual = circles.asApp.createCircle(
                 CreateAppCircleRequest(
                     name = audience.members.single().domainName,
@@ -241,7 +247,7 @@ class PhotoAlbumSharing(
                 )
             )
             // Before anything is written to a photo: the share would be refused.
-            val pending = toRecipients.pending + enrollOrRefuse(individual, members)
+            val pending = enrollOrRefuse(individual, members)
             if (pending.isNotEmpty()) throw PhotoSharingException.Pending(pending.toList())
             individual
         }

@@ -57,6 +57,15 @@ class AlbumAudiencesTest {
     }
 
     @Test
+    fun aGroupsShareTellsItsPendingTooButNotTheOnesLeftOut() {
+        val merry = OdinId("merry.test")
+        val group = AlbumAudience.Group(Uuid.random(), "Trip", listOf(sam, merry), pending = listOf(pippin))
+        val shared = AlbumShared(Uuid.random(), group.circleId, "Album", waiting = emptyList(), refused = listOf(merry))
+
+        assertEquals(listOf(sam, pippin), shared.told(group))
+    }
+
+    @Test
     fun aOnePersonCircleIsThePersonAndTheAppsOwnCirclesAreNeither() {
         val audiences = PhotoAlbumSharing.audiencesOf(
             listOf(

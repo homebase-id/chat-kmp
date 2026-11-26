@@ -185,7 +185,9 @@ fun AudiencePicker(
     val search = rememberTextFieldState()
     val query = search.text.toString().trim()
     val shownGroups = remember(groups, query) {
-        groups.filter { group -> query.isEmpty() || group.name.contains(query, ignoreCase = true) || group.members.any { it.domainName.contains(query, ignoreCase = true) } }
+        groups.filter { group ->
+            query.isEmpty() || group.name.contains(query, ignoreCase = true) || (group.members + group.pending).any { it.domainName.contains(query, ignoreCase = true) }
+        }
     }
     val people = rememberPeople(query, first, state.typed.map(::OdinId))
     val sameGroup = remember(groups, state.chosenPeople) { state.sameGroup(groups) }

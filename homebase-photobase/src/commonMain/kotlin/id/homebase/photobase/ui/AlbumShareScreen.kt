@@ -123,10 +123,11 @@ private fun RecipientRow(recipient: AlbumShareRecipient, enabled: Boolean, onMem
     when (val audience = recipient.audience) {
         is AlbumAudience.Person -> PersonRow(audience.odinId, stringResource(MR.string.photobase_share_recipient_detail, audience.odinId.domainName, access), stop)
         is AlbumAudience.Group -> ListItem(
-            leadingContent = { GroupFaces(audience.members) },
+            leadingContent = { GroupFaces(audience.members + audience.pending) },
             headlineContent = { Text(audience.name) },
             supportingContent = {
-                val people = pluralStringResource(MR.plurals.audience_group_people, audience.members.size, audience.members.size)
+                val everyone = audience.members.size + audience.pending.size
+                val people = pluralStringResource(MR.plurals.audience_group_people, everyone, everyone)
                 Text(stringResource(MR.string.photobase_share_recipient_detail, people, access))
             },
             trailingContent = stop,
@@ -223,9 +224,9 @@ fun AlbumShareScreen(
     }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
-            // The snackbar is under the sheet: an outcome closes it so it's seen.
-            if (event !is AlbumShareEvent.OpenUrl && event !is AlbumShareEvent.OpenSignIn) sheetGroup = null
             when (event) {
+                // The snackbar is under the sheet: an edit's end closes it, before its outcome shows.
+                AlbumShareEvent.GroupEditEnded -> sheetGroup = null
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
                 is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
                 is AlbumShareEvent.GroupSaved -> snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))

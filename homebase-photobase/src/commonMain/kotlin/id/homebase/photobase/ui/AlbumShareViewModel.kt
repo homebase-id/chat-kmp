@@ -52,6 +52,7 @@ sealed interface AlbumShareEvent {
     /** Added to [group]; their grant lands on its own when their identity next calls this one. */
     data class GroupPending(val who: String, val group: String) : AlbumShareEvent
     data object GroupGone : AlbumShareEvent
+    data object GroupEditEnded : AlbumShareEvent
     /** A group's share went to all but these, refused by odin-core. */
     data class LeftOut(val who: String) : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
@@ -135,6 +136,8 @@ class AlbumShareViewModel(
             is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
             is AlbumShareUiAction.EditGroup -> busy(AlbumShareStep.EditGroup) {
                 val edit = sharing.setMembers(action.group, action.members)
+                // First: the sheet over the snackbar goes, so what follows is seen.
+                _events.send(AlbumShareEvent.GroupEditEnded)
                 if (edit.changed) _events.send(AlbumShareEvent.GroupSaved(action.group.name))
                 if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
                 if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(edit.pending.joinToString { it.domainName }, action.group.name))
@@ -204,10 +207,10 @@ class AlbumShareViewModel(
                 is AudienceChoice.NewGroup -> sharing.shareWithNewGroup(albumId, choice.name, choice.members, state.access, expiresAt = null)
             }
             _events.send(AlbumShareEvent.Shared(audience.label))
-            // Only a new group has pending members here: they join on their own, and their invite opens once they have.
+            // A new group's pending members are named: they join on their own, and their invite opens once they have.
             if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(shared.pending.joinToString { it.domainName }, audience.label))
             if (shared.refused.isNotEmpty()) _events.send(AlbumShareEvent.LeftOut(shared.refused.joinToString { it.domainName }))
-            val untold = tell((audience.members + shared.pending).distinct() - shared.refused.toSet(), shared, state.access)
+            val untold = tell(shared.told(audience), shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }
@@ -222,6 +225,7 @@ class AlbumShareViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PhotoSharingException.ForRecipients) {
+                if (step == AlbumShareStep.EditGroup) _events.send(AlbumShareEvent.GroupEditEnded)
                 val who = e.recipients.joinToString { it.domainName }
                 _events.send(
                     when (e) {
@@ -238,6 +242,7 @@ class AlbumShareViewModel(
                 _uiState.update { it.copy(signedIn = false) }
             } catch (e: Exception) {
                 Logger.w(tag = TAG, throwable = e) { "album $albumId: $step failed" }
+                if (step == AlbumShareStep.EditGroup) _events.send(AlbumShareEvent.GroupEditEnded)
                 if (sharing.signOutIfRefused(e)) _uiState.update { it.copy(signedIn = false) }
                 _events.send(AlbumShareEvent.Failed(step, ShareFailure.of(e)))
             } finally {

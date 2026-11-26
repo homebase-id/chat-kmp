@@ -3594,7 +3594,7 @@
     <string name="photobase_permission_comment">comments</string>
     <string name="photobase_share_details_body">Status: %1$s\nError code: %2$s\nCorrelation ID: %3$s</string>
     <string name="photobase_share_details_none">—</string>
-    <string name="photobase_share_waiting">%1$s will see it once they set up Photos.</string>
+    <string name="photobase_share_waiting">%1$s will see it once their Homebase has Photos and can be reached.</string>
     <string name="photobase_share_not_added">Couldn't share with %1$s.</string>
     <string name="photobase_share_not_connected">Not connected with you yet: %1$s. Connect first, then share.</string>
     <string name="photobase_share_not_reviewed">Review these connections in Contacts first, then share: %1$s.</string>
