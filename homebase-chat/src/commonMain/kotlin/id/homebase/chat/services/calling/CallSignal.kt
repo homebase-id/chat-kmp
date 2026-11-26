@@ -146,11 +146,9 @@ object CallChannel {
     }
 
     /**
-     * Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup for a caller-side retraction
-     * (Cancelled/Missed) before the answer, shown as a missed call; handled tells the callee's other devices that one of
-     * them answered or declined, and the relay sends it silent to an iPhone that rang through CallKit. Both share the
-     * hangup typeId, so a receiver stops the ring the same way. Shown text titles with the sender's name; like every other
-     * push body it is English.
+     * Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup only for a caller-side retraction
+     * (Cancelled/Missed) before the answer; handled, which the relay sends silent to an iPhone that rang through CallKit, for
+     * an elsewhere hangup. Shown text is titled with the sender's name; like every other push body it is English.
      */
     fun outbound(peer: String, signal: CallSignal): OutboundSignal {
         val push = when {
