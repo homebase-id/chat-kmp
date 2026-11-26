@@ -35,11 +35,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import id.homebase.chat.widget.AudienceGroup
+import id.homebase.chat.widget.AudienceGroupSheet
 import id.homebase.chat.widget.AudiencePicker
+import id.homebase.chat.widget.GroupFaces
 import id.homebase.chat.widget.rememberAudiencePickerState
 import id.homebase.photobase.sharing.AlbumAudience
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.IdentityAvatar
+import id.homebase.core.widget.ContactName
+import id.homebase.photobase.sharing.AlbumShareRecipient
+import id.homebase.resources.audience_group_people
+import id.homebase.resources.photobase_group_saved
+import id.homebase.resources.photobase_group_short_of_access
+import id.homebase.resources.photobase_share_failed_group
+import id.homebase.resources.photobase_share_recipient_detail
+import org.jetbrains.compose.resources.pluralStringResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -95,6 +110,35 @@ private val PhotoAlbumAccess.title: StringResource
         PhotoAlbumAccess.Add -> MR.string.photobase_share_access_add
     }
 
+/** One person by name and avatar, their Homebase ID below; a group by its faces, name and size, which shows its members. */
+@Composable
+private fun RecipientRow(recipient: AlbumShareRecipient, enabled: Boolean, onMembers: (AlbumAudience.Group) -> Unit, onStop: () -> Unit) {
+    val access = stringResource(recipient.access.title)
+    val stop: @Composable () -> Unit = {
+        IconButton(onClick = onStop, enabled = enabled) {
+            Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.photobase_share_stop, recipient.audience.label))
+        }
+    }
+    when (val audience = recipient.audience) {
+        is AlbumAudience.Person -> ListItem(
+            leadingContent = { IdentityAvatar(audience.odinId, AvatarOptions(size = 40.dp)) },
+            headlineContent = { ContactName(audience.odinId, knownName = null, style = MaterialTheme.typography.bodyLarge) },
+            supportingContent = { Text(stringResource(MR.string.photobase_share_recipient_detail, audience.odinId.domainName, access)) },
+            trailingContent = stop,
+        )
+        is AlbumAudience.Group -> ListItem(
+            leadingContent = { GroupFaces(audience.members) },
+            headlineContent = { Text(audience.name) },
+            supportingContent = {
+                val people = pluralStringResource(MR.plurals.audience_group_people, audience.members.size, audience.members.size)
+                Text(stringResource(MR.string.photobase_share_recipient_detail, people, access))
+            },
+            trailingContent = stop,
+            modifier = Modifier.clickable(enabled = enabled, role = Role.Button) { onMembers(audience) },
+        )
+    }
+}
+
 private suspend fun ShareFailure.detailsText(): String {
     val none = getString(MR.string.photobase_share_details_none)
     return getString(MR.string.photobase_share_details_body, status?.toString() ?: none, code ?: none, correlationId ?: none)
@@ -122,6 +166,7 @@ private suspend fun AlbumShareEvent.Failed.failureMessage(): String {
             AlbumShareStep.Read -> MR.string.photobase_share_failed_read
             AlbumShareStep.Share -> MR.string.photobase_share_failed_share
             AlbumShareStep.Withdraw -> MR.string.photobase_share_failed_withdraw
+            AlbumShareStep.EditGroup -> MR.string.photobase_share_failed_group
         },
         why,
     )
@@ -133,7 +178,24 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
     val snackbar = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
     val picker = rememberAudiencePickerState()
-    val groups = remember(uiState.groups) { uiState.groups.map { AudienceGroup(it.circleId.toString(), it.name, it.members) } }
+    val shortOfAccess = stringResource(MR.string.photobase_group_short_of_access)
+    val groups = remember(uiState.groups, shortOfAccess) {
+        uiState.groups.map { AudienceGroup(it.circleId.toString(), it.name, it.members, unavailable = shortOfAccess.takeIf { _ -> it.missing.isNotEmpty() }) }
+    }
+    // The group whose members are shown, by id, so a save's reload shows it as it is now.
+    var sheetGroup by rememberSaveable { mutableStateOf<String?>(null) }
+    sheetGroup?.let { id ->
+        val shown = groups.firstOrNull { it.id == id }
+        val group = uiState.groups.firstOrNull { it.circleId.toString() == id }
+        if (shown != null && group != null) {
+            AudienceGroupSheet(
+                shown,
+                onDismiss = { sheetGroup = null },
+                onSave = { members -> viewModel.onAction(AlbumShareUiAction.EditGroup(group, members)) },
+                saving = uiState.busy,
+            )
+        }
+    }
     // The people it's shared with already come first.
     val first = remember(uiState.recipients) { uiState.recipients.orEmpty().mapNotNullTo(HashSet()) { (it.audience as? AlbumAudience.Person)?.odinId?.domainName } }
     val choice = picker.choice(groups)
@@ -155,6 +217,10 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
             when (event) {
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
                 is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
+                is AlbumShareEvent.GroupSaved -> {
+                    sheetGroup = null
+                    snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))
+                }
                 is AlbumShareEvent.Shared -> {
                     picker.clear()
                     snackbar.showSnackbar(getString(MR.string.photobase_share_done, event.who))
@@ -192,7 +258,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
         LazyColumn(Modifier.padding(innerPadding)) {
             item(key = "add") {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AudiencePicker(picker, groups, first, typedFallback = true, enabled = !uiState.busy)
+                    AudiencePicker(picker, groups, first, typedFallback = true, enabled = !uiState.busy, onGroupMembers = { sheetGroup = it.id })
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         PhotoAlbumAccess.entries.forEachIndexed { index, access ->
                             SegmentedButton(
@@ -228,14 +294,11 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
                 }
             }
             items(recipients.orEmpty(), key = { it.audience.key }) { recipient ->
-                ListItem(
-                    headlineContent = { Text(recipient.audience.label) },
-                    supportingContent = { Text(stringResource(recipient.access.title)) },
-                    trailingContent = {
-                        IconButton(onClick = { viewModel.onAction(AlbumShareUiAction.Withdraw(recipient)) }, enabled = !uiState.busy) {
-                            Icon(Icons.Outlined.Close, contentDescription = stringResource(MR.string.photobase_share_stop, recipient.audience.label))
-                        }
-                    },
+                RecipientRow(
+                    recipient,
+                    enabled = !uiState.busy,
+                    onMembers = { sheetGroup = it.circleId.toString() },
+                    onStop = { viewModel.onAction(AlbumShareUiAction.Withdraw(recipient)) },
                 )
             }
         }

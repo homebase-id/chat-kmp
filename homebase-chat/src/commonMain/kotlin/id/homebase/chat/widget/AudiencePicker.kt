@@ -1,6 +1,8 @@
 package id.homebase.chat.widget
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -35,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -47,11 +50,14 @@ import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.util.cleanDomain
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.core.avatars.AvatarOptions
+import id.homebase.core.avatars.AvatarStack
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.widget.HomebaseIdField
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
 import id.homebase.resources.add_contact_odinid_hint
+import id.homebase.resources.audience_group_people
+import id.homebase.resources.audience_group_see_members
 import id.homebase.resources.audience_picker_add
 import id.homebase.resources.audience_picker_group_name
 import id.homebase.resources.audience_picker_groups
@@ -64,11 +70,12 @@ import id.homebase.resources.audience_picker_typed
 import id.homebase.resources.audience_picker_typed_invalid
 import id.homebase.resources.audience_picker_with
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
-/** A group an app has made of the people it shares with; [id] is its circle's. */
-data class AudienceGroup(val id: String, val name: String, val members: List<OdinId>)
+/** A group an app has made of the people it shares with; [id] is its circle's. [unavailable] says why it can't be picked. */
+data class AudienceGroup(val id: String, val name: String, val members: List<OdinId>, val unavailable: String? = null)
 
 sealed interface AudienceChoice {
     data class Group(val id: String) : AudienceChoice
@@ -91,14 +98,16 @@ class AudiencePickerState internal constructor(group: String?, people: List<Stri
 
     // Picking the people of a group already made shares with it, unless a new one is asked for.
     internal fun sameGroup(groups: List<AudienceGroup>): AudienceGroup? =
-        chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked -> groups.firstOrNull { g -> g.members.map { it.domainName }.toSet() == picked } }
+        chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked ->
+            groups.firstOrNull { g -> g.unavailable == null && g.members.map { it.domainName }.toSet() == picked }
+        }
 
     internal fun makesGroup(groups: List<AudienceGroup>): Boolean =
         chosenGroup == null && chosenPeople.size > 1 && (sameGroup(groups) == null || newGroupInstead)
 
     /** Null until enough is picked: a new group needs its name. */
     fun choice(groups: List<AudienceGroup>): AudienceChoice? {
-        chosenGroup?.let { id -> return groups.firstOrNull { it.id == id }?.let { AudienceChoice.Group(it.id) } }
+        chosenGroup?.let { id -> return groups.firstOrNull { it.id == id && it.unavailable == null }?.let { AudienceChoice.Group(it.id) } }
         if (chosenPeople.size == 1) return AudienceChoice.Person(OdinId(chosenPeople.single()))
         if (!newGroupInstead) sameGroup(groups)?.let { return AudienceChoice.Group(it.id) }
         return groupName.trim().takeIf { chosenPeople.size > 1 && it.isNotEmpty() }?.let { AudienceChoice.NewGroup(it, chosenPeople.map(::OdinId)) }
@@ -150,7 +159,8 @@ fun typedIdentityOrNull(text: String): OdinId? =
 
 /**
  * Whom to share with: one of [groups], or connected people, one or several (several make a group). Those in [first] are
- * listed first. With [typedFallback], a Homebase ID typed below the list adds someone who isn't a connection.
+ * listed first. With [typedFallback], a Homebase ID typed below the list adds someone who isn't a connection. With
+ * [onGroupMembers], each group has a button that shows who's in it, and a group that can't be picked opens it too.
  */
 @Composable
 fun AudiencePicker(
@@ -159,6 +169,7 @@ fun AudiencePicker(
     first: Set<String> = emptySet(),
     typedFallback: Boolean = false,
     enabled: Boolean = true,
+    onGroupMembers: ((AudienceGroup) -> Unit)? = null,
 ) {
     val search = rememberTextFieldState()
     val query = search.text.toString().trim()
@@ -177,14 +188,7 @@ fun AudiencePicker(
         if (shownGroups.isNotEmpty()) {
             item(key = "groups") { PickerHeading(MR.string.audience_picker_groups) }
             items(shownGroups, key = { it.id }) { group ->
-                val selected = state.chosenGroup == group.id
-                ListItem(
-                    supportingContent = { Text(group.members.joinToString { it.domainName }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = { GroupTile(36.dp) },
-                    trailingContent = { RadioButton(selected = selected, onClick = null) },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton) { state.pickGroup(group.id) },
-                ) { Text(group.name) }
+                GroupRow(group, selected = state.chosenGroup == group.id, enabled = enabled, onPick = { state.pickGroup(group.id) }, onMembers = onGroupMembers)
             }
         }
         if (people.isNotEmpty()) {
@@ -209,6 +213,44 @@ fun AudiencePicker(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+}
+
+@Composable
+private fun GroupRow(group: AudienceGroup, selected: Boolean, enabled: Boolean, onPick: () -> Unit, onMembers: ((AudienceGroup) -> Unit)?) {
+    val available = group.unavailable == null
+    val pick = if (available) {
+        Modifier.selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onPick)
+    } else {
+        onMembers?.let { Modifier.clickable(enabled = enabled, role = Role.Button) { it(group) } } ?: Modifier
+    }
+    ListItem(
+        supportingContent = {
+            if (available) {
+                Text(pluralStringResource(MR.plurals.audience_group_people, group.members.size, group.members.size))
+            } else {
+                Text(group.unavailable.orEmpty(), color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        },
+        leadingContent = { GroupFaces(group.members) },
+        trailingContent = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onMembers != null) {
+                    IconButton(onClick = { onMembers(group) }, enabled = enabled) {
+                        Icon(Icons.Outlined.Groups, contentDescription = stringResource(MR.string.audience_group_see_members, group.name))
+                    }
+                }
+                RadioButton(selected = selected, onClick = null, enabled = enabled && available)
+            }
+        },
+        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+        modifier = pick.alpha(if (available) 1f else 0.6f),
+    ) { Text(group.name) }
+}
+
+/** A group's faces: its members' avatars overlapping, or the group tile when it has none. */
+@Composable
+fun GroupFaces(members: List<OdinId>, avatarSize: Dp = 24.dp) {
+    if (members.isEmpty()) GroupTile(avatarSize + 12.dp) else AvatarStack(members, avatarSize = avatarSize)
 }
 
 @Composable

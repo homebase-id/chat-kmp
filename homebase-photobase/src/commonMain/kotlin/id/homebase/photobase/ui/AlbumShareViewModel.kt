@@ -46,6 +46,7 @@ sealed interface AlbumShareEvent {
     /** The circle a share goes through grants [granted] on the Photos drive, short of [missing]; only the owner console changes it. */
     data class CircleTooNarrow(val circleName: String, val circleId: Uuid, val granted: List<DrivePermission>, val missing: List<DrivePermission>) : AlbumShareEvent
     data class Shared(val who: String) : AlbumShareEvent
+    data class GroupSaved(val name: String) : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
     data class NotConnected(val who: String) : AlbumShareEvent
@@ -56,7 +57,7 @@ sealed interface AlbumShareEvent {
     data class NotTold(val who: String) : AlbumShareEvent
 }
 
-enum class AlbumShareStep { SignIn, Read, Share, Withdraw }
+enum class AlbumShareStep { SignIn, Read, Share, Withdraw, EditGroup }
 
 /** Why something failed, as the user is told it: [reason] quoted, [status], [code] and [correlationId] under Details. */
 data class ShareFailure(
@@ -85,6 +86,8 @@ sealed interface AlbumShareUiAction {
     data class Access(val access: PhotoAlbumAccess) : AlbumShareUiAction
     data class Share(val choice: AudienceChoice) : AlbumShareUiAction
     data class Withdraw(val recipient: AlbumShareRecipient) : AlbumShareUiAction
+    /** Everything already shared with [group] reaches whoever is added, and stops reaching whoever is removed. */
+    data class EditGroup(val group: AlbumAudience.Group, val members: List<OdinId>) : AlbumShareUiAction
 }
 
 /** Who an album is shared with, and sharing it with someone else: signing in to Photobase first when this device hasn't. */
@@ -117,6 +120,10 @@ class AlbumShareViewModel(
             is AlbumShareUiAction.Access -> _uiState.update { it.copy(access = action.access) }
             is AlbumShareUiAction.Share -> share(action.choice)
             is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
+            is AlbumShareUiAction.EditGroup -> busy(AlbumShareStep.EditGroup) {
+                sharing.setMembers(action.group, action.members)
+                _events.send(AlbumShareEvent.GroupSaved(action.group.name))
+            }
         }
     }
 

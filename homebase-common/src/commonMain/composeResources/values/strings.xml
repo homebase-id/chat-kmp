@@ -3295,8 +3295,12 @@
     <string name="audience_picker_typed_invalid">That isn't a Homebase ID.</string>
     <string name="audience_picker_add">Add</string>
     <string name="filesync_group_edit_members">Edit members</string>
-    <string name="filesync_group_members_title">People in %1$s</string>
-    <string name="filesync_group_members_body">Whoever you add sees everything shared with %1$s. Whoever you remove stops seeing it.</string>
+    <string name="audience_group_members_title">People in %1$s</string>
+    <string name="audience_group_members_body">Whoever you add sees everything shared with %1$s. Whoever you remove stops seeing it.</string>
+    <string name="audience_group_see_members">See who's in %1$s</string>
+    <string name="audience_group_edit">Edit members</string>
+    <string name="audience_group_saving">Saving…</string>
+    <string name="audience_group_id">Group ID: %1$s</string>
     <string name="audience_picker_no_people">No connections match.</string>
     <string name="filesync_share_access_view">Can view and comment</string>
     <string name="filesync_share_access_edit">Can edit and comment</string>
@@ -3569,6 +3573,10 @@
     <string name="photobase_share_failed_read">Couldn't read who sees this album: %1$s</string>
     <string name="photobase_share_failed_share">Couldn't share the album: %1$s</string>
     <string name="photobase_share_failed_withdraw">Couldn't stop sharing: %1$s</string>
+    <string name="photobase_share_failed_group">Couldn't change the group: %1$s</string>
+    <string name="photobase_group_saved">Saved %1$s.</string>
+    <string name="photobase_group_short_of_access">Doesn't give the access a shared album needs. Update this group in your owner console.</string>
+    <string name="photobase_share_recipient_detail">%1$s · %2$s</string>
     <string name="photobase_share_unreachable">Couldn't reach your Homebase. Check your connection and try again.</string>
     <string name="photobase_share_circle_too_narrow">The “%1$s” circle gives %2$s on the Photos drive. A shared album also needs %3$s. Add them to the “%1$s” circle in your owner console.</string>
     <string name="photobase_share_circle_id">Circle “%1$s”\nID: %2$s</string>

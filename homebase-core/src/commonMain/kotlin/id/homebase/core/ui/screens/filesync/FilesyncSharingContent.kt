@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.UploadFile
 import io.github.vinceglb.filekit.dialogs.FileKitMode
@@ -67,17 +66,15 @@ import androidx.compose.ui.unit.dp
 import id.homebase.api.common.OdinId
 import id.homebase.chat.widget.AudienceChoice
 import id.homebase.chat.widget.AudienceGroup
+import id.homebase.chat.widget.AudienceGroupSheet
 import id.homebase.chat.widget.AudiencePicker
 import id.homebase.chat.widget.GroupTile
-import id.homebase.chat.widget.PersonCheckRow
 import id.homebase.chat.widget.rememberAudiencePickerState
-import id.homebase.chat.widget.rememberPeople
 import id.homebase.common.util.formatBytes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.widget.AdaptiveSheet
-import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
@@ -97,8 +94,6 @@ import id.homebase.resources.filesync_expiry_title
 import id.homebase.resources.filesync_expiry_week
 import id.homebase.resources.filesync_expiry_year
 import id.homebase.resources.filesync_group_edit_members
-import id.homebase.resources.filesync_group_members_body
-import id.homebase.resources.filesync_group_members_title
 import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
 import id.homebase.resources.filesync_share_note
@@ -373,10 +368,15 @@ internal fun FilesyncShareView(
     val writes = rememberSharedWrites(onAction)
     var editingMembers by rememberSaveable { mutableStateOf(false) }
     if (editingMembers && shown is FilesyncAudience.Group) {
-        GroupMembersSheet(shown, onDismiss = { editingMembers = false }) { members ->
-            editingMembers = false
-            onAction(FilesyncUiAction.SetGroupMembers(shown, members))
-        }
+        AudienceGroupSheet(
+            AudienceGroup(shown.circleId.toString(), shown.name, shown.members),
+            onDismiss = { editingMembers = false },
+            onSave = { members ->
+                editingMembers = false
+                onAction(FilesyncUiAction.SetGroupMembers(shown, members))
+            },
+            startEditing = true,
+        )
     }
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
@@ -437,34 +437,6 @@ private fun SharedFilesBody(failed: Boolean, count: Int?, empty: StringResource,
         count == null -> CircularProgressIndicator(modifier = Modifier.padding(horizontal = 24.dp).size(24.dp))
         count == 0 -> Text(stringResource(empty), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 24.dp))
         else -> list()
-    }
-}
-
-/** Picks [group]'s members from the connections, the ones in it now first; at least one stays. */
-@Composable
-private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Unit, onSave: (List<OdinId>) -> Unit) {
-    val search = rememberTextFieldState()
-    var chosen by rememberSaveable { mutableStateOf(group.members.map { it.domainName }) }
-    val people = rememberPeople(search.text.toString().trim(), first = group.members.mapTo(HashSet()) { it.domainName }, extra = group.members)
-    AdaptiveSheet(onDismiss = onDismiss, maxWidth = 420.dp) {
-        Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(stringResource(MR.string.filesync_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
-            Text(stringResource(MR.string.filesync_group_members_body, group.name), style = MaterialTheme.typography.bodyMedium)
-            MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.audience_picker_search), modifier = Modifier.fillMaxWidth())
-            LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-                items(people, key = { it.domainName }) { person ->
-                    val checked = person.domainName in chosen
-                    PersonCheckRow(person, checked) { chosen = if (checked) chosen - person.domainName else chosen + person.domainName }
-                }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
-                Button(
-                    enabled = chosen.isNotEmpty() && chosen.toSet() != group.members.mapTo(HashSet()) { it.domainName },
-                    onClick = { onSave(chosen.map(::OdinId)) },
-                ) { Text(stringResource(MR.string.save)) }
-            }
-        }
     }
 }
 

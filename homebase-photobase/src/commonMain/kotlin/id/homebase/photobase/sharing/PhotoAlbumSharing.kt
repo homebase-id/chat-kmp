@@ -15,6 +15,7 @@ import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.EnrollmentOutcomeKind
 import id.homebase.api.client.connections.DriveGrantRequest
 import id.homebase.api.client.connections.PermissionedDrive
+import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.HomebaseFile
@@ -72,7 +73,8 @@ sealed interface AlbumAudience {
         override val members get() = listOf(odinId)
     }
 
-    data class Group(val circleId: Uuid, val name: String, override val members: List<OdinId>) : AlbumAudience
+    /** [missing]: what a share needs that its circle doesn't grant on the drive; it can't be shared with until updated. */
+    data class Group(val circleId: Uuid, val name: String, override val members: List<OdinId>, val missing: List<DrivePermission> = emptyList()) : AlbumAudience
 }
 
 /** Unique among an album's audiences, as a label isn't: two groups may share a name. */
@@ -173,6 +175,7 @@ class PhotoAlbumSharing(
 
         val recipients = recipientsCircle()
         assertGrantsAShare(recipients)
+        if (audience is AlbumAudience.Group) assertGrantsAShare(audience.circleId)
         // Their individual shares then don't depend on a group they might leave.
         val pending = enrollAll(recipients, members).toMutableSet()
         val circleId = when (audience) {
@@ -262,6 +265,7 @@ class PhotoAlbumSharing(
     /** Makes [group]'s members [members]; the ones added, for telling. Those who couldn't be added are named once the rest is done. */
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): List<OdinId> {
         circles.requireSignedIn()
+        assertMayJoin(members.filter { it !in group.members })
         val keys = circles.keysOf(members.filter { it !in group.members })
         val added = keys.keys.filter { it !in keys.unsupported() }
         if (added.isNotEmpty()) circles.enroll(recipientsCircle(), added)
@@ -501,14 +505,9 @@ class PhotoAlbumSharing(
     // Checked before anything is written: odin-core refuses every share otherwise.
     private suspend fun assertGrantsAShare(circleId: Uuid) {
         val circle = connections.getCirclesWithMembers().firstOrNull { it.circle.id.sameUuid(circleId) }?.circle ?: return
-        val granted = circle.driveGrants.orEmpty()
-            .filter { it.permissionedDrive?.drive?.alias?.sameUuid(PhotobaseProtocol.DriveAlias) == true }
-            .flatMap { DrivePermission.fromNames(it.permissionedDrive?.permission.orEmpty()) }
-        val missing = DrivePermission.fromValue(ROW_PERMISSIONS) - granted.toSet()
-        if (missing.isNotEmpty()) throw PhotoSharingException.CircleTooNarrow(circleId, circle.name, granted.distinct(), missing)
+        val missing = missingForAShare(circle)
+        if (missing.isNotEmpty()) throw PhotoSharingException.CircleTooNarrow(circleId, circle.name, grantedOnPhotos(circle), missing)
     }
-
-    private fun String.sameUuid(id: Uuid) = replace("-", "").equals(id.toHexString(), ignoreCase = true)
 
     /**
      * Adds [members] to [circleId]; the ones pending, whose grant odin-core deposited. A skip is also its answer for one
@@ -641,13 +640,26 @@ class PhotoAlbumSharing(
             contentObject(content)[ODIN_ID]?.let { runCatching { OdinId(it.jsonPrimitive.content) }.getOrNull() }
 
         /** The app's circles that albums are shared with: each person's own, and the groups not disabled. */
+        /** What [circle] grants on the Photos drive. */
+        internal fun grantedOnPhotos(circle: RedactedCircleDefinition): List<DrivePermission> =
+            circle.driveGrants.orEmpty()
+                .filter { it.permissionedDrive?.drive?.alias?.sameUuid(PhotobaseProtocol.DriveAlias) == true }
+                .flatMap { DrivePermission.fromNames(it.permissionedDrive?.permission.orEmpty()) }
+                .distinct()
+
+        /** What a share asks that [circle] doesn't grant: odin-core returns an existing circle as it was made. */
+        internal fun missingForAShare(circle: RedactedCircleDefinition): List<DrivePermission> =
+            DrivePermission.fromValue(ROW_PERMISSIONS) - grantedOnPhotos(circle).toSet()
+
+        private fun String.sameUuid(id: Uuid) = replace("-", "").equals(id.toHexString(), ignoreCase = true)
+
         internal fun audiencesOf(circles: List<CircleWithMembers>): Map<Uuid, AlbumAudience> =
             circles.mapNotNull { c ->
                 val id = Uuid.parse(c.circle.id)
                 when {
                     c.circle.designation == CircleDesignation.Individual -> c.members.singleOrNull()?.let { id to AlbumAudience.Person(it) }
                     !c.circle.disabled && c.circle.slug?.matches(SelectiveShareCircles.GROUP_SLUG) == true ->
-                        id to AlbumAudience.Group(id, c.circle.name, c.members.sortedBy { it.domainName })
+                        id to AlbumAudience.Group(id, c.circle.name, c.members.sortedBy { it.domainName }, missingForAShare(c.circle))
                     else -> null
                 }
             }.toMap()
