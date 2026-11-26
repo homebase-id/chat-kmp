@@ -71,7 +71,7 @@ internal fun SelectionToolbar(
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
         val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
-        val toAlbum: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.LibraryAdd, MR.string.photobase_album_add, enabled, onAddToAlbum) }
+        val toAlbum: @Composable () -> Unit = { AlbumButton(enabled, onAddToAlbum) }
         val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled) { onConfirm(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin)) } }
         when (gallery) {
             is PhotoGallery.OnShelf -> when (gallery.shelf) {
@@ -114,6 +114,9 @@ internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> 
         onClick = onClick,
     )
 }
+
+@Composable
+internal fun AlbumButton(enabled: Boolean, onClick: () -> Unit) = ToolbarAction(Icons.Outlined.LibraryAdd, MR.string.photobase_album_add, enabled, onClick)
 
 // Icons only, so four fit a small phone; a long press says what each does.
 @Composable
