@@ -351,7 +351,7 @@ comments. A PR that changes none skips both passes, and its description says so 
 ## Issues
 
 Read [`ISSUES.md`](ISSUES.md) before working on an issue or filing one: how to read one, what to write
-on screen, how to stay with the problem, and how its PR starts.
+on screen, how to stay with the problem, how its PR starts, and how to file one.
 
 ## Opening a PR
 
