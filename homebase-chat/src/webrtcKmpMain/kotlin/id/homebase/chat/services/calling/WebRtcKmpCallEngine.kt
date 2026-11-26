@@ -6,6 +6,7 @@ import kotlinx.coroutines.channels.Channel
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.calling.CallIceServer
 import com.shepeliev.webrtckmp.BundlePolicy
+import com.shepeliev.webrtckmp.ContinualGatheringPolicy
 import com.shepeliev.webrtckmp.DataChannel
 import com.shepeliev.webrtckmp.IceCandidate
 import com.shepeliev.webrtckmp.FacingMode
@@ -69,6 +70,8 @@ internal fun callRtcConfiguration(iceServers: List<CallIceServer>) = RtcConfigur
     iceServers = iceServers.map { it.toKmp() },
     bundlePolicy = BundlePolicy.MaxBundle,
     rtcpMuxPolicy = RtcpMuxPolicy.Require,
+    // A network that appears mid-call gets candidates without waiting for an ICE restart.
+    continualGatheringPolicy = ContinualGatheringPolicy.GatherContinually,
 )
 
 internal fun List<VideoHandle>.kmpTracks(): Set<VideoTrack> = mapNotNullTo(HashSet()) { (it as? KmpVideoHandle)?.track }

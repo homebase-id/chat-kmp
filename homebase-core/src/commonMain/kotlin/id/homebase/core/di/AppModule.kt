@@ -511,6 +511,7 @@ val appModule = module {
             },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
             ringback = platformRingbackTone(),
+            networkMonitor = get(),
         )
     }
     single { CallsPreferences(get()) }
