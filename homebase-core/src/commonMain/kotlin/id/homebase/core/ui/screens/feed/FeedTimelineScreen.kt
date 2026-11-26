@@ -79,6 +79,7 @@ import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
+import id.homebase.resources.feed_open_link_failed
 import id.homebase.resources.feed_comment_action_failed
 import id.homebase.resources.feed_reactors_partial
 import id.homebase.resources.feed_timeline_compose_action
@@ -112,6 +113,7 @@ fun FeedTimelineScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val uriHandler = getUriHandler()
+    val openLinkFailedMessage = stringResource(MR.string.feed_open_link_failed)
     val channels by viewModel.channels.collectAsStateWithLifecycle()
     val displayNames by viewModel.displayNames.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -148,7 +150,8 @@ fun FeedTimelineScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is FeedTimelineEvent.NavigateToDetail -> onNavigateToDetail(event.postId)
-                is FeedTimelineEvent.OpenUrl -> uriHandler.openUrl(event.url)
+                is FeedTimelineEvent.OpenUrl ->
+                    uriHandler.openUrl(event.url) { scope.launch { snackbarHostState.showSnackbar(openLinkFailedMessage) } }
                 is FeedTimelineEvent.ShowSnackbar ->
                     snackbarHostState.showSnackbar(TranslationUtil.getString(event.messageKey))
             }
