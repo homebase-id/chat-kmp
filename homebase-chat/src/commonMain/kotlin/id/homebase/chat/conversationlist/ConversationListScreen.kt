@@ -850,6 +850,10 @@ fun ConversationListUi(
         }
     }
 
+    val launchers = rememberAttachmentLaunchers(
+        (detail as? ChatDetail.Open)?.conversation?.conversation?.id ?: NO_CONVERSATION,
+        onUiAction,
+    )
     val hoistedOverlay: FullScreenOverlay? =
         messagesUiState.hoistedMediaViewer(isExpanded) ?: messagesUiState.hoistedAttachmentEditor(isExpanded)
     DisposableEffect(Unit) {
@@ -950,6 +954,7 @@ fun ConversationListUi(
                                         if (!closing) onUiAction(ConversationListUiAction.ClearSelection)
                                     },
                                     onUiAction = if (closing) ({}) else onUiAction,
+                                    launchers = launchers,
                                     hoistMediaViewer = isExpanded,
                                     hoistAttachmentEditor = isExpanded,
                                     vaultActive = uiState.vaultActive,
@@ -1041,7 +1046,7 @@ fun ConversationListUi(
                                 data = overlay,
                                 sendQuality = messagesUiState.sendQuality,
                                 textFieldState = messageInputTextFieldState,
-                                launchers = rememberAttachmentLaunchers(overlay.conversationId, onUiAction),
+                                launchers = launchers,
                                 revealed = transition.currentState == EnterExitState.Visible,
                                 onUiAction = onUiAction,
                             )

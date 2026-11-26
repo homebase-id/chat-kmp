@@ -68,7 +68,7 @@ import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
-fun ConversationMessagesPane(
+internal fun ConversationMessagesPane(
     conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
@@ -76,14 +76,14 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    /** Two-pane layouts draw the read-only viewers above the scaffold instead; the pane still
+    /** One set for the pane and a hoisted editor, so a capture's handoff reaches the camera that took it. */
+    launchers: AttachmentLaunchers,
+    /** Two-pane layouts draw the read-only viewers and the attachment editor above the scaffold instead; the pane still
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
     hoistAttachmentEditor: Boolean = false,
     vaultActive: Boolean = false,
 ) {
-    val launchers = rememberAttachmentLaunchers(conversation.conversation.id, onUiAction)
-
     val listState = remember(conversation.conversation.id,uiState.isLoadingMessages) {
         val conversationId = conversation.conversation.id
         if (uiState.isLoadingMessages) {
