@@ -30,6 +30,10 @@ fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.D
     }
 }
 
+// A backup's new photos can't be in an album yet, and counting one of their days costs a whole album lookup.
+internal fun Flow<PhotoChange>.heardBy(gallery: PhotoGallery): Flow<PhotoChange> =
+    if (gallery is PhotoGallery.Tagged) thatMayChangeTags() else this
+
 /** Only the arrivals that may change a tag: a photo whose local metadata was never written carries none. */
 fun Flow<PhotoChange>.thatMayChangeTags(): Flow<PhotoChange> = mapNotNull { change ->
     when (change) {

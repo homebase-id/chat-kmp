@@ -175,7 +175,10 @@ read. Through `PhotoDays` it costs 4–7 ms over the raw SQL.
 - **Why it's faster:** the old shape read every tagged photo's row (about 20 µs each in a 570 MB SQLCipher
   database); counting the tag rows through the `fileId` index alone took 42 ms against 247 ms with the photo
   filters. The new one reads a row only for a photo it returns.
-- **Small albums lose a little** (trip day counts 38 → 48 ms): the shelf walk is about 45 ms whatever the album.
+- **Small albums lose a little** (trip day counts 38 → 48 ms): the shelf walk is about 45 ms whatever the album,
+  and it grows with the library: about 1.1 µs per photo, so near 225 ms for a 10-photo album in a 200,000-photo
+  library (extrapolated, not measured), where the tag-first shape cost a few ms. Accepted for now (2026-11-26); if
+  it bites, pick the shape by the album's size, or build the tag-first index.
 - **With two new indexes** (`IdxPhotoShelf` + `fileId`, 1.5 s to build; tag-first, 0.12 s) the same shape was
   faster still: big album day counts 62 ms, pages 6.5 ms, Favorites 50 ms. Not built: no new index was the brief.
 

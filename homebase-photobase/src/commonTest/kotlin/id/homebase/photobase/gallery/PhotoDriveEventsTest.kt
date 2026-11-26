@@ -54,6 +54,10 @@ class PhotoDriveEventsTest {
             listOf(PhotoChange.FilesArrived(listOf(tagged, deleted)), PhotoChange.RoundFinished),
             changes.thatMayChangeTags().toList(),
         )
+        assertEquals(changes.thatMayChangeTags().toList(), changes.heardBy(PhotoGallery.Favorites).toList())
+        assertEquals(changes.thatMayChangeTags().toList(), changes.heardBy(PhotoGallery.Album(Uuid.random())).toList())
+        assertEquals(changes.toList(), changes.heardBy(PhotoGallery.Library).toList(), "a shelf hears a backup's new photos")
+        assertEquals(changes.toList(), changes.heardBy(PhotoGallery.Archive).toList())
     }
 
     @Test

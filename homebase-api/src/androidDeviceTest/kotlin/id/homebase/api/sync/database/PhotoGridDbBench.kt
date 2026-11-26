@@ -30,7 +30,7 @@ import kotlin.uuid.Uuid
 
 /**
  * How fast a Photos grid can read a 40K-photo library from the phone's own database, with fixed
- * hand-written SQL rather than QueryBatch's per-call string. See OPTIMIZE.md for how to run it.
+ * hand-written SQL rather than QueryBatch's per-call string. See PHOTOS_OPTIMIZE.md for how to run it.
  *
  * Statements go through [SqlDriver.executeQuery] with a fixed identifier, as SQLDelight's generated
  * queries do, so each is prepared once per connection and reused.
@@ -113,6 +113,8 @@ class PhotoGridDbBench {
             Fixture().populate(dbm)
             log("built $PHOTOS photos + $CHAT_MESSAGES chat rows in ${took.elapsedNow().inWholeSeconds} s")
         }
+        // A bench stopped partway leaves its tags and indexes behind, which every later run would measure.
+        clearAlbums(dbm.driver)
         log("database ${context.getDatabasePath(DB).length() / MB} MB, zone $zone, runs $runs")
         return dbm
     }
@@ -393,7 +395,7 @@ class PhotoGridDbBench {
         return Triple(favorites, trips, big)
     }
 
-    /** The grid's first screen: the newest days up to about 100 photos, as (oldest day, newest day, index of the oldest). */
+    /** The grid's first screen: the newest days until they hold 100 photos, and the day after, as (oldest day, newest day, index of the oldest). */
     private fun firstScreen(days: List<Pair<Int, Int>>): Triple<Int, Int, Int> {
         var upTo = 0
         var photos = 0
@@ -467,7 +469,7 @@ class PhotoGridDbBench {
         val photoDays = dbm.photoDays
         val shown = listOf(0L, 1L)
         log("-- $index")
-        plan(dbm.driver, "taggedDayCounts", favorites)
+        plan(dbm.driver, "tag rows first (the shape before PHOTOS_OPTIMIZE.md 2026-11-26)", favorites)
         once("first Library covers on a fresh connection") { photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown) }
         measure("Library: covers + counts of ${albums.size} albums") { photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown) }
         measure("Library: covers + counts + parse the cover headers") {
