@@ -1,5 +1,6 @@
 package id.homebase.api.sync.database
 
+import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.client.drives.query.QueryBatchCursor
@@ -191,11 +192,12 @@ object MainIndexMetaHelpers {
             databaseManager.withWriteTransaction { db ->
 
                 fileHeaders.forEach { incoming ->
-                    val fileHeader = TombstoneRetention.carryOver(incoming) {
+                    val stored by lazy {
                         db.driveMainIndexQueries.selectByIdentityAndDriveAndFile(identityId, driveId, incoming.fileId)
                             .executeAsOneOrNull()
                             ?.let { OdinSystemSerializer.deserialize<HomebaseFile>(it.jsonHeader) }
                     }
+                    val fileHeader = keepLocalAppData(TombstoneRetention.carryOver(incoming) { stored }) { stored }
                     // Convert SharedSecretEncryptedFileHeader to extract DriveMainIndex fields and tag records
                     val driveMainIndexRecord =
                         convertFileHeaderToDriveMainIndexRecord(identityId, driveId, fileHeader)
@@ -263,6 +265,13 @@ object MainIndexMetaHelpers {
 
             if (n != l)
                 throw IllegalStateException("Unable to write local TAGs")
+        }
+
+        // A header rewrite's event carries the uploaded metadata, which has no local app data; the server still holds it.
+        private fun keepLocalAppData(incoming: HomebaseFile, stored: () -> HomebaseFile?): HomebaseFile {
+            if (incoming.fileMetadata.localAppData != null || incoming.fileState != FileState.Active) return incoming
+            val local = stored()?.fileMetadata?.localAppData ?: return incoming
+            return incoming.copy(fileMetadata = incoming.fileMetadata.copy(localAppData = local))
         }
 
         // transferHistory/originalRecipientCount are server-owned: on an equal-`modified` rejection adopt only those into the stored row. Runs inside the caller's write transaction.

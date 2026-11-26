@@ -955,6 +955,50 @@ class MainIndexMetaTest {
         }
     }
 
+    @Test
+    fun aNewerHeaderWithoutLocalAppDataKeepsTheStoredOneAndItsLocalTags() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val fileId = Uuid.random()
+            val uniqueId = Uuid.random()
+            val album = Uuid.random()
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+            val tagged = makeHeader(fileId, driveId, uniqueId, updatedMs = 1_000L, localReactions = listOf("""{"emoji":"👍"}"""))
+                .let { it.copy(fileMetadata = it.fileMetadata.copy(localAppData = it.fileMetadata.localAppData?.copy(tags = listOf(album)))) }
+            processor.baseUpsertEntryZapZap(identityId, driveId, tagged, null)
+
+            // What the server sends after rewriting the file's header: its local app data isn't in it.
+            val rewritten = makeHeader(fileId, driveId, uniqueId, updatedMs = 2_000L, localReactions = null)
+            val written = processor.baseUpsertEntryZapZap(identityId, driveId, rewritten, null)
+
+            assertEquals(listOf(album), written.single().fileMetadata.localAppData?.tags)
+            assertEquals(listOf(album), dbm.driveLocalTagIndex.selectByFile(identityId, driveId, fileId).map { it.tagId })
+            val stored = dbm.driveMainIndex.selectHomebaseFileByUnique(identityId, driveId, uniqueId)
+            assertEquals(listOf("""{"emoji":"👍"}"""), stored?.fileMetadata?.localAppData?.localReactions)
+            assertEquals(2_000L, stored?.fileMetadata?.updated?.milliseconds)
+        }
+    }
+
+    @Test
+    fun aNewerHeaderWithLocalAppDataReplacesTheStoredOne() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val identityId = Uuid.random()
+            val driveId = Uuid.random()
+            val fileId = Uuid.random()
+            val uniqueId = Uuid.random()
+            val processor = MainIndexMetaHelpers.HomebaseFileProcessor(dbm)
+            val tagged = makeHeader(fileId, driveId, uniqueId, updatedMs = 1_000L, localReactions = emptyList())
+                .let { it.copy(fileMetadata = it.fileMetadata.copy(localAppData = it.fileMetadata.localAppData?.copy(tags = listOf(Uuid.random())))) }
+            processor.baseUpsertEntryZapZap(identityId, driveId, tagged, null)
+
+            // The last local tag taken off: the local app data is there, empty.
+            processor.baseUpsertEntryZapZap(identityId, driveId, makeHeader(fileId, driveId, uniqueId, updatedMs = 2_000L, localReactions = emptyList()), null)
+
+            assertEquals(emptyList(), dbm.driveLocalTagIndex.selectByFile(identityId, driveId, fileId))
+        }
+    }
+
     /**
      * Build a minimal [HomebaseFile] with a controllable `updated` timestamp and
      * an optional `localAppData.localReactions` mirror. localReactions == null
