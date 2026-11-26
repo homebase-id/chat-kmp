@@ -456,6 +456,12 @@ internal fun MessageListUiState.hoistedMediaViewer(
 ): FullScreenOverlay.MediaViewer? =
     if (isExpandedLayout) fullScreenOverlay as? FullScreenOverlay.MediaViewer else null
 
+/** The composer's attachment editor, lifted over both panes of a two-pane layout like [hoistedMediaViewer]. */
+internal fun MessageListUiState.hoistedAttachmentEditor(
+    isExpandedLayout: Boolean,
+): FullScreenOverlay.AttachmentData? =
+    if (isExpandedLayout) (fullScreenOverlay as? FullScreenOverlay.AttachmentData)?.takeUnless { it.isChatListCapture } else null
+
 sealed class AttachmentPendingFile(val attachmentId: Uuid) {
     /**
      * @param metadata EXIF / image-file metadata, populated asynchronously after

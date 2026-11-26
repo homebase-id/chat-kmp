@@ -1,6 +1,7 @@
 package id.homebase.chat.conversationlist
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -79,6 +80,8 @@ import id.homebase.chat.contactcard.ContactCardDescriptor
 import id.homebase.chat.widget.SendFileSheet
 import id.homebase.chat.widget.ChatListCaptureOverlay
 import id.homebase.chat.widget.ChatMediaViewer
+import id.homebase.chat.widget.ConversationAttachmentEditor
+import id.homebase.chat.widget.rememberAttachmentLaunchers
 import id.homebase.chat.widget.ConversationListPane
 import id.homebase.chat.widget.paneTrailingEdge
 import id.homebase.chat.widget.ConversationMessagesPane
@@ -847,7 +850,8 @@ fun ConversationListUi(
         }
     }
 
-    val hoistedMediaViewer = messagesUiState.hoistedMediaViewer(isExpanded)
+    val hoistedOverlay: FullScreenOverlay? =
+        messagesUiState.hoistedMediaViewer(isExpanded) ?: messagesUiState.hoistedAttachmentEditor(isExpanded)
     DisposableEffect(Unit) {
         onDispose {
             onComposerVisibilityChanged(false)
@@ -947,6 +951,7 @@ fun ConversationListUi(
                                     },
                                     onUiAction = if (closing) ({}) else onUiAction,
                                     hoistMediaViewer = isExpanded,
+                                    hoistAttachmentEditor = isExpanded,
                                     vaultActive = uiState.vaultActive,
                                 )
                             }
@@ -1004,7 +1009,7 @@ fun ConversationListUi(
             if (isExpanded) {
                 SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
                     AnimatedContent(
-                        targetState = hoistedMediaViewer,
+                        targetState = hoistedOverlay,
                         modifier = Modifier.fillMaxSize(),
                         contentKey = { overlay ->
                             when (overlay) {
@@ -1013,6 +1018,7 @@ fun ConversationListUi(
                                 is FullScreenOverlay.VideoPlayerData -> "videoPlayer"
                                 is FullScreenOverlay.FilePreviewData -> "pdf"
                                 is FullScreenOverlay.ViewOnceViewer -> "viewOnce"
+                                is FullScreenOverlay.AttachmentData -> "attachment"
                             }
                         },
                         transitionSpec = {
@@ -1021,14 +1027,23 @@ fun ConversationListUi(
                             fadeIn(tween(duration)) togetherWith fadeOut(tween(duration))
                         },
                     ) { overlay ->
-                        if (overlay != null) {
-                            ChatMediaViewer(
+                        when (overlay) {
+                            null -> Unit
+                            is FullScreenOverlay.MediaViewer -> ChatMediaViewer(
                                 data = overlay,
                                 uiState = messagesUiState,
                                 vaultActive = uiState.vaultActive,
                                 onUiAction = onUiAction,
                                 sharedTransitionScope = this@SharedTransitionLayout,
                                 animatedVisibilityScope = this@AnimatedContent,
+                            )
+                            is FullScreenOverlay.AttachmentData -> ConversationAttachmentEditor(
+                                data = overlay,
+                                sendQuality = messagesUiState.sendQuality,
+                                textFieldState = messageInputTextFieldState,
+                                launchers = rememberAttachmentLaunchers(overlay.conversationId, onUiAction),
+                                revealed = transition.currentState == EnterExitState.Visible,
+                                onUiAction = onUiAction,
                             )
                         }
                     }
