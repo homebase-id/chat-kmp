@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -46,12 +47,12 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
     private val _uiState = MutableStateFlow(SharedWithMeUiState())
     val uiState: StateFlow<SharedWithMeUiState> = _uiState.asStateFlow()
 
-    init {
-        refresh()
-    }
+    private var refreshing: Job? = null
 
+    /** Reads the sharers and their albums again: each time the list is shown, since one may have been kept meanwhile. */
     fun refresh() {
-        viewModelScope.launch {
+        refreshing?.cancel()
+        refreshing = viewModelScope.launch {
             val sharers = guarded { sharing.sharers() } ?: return@launch
             _uiState.update { it.copy(sharers = sharers.map { owner -> SharerAlbums(owner) }) }
             // Every read goes through this identity's server to another's: a few at a time.

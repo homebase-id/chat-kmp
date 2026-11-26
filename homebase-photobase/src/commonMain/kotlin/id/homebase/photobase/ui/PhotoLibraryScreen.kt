@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
@@ -66,6 +67,11 @@ fun PhotoLibraryScreen(
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
     val shared by sharedWithMe.uiState.collectAsStateWithLifecycle()
+    // Each time it's shown: a sharer kept by an album opened from chat comes in on the way back.
+    LifecycleResumeEffect(sharedWithMe) {
+        sharedWithMe.refresh()
+        onPauseOrDispose {}
+    }
     var naming by remember { mutableStateOf(false) }
     var addingSharer by remember { mutableStateOf(false) }
     if (addingSharer) {

@@ -102,6 +102,24 @@ class PhotoAlbumSharingTest {
     @Volatile private var photosCircleGrants: String? = "read, react, comment"
     @Volatile private var samsConnection = """{"odinId":"sam.test","status":"connected","created":1,"lastUpdated":1,"connectionRequestOrigin":"identityOwner","hasVerificationHash":true,"rku":false}"""
 
+    // Sharer records on this identity's drive: who the server says wrote each, and the sharer it keeps.
+    private val sharerRecords = CopyOnWriteArrayList<Pair<OdinId?, OdinId>>()
+
+    private fun sharerRecord(sender: OdinId?, sharer: OdinId): String = OdinSystemSerializer.serialize(
+        ServerFile(
+            fileId = Uuid.random(),
+            driveId = PhotobaseProtocol.DriveAlias,
+            fileState = FileState.Active,
+            fileSystemType = FileSystemType.Standard,
+            sharedSecretEncryptedKeyHeader = runBlocking { EncryptedKeyHeader.encryptKeyHeaderAes(KeyHeader.newRandom16(), ByteArray(16) { 9 }, SecureByteArray(photobaseSecret)) },
+            fileMetadata = FileMetadata(
+                senderOdinId = sender,
+                appData = AppFileMetaData(uniqueId = Uuid.random(), fileType = PhotobaseProtocol.SharerFileType, content = """{"odinId":"${sharer.domainName}"}"""),
+            ),
+            serverMetadata = ServerMetadata(),
+        )
+    )
+
     private fun albumRecord(albumId: Uuid): String {
         val key = KeyHeader.newRandom16()
         val file = ServerFile(
@@ -125,10 +143,12 @@ class PhotoAlbumSharingTest {
                 val params = decrypted(call).jsonObject["queryParams"]!!.jsonObject
                 val asked = params["clientUniqueIdAtLeastOne"]?.jsonArray?.single()?.jsonPrimitive?.content
                 val albumsAsked = params["fileType"]?.jsonArray?.any { it.jsonPrimitive.int == PhotobaseProtocol.AlbumFileType } == true
+                val sharersAsked = params["fileType"]?.jsonArray?.any { it.jsonPrimitive.int == PhotobaseProtocol.SharerFileType } == true
                 // One album by id, every album with rows, or (a photo query) nothing.
                 val records = when {
                     asked != null -> listOf(albumRecord(Uuid.parse(asked)))
                     albumsAsked -> albumRows.keys.map(::albumRecord)
+                    sharersAsked -> sharerRecords.map { (sender, sharer) -> sharerRecord(sender, sharer) }
                     else -> emptyList()
                 }
                 """{"searchResults":${records.joinToString(prefix = "[", postfix = "]")},"hasMoreRows":false}"""
@@ -432,6 +452,15 @@ class PhotoAlbumSharingTest {
         val albums = sharing.albumsSharedWith(AlbumAudience.Group(groupCircle, "Trip", listOf(sam)))
 
         assertEquals(setOf(trip, pets), albums.map { it.first.albumId }.toSet())
+    }
+
+    @Test
+    fun aSharerKeptByThisIdentityIsFoundWhetherTheServerNamesItAsSenderOrNoOne() = runTest {
+        sharerRecords += frodo to sam
+        sharerRecords += null to rosie
+        sharerRecords += OdinId("eve.test") to gandalf
+
+        assertEquals(listOf(sam, rosie), sharing.sharers(), "eve's record names gandalf, and isn't this identity's to keep")
     }
 
     private suspend fun decrypted(call: Call) =

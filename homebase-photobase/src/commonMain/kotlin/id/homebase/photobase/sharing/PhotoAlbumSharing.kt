@@ -451,8 +451,9 @@ class PhotoAlbumSharing(
     }
 
     /** The people who have shared albums with this identity and been kept ([keepSharer]), newest first. */
-    suspend fun sharers(): List<OdinId> =
-        query.queryBatch(
+    suspend fun sharers(): List<OdinId> {
+        val self = appCredentials.getActiveCredentials()?.domain
+        return query.queryBatch(
             PhotobaseProtocol.DriveAlias,
             QueryBatchRequest(
                 queryParams = FileQueryParams(fileType = listOf(PhotobaseProtocol.SharerFileType)),
@@ -463,8 +464,11 @@ class PhotoAlbumSharing(
                     sorting = QueryBatchSortField.CreatedDate,
                 ),
             ),
-        ).searchResults.filter { it.fileState == FileState.Active && it.fileMetadata.senderOdinId == null }
+        ).searchResults
+            // This identity's own: the server names the owner as sender of what they wrote, or no one.
+            .filter { it.fileState == FileState.Active && it.fileMetadata.senderOdinId.let { sender -> sender == null || sender == self } }
             .mapNotNull { file -> file.fileMetadata.appData.content?.let(::sharerOf) }.distinct()
+    }
 
     /** Keeps [sharer] among [sharers], so their albums can be found again without the message that told of them. */
     suspend fun keepSharer(sharer: OdinId) {
