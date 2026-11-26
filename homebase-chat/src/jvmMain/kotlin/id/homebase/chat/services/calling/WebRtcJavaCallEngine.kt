@@ -74,6 +74,8 @@ class WebRtcJavaCallEngine(
     private val renderVideo: Boolean = true,
     private val ownsAudioDevice: Boolean = audioDevice == null,
 ) : CallEngine {
+    // A supplied module has no host mic or speaker behind it, and asking the host for them can block forever (a container).
+    private val hostAudio = audioDevice == null
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
@@ -182,7 +184,7 @@ class WebRtcJavaCallEngine(
     init {
         timed("devices") { devices.refresh() }
         // Hot-plug needs the platform device monitor (PulseAudio on Linux, which webrtc-java reports as java.lang.Error); without it the call still runs on the devices enumerated above.
-        if (!closed) {
+        if (!closed && (hostAudio || renderVideo)) {
             timed("hot-plug") { runCatching { MediaDevices.addDeviceChangeListener(deviceListener) } }
                 .onSuccess { listenerRegistered.set(true) }
                 .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
@@ -217,11 +219,13 @@ class WebRtcJavaCallEngine(
             nativeDevices[kind to device.descriptor] = device
             found += MediaDevice(device.descriptor, device.name, kind, isDefault = device.descriptor == defaultId)
         }
-        runCatching {
-            add(MediaDeviceKind.Mic, MediaDevices.getAudioCaptureDevices(), runCatching { MediaDevices.getDefaultAudioCaptureDevice()?.descriptor }.getOrNull())
-        }
-        runCatching {
-            add(MediaDeviceKind.Speaker, MediaDevices.getAudioRenderDevices(), runCatching { MediaDevices.getDefaultAudioRenderDevice()?.descriptor }.getOrNull())
+        if (hostAudio) {
+            runCatching {
+                add(MediaDeviceKind.Mic, MediaDevices.getAudioCaptureDevices(), runCatching { MediaDevices.getDefaultAudioCaptureDevice()?.descriptor }.getOrNull())
+            }
+            runCatching {
+                add(MediaDeviceKind.Speaker, MediaDevices.getAudioRenderDevices(), runCatching { MediaDevices.getDefaultAudioRenderDevice()?.descriptor }.getOrNull())
+            }
         }
         if (renderVideo) runCatching { add(MediaDeviceKind.Camera, cameras(), null) }
         return found

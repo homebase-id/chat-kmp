@@ -173,6 +173,14 @@ class WebRtcJavaCallEngineTest {
     }
 
     @Test
+    fun aSuppliedAudioModuleWithoutVideoNeverAsksTheHostForDevices() = nativeTest {
+        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule(), renderVideo = false)
+        assertEquals(emptyList(), engine.mediaDevices.devices.value)
+        assertFalse(engine.listenerRegistered.get())
+        engine.closeBlocking()
+    }
+
+    @Test
     fun aDeviceListenerTeardownThatNeverReturnsDoesNotBlockClose() = nativeTest {
         val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
         val registered = engine.listenerRegistered.get()
