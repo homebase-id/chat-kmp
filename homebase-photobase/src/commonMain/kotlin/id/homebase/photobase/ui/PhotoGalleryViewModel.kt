@@ -122,8 +122,8 @@ sealed interface PhotoGalleryUiAction {
     data class SetFavorite(val favorite: Boolean, val fileId: Uuid? = null) : PhotoGalleryUiAction
     /** Puts [tag], a heart or an album, back on [fileIds], or takes it off them again. */
     data class UndoTag(val tag: Uuid, val fileIds: Set<Uuid>, val on: Boolean) : PhotoGalleryUiAction
-    data class AddSelectedToAlbum(val albumId: Uuid) : PhotoGalleryUiAction
-    data class AddSelectedToNewAlbum(val name: String) : PhotoGalleryUiAction
+    data class AddSelectedToAlbum(val albumId: Uuid, val fileId: Uuid? = null) : PhotoGalleryUiAction
+    data class AddSelectedToNewAlbum(val name: String, val fileId: Uuid? = null) : PhotoGalleryUiAction
     /** From this gallery's album. */
     data object RemoveSelectedFromAlbum : PhotoGalleryUiAction
     data class RenameAlbum(val name: String) : PhotoGalleryUiAction
@@ -310,8 +310,12 @@ class PhotoGalleryViewModel(
                 setTag(PhotobaseProtocol.FavoriteTag, action.favorite, ids, restoreSelection = action.fileId == null, undoable = true)
             }
             is PhotoGalleryUiAction.UndoTag -> setTag(action.tag, action.on, action.fileIds, restoreSelection = false, undoable = false)
-            is PhotoGalleryUiAction.AddSelectedToAlbum -> takeSelection()?.let { setTag(action.albumId, true, it, restoreSelection = true, undoable = true) }
-            is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums -> takeSelection()?.let { addToNewAlbum(albums, action.name, it) } }
+            is PhotoGalleryUiAction.AddSelectedToAlbum -> (action.fileId?.let(::setOf) ?: takeSelection())?.let {
+                setTag(action.albumId, true, it, restoreSelection = action.fileId == null, undoable = true)
+            }
+            is PhotoGalleryUiAction.AddSelectedToNewAlbum -> albumSource?.let { albums ->
+                (action.fileId?.let(::setOf) ?: takeSelection())?.let { addToNewAlbum(albums, action.name, it, restoreSelection = action.fileId == null) }
+            }
             PhotoGalleryUiAction.RemoveSelectedFromAlbum -> album?.let { album -> takeSelection()?.let { setTag(album.id, false, it, restoreSelection = true, undoable = true) } }
             // The new name shows when the sync brings the album back.
             is PhotoGalleryUiAction.RenameAlbum -> albumWrite(leave = false) { rename(it, action.name) }
@@ -337,9 +341,9 @@ class PhotoGalleryViewModel(
         }
     }
 
-    private fun addToNewAlbum(albums: PhotoAlbumSource, name: String, ids: Set<Uuid>) {
+    private fun addToNewAlbum(albums: PhotoAlbumSource, name: String, ids: Set<Uuid>, restoreSelection: Boolean) {
         var made: Uuid? = null
-        runMove(MoveAction.AddToAlbum, ids, restoreSelection = true, undo = { written -> made?.let { PhotoGalleryUiAction.UndoTag(it, written, on = false) } }) {
+        runMove(MoveAction.AddToAlbum, ids, restoreSelection, undo = { written -> made?.let { PhotoGalleryUiAction.UndoTag(it, written, on = false) } }) {
             tagShown(albums.create(name).also { made = it }, on = true, it)
         }
     }

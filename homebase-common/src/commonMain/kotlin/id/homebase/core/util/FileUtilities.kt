@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,6 +23,7 @@ import kotlinx.io.files.Path
 expect fun getUriHandler(): FileSystemHandler
 
 interface FileSystemHandler {
+    /** Every failed open calls [onError]: a URL with no scheme, one the platform can't parse, or one no app can open. */
     fun openUrl(url: String, onError: (Throwable) -> Unit = {})
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     /** Opens [file] in another app; web: downloads the file. iOS has no default app, so it always shows its Open In menu, whatever [showChooser]. */
@@ -122,6 +124,7 @@ internal class FileSaver(
     private val fallback: RefusedSaveFallback = ReportRefusal,
     private val scope: CoroutineScope = saveScope,
 ) {
+    @OptIn(DelicateCoroutinesApi::class)
     fun save(file: Path, suggestedName: String, deleteAfter: Boolean, onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) {
         // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
         scope.launch(start = CoroutineStart.ATOMIC) {
@@ -153,6 +156,7 @@ internal class FileSaver(
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) {
         scope.launch(start = CoroutineStart.ATOMIC) {
             try {
@@ -202,3 +206,7 @@ fun FileOperationsProvider.deleteQuietly(path: String) {
 
 // kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.
 private fun Path.sourcePath(): String = toString().let { if (it.startsWith("content:/") && !it.startsWith("content://")) "content://${it.removePrefix("content:/")}" else it }
+
+private val urlScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
+
+internal fun hasUrlScheme(url: String): Boolean = urlScheme.containsMatchIn(url)

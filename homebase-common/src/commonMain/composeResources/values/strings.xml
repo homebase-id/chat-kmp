@@ -1006,6 +1006,7 @@
     <string name="chat_agent_ui_chosen">Chosen</string>
     <string name="chat_agent_ui_open_card">Open card</string>
     <string name="chat_agent_ui_open_image">View image</string>
+    <string name="chat_agent_ui_opens_link">Opens link</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>
@@ -2428,6 +2429,7 @@
     <string name="feed_open_article">Open article</string>
     <string name="feed_view_all_comments">View all comments</string>
     <string name="feed_comment_encrypted">Encrypted comment</string>
+    <string name="feed_open_link_failed">Couldn't open the link.</string>
     <string name="feed_comment_action_failed">Something went wrong. Please try again.</string>
 
     <!-- Native feed: following -->

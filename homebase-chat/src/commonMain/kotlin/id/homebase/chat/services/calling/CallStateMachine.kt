@@ -22,6 +22,8 @@ sealed interface CallEvent {
     data class SetVideo(val on: Boolean) : CallEvent
     data object SwitchCamera : CallEvent
     data class SetRoute(val route: AudioRoute) : CallEvent
+    /** The device's default network changed, already debounced. */
+    data object NetworkChanged : CallEvent
 }
 
 sealed interface CallEffect {
@@ -31,7 +33,8 @@ sealed interface CallEffect {
     /** [offerSeq] is the offer the callee answered; null for a restart answer or an older callee. */
     data class ApplyRemoteAnswer(val sdp: String, val offerSeq: Int? = null) : CallEffect
     data object RestartIce : CallEffect
-    data class AnswerRestart(val offerSdp: String) : CallEffect
+    /** [carried]: the restart came inside an [CallSignal.Ice], so one already answered is not answered again. */
+    data class AnswerRestart(val offerSdp: String, val carried: Boolean = false) : CallEffect
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     /** Caller-side candidate gathered before any device answered: folded into the retained offer, not trickled. */
     data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
@@ -71,7 +74,8 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
 
     private fun log(before: CallState, event: CallEvent, t: CallTransition) {
         val after = t.state
-        val notable = (event is CallEvent.TimerFired && event.callId == before.callId) || (event is CallEvent.Media && event.event !is MediaEvent.LocalIce)
+        val notable = (event is CallEvent.TimerFired && event.callId == before.callId) || (event is CallEvent.Media && event.event !is MediaEvent.LocalIce) ||
+            event == CallEvent.NetworkChanged
         if (before.phase == after.phase && before.callId == after.callId && !notable) return
         val hangup = t.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().firstOrNull()
         Logger.i(tag = TAG) {
@@ -117,6 +121,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             }
         }
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
+        CallEvent.NetworkChanged -> networkChanged(state)
     }
 
     private fun userCall(s: CallState, e: CallEvent.UserCall): CallTransition {
@@ -200,7 +205,16 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 } else {
                     CallTransition(s)
                 }
-            is CallSignal.Ice -> CallTransition(s, sig.all.map { CallEffect.AddIce(it.candidate, it.sdpMid, it.sdpMLineIndex) })
+            is CallSignal.Ice -> {
+                // A peer whose socket reconnected sees only this blob, so the signal it carries comes before its candidates.
+                val carried = when (val c = sig.signal?.takeIf { it.callId == sig.callId }) {
+                    is CallSignal.Answer, is CallSignal.RestartAnswer -> signal(s, inbound.copy(signal = c), nowMs)
+                    is CallSignal.Restart ->
+                        if (s.phase.isInCall) CallTransition(s, listOf(CallEffect.AnswerRestart(c.sdp, carried = true))) else CallTransition(s)
+                    else -> CallTransition(s)
+                }
+                carried.copy(effects = carried.effects + sig.all.map { CallEffect.AddIce(it.candidate, it.sdpMid, it.sdpMLineIndex) })
+            }
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
                     s,
@@ -390,6 +404,12 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     // A restart offer set locally but never answered leaves the caller on ICE credentials the peer
     // has not seen: the caller's link can report up while the peer's checks are rejected.
     private fun CallState.restarting() = if (direction == CallDirection.Outgoing) copy(restartPending = true) else this
+
+    private fun networkChanged(s: CallState): CallTransition {
+        if (!s.phase.isEstablished) return CallTransition(s)
+        // Nothing resends a restart left unanswered while Connected, so a later change resends it; the controller reuses the offer.
+        return CallTransition(s.restarting(), restartIce(s))
+    }
 
     private fun reconnected(s: CallState) =
         CallTransition(s.copy(phase = CallPhase.Connected, reconnectAttempt = 0, linkUp = true), listOf(CallEffect.CancelTimers))

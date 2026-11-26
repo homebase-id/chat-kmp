@@ -1,5 +1,7 @@
 package id.homebase.chat.calling
 
+import kotlinx.coroutines.flow.emptyFlow
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.api.client.contacts.AvatarResolver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -170,6 +172,10 @@ class CallWindowTest {
             iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
             ringback = ringback,
+            networkMonitor = object : NetworkMonitor {
+                override fun isUnmetered() = true
+                override val defaultNetworkChanges = emptyFlow<Unit>()
+            },
         )
         val peer = CallController(
             selfOdinId = sam,

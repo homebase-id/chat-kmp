@@ -558,9 +558,6 @@ fun MessageBubbleRaw(
         null -> Unit // fall through to text + media rendering
     }
 
-    // Old payload-format location messages (no header descriptor) still render via the media path.
-    val locationDescriptor = (message.messageContent as? MessageContent.Location)?.descriptor
-
     val filteredPayloads = message.payloads.mediaPayloads()
     val hasMedia = filteredPayloads.isNotEmpty()
     val isGallery = filteredPayloads.size >= 2
@@ -786,8 +783,6 @@ fun MessageBubbleRaw(
                         onMediaClick = onMediaClick,
                         onMediaLongPress = onMediaLongPress,
                         onMediaSecondaryPress = onMediaSecondaryPress,
-                        liveControls = liveControls,
-                        locationHeaderDescriptor = locationDescriptor,
                         onRequestDecryptedFile = onRequestDecryptedFile,
                         shape = RoundedCornerShape(Dimens.Message.cornerRadius),
                         sharedTransitionScope = sharedTransitionScope,
@@ -829,8 +824,6 @@ fun MessageBubbleRaw(
                                 onMediaClick = onMediaClick,
                                 onMediaLongPress = onMediaLongPress,
                                 onMediaSecondaryPress = onMediaSecondaryPress,
-                        liveControls = liveControls,
-                        locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
                                 shape = RoundedCornerShape(0.dp),
                                 sharedTransitionScope = sharedTransitionScope,
@@ -922,8 +915,6 @@ fun MessageBubbleRaw(
                                 ) else RoundedCornerShape(0.dp),
                                 onMediaLongPress = onMediaLongPress,
                                 onMediaSecondaryPress = onMediaSecondaryPress,
-                                liveControls = liveControls,
-                                locationHeaderDescriptor = locationDescriptor,
                                 onRequestDecryptedFile = onRequestDecryptedFile,
                                 sharedTransitionScope = sharedTransitionScope,
                                 animatedVisibilityScope = animatedVisibilityScope,
@@ -1039,8 +1030,6 @@ fun MessageBubbleRaw(
                                         ) else RoundedCornerShape(0.dp),
                                         onMediaLongPress = onMediaLongPress,
                                         onMediaSecondaryPress = onMediaSecondaryPress,
-                                        liveControls = liveControls,
-                                        locationHeaderDescriptor = locationDescriptor,
                                         onRequestDecryptedFile = onRequestDecryptedFile,
                                         sharedTransitionScope = sharedTransitionScope,
                                         animatedVisibilityScope = animatedVisibilityScope,

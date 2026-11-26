@@ -30,6 +30,10 @@ object SdpCandidates {
         return lines.joinToString(eol) + eol
     }
 
+    fun iceUfrag(sdp: String): String? = UFRAG.find(sdp)?.groupValues?.get(1)
+
+    private val UFRAG = Regex("a=ice-ufrag:(\\S+)")
+
     private fun candidateLine(raw: String): String? {
         val trimmed = raw.trim()
         return when {

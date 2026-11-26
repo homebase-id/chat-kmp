@@ -509,9 +509,9 @@ class DriveOutboxUploader(
             throw keyHeaderTransformFailure(e)
         }
         val refused = result.results.filter { it.errorCode != null }
-        Logger.i(TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" }
+        Logger.i(tag = TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" }
         if (refused.isNotEmpty()) {
-            Logger.w(TAG) { "transformKeyHeaders: kept sealed ${refused.joinToString { "${it.fileId}:${it.errorCode}" }}" }
+            Logger.w(tag = TAG) { "transformKeyHeaders: kept sealed ${refused.joinToString { "${it.fileId}:${it.errorCode}" }}" }
         }
     }
 

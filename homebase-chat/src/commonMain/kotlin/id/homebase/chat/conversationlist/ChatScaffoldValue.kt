@@ -30,13 +30,14 @@ internal fun chatDetail(
 }
 
 // The conversation or its media viewer owns the window: compact shows only the detail pane, and a
-// two-pane window lifts the viewer over both panes.
+// two-pane window lifts the viewer and the attachment editor over both panes.
 fun chatOwnsWindow(
     uiState: ConversationListUiState,
     messagesUiState: MessageListUiState,
     isExpanded: Boolean,
 ): Boolean = isChatListCaptureOpen(messagesUiState) || if (isExpanded) {
-    messagesUiState.hoistedMediaViewer(isExpandedLayout = true) != null
+    messagesUiState.hoistedMediaViewer(isExpandedLayout = true) != null ||
+        messagesUiState.hoistedAttachmentEditor(isExpandedLayout = true) != null
 } else {
     chatDetail(uiState.selectedConversationId, uiState.activeConversations) is ChatDetail.Open
 }

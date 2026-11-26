@@ -954,6 +954,7 @@
     <string name="chat_agent_ui_chosen">Valgt</string>
     <string name="chat_agent_ui_open_card">Åbn kort</string>
     <string name="chat_agent_ui_open_image">Vis billede</string>
+    <string name="chat_agent_ui_opens_link">Åbner link</string>
 
     <!-- Poll detail dialog -->
     <string name="chat_poll_details_title">Afstemningsdetaljer</string>

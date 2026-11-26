@@ -384,7 +384,8 @@ class PostDetailViewModel(
     fun reportPost() {
         val author = uiState.value.post?.authorOdinId ?: return
         viewModelScope.launch {
-            _events.tryEmit(PostDetailEvent.OpenUrl(reportingUrlProvider.reportUrlFor(author)))
+            val url = reportingUrlProvider.reportUrlFor(author)
+            _events.tryEmit(if (url != null) PostDetailEvent.OpenUrl(url) else PostDetailEvent.OpenUrlFailed)
         }
     }
 }
@@ -414,4 +415,5 @@ sealed interface PostDetailEvent {
 
     /** Hand off to the browser — abuse reporting lives on the author's host, not in-app. */
     data class OpenUrl(val url: String) : PostDetailEvent
+    data object OpenUrlFailed : PostDetailEvent
 }
