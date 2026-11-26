@@ -60,7 +60,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import id.homebase.api.coroutines.ioDispatcher
 
-/** Where the mic and speaker pickers come from. */
 interface AudioDeviceList {
     fun mics(): List<AudioDevice>
     fun speakers(): List<AudioDevice>
@@ -68,7 +67,7 @@ interface AudioDeviceList {
     fun defaultSpeaker(): AudioDevice?
 }
 
-object HostAudioDevices : AudioDeviceList {
+internal object HostAudioDevices : AudioDeviceList {
     override fun mics(): List<AudioDevice> = MediaDevices.getAudioCaptureDevices()
     override fun speakers(): List<AudioDevice> = MediaDevices.getAudioRenderDevices()
     override fun defaultMic(): AudioDevice? = MediaDevices.getDefaultAudioCaptureDevice()
@@ -76,10 +75,9 @@ object HostAudioDevices : AudioDeviceList {
 }
 
 /**
- * Desktop engine over webrtc-java. [audioDevices] lists the mics and speakers; by default a supplied [audioDevice]
- * (e.g. a headless module) lists none, since asking the host for them can block forever without sound hardware. With
- * no [audioDevices] and [renderVideo] false, no cameras are listed and no hot-plug listener is registered.
- * [cameraSource] replaces the camera as the video source.
+ * Desktop engine over webrtc-java. A supplied [audioDevice] (e.g. a headless module) defaults to no [audioDevices],
+ * since asking the host for them can block forever without sound hardware; with [renderVideo] false as well, no
+ * hot-plug listener is registered. [cameraSource] replaces the camera as the video source.
  */
 class WebRtcJavaCallEngine(
     iceServers: List<CallIceServer>,

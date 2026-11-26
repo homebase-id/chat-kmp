@@ -50,13 +50,15 @@ class WebRtcJavaCallEngineTest {
 
     // Two of each, so a switch has somewhere to go without host sound hardware.
     private val fakeAudio = object : AudioDeviceList {
-        val mics = listOf(FakeAudio("mic-a"), FakeAudio("mic-b"))
-        val speakers = listOf(FakeAudio("speaker-a"), FakeAudio("speaker-b"))
-        override fun mics() = mics
-        override fun speakers() = speakers
-        override fun defaultMic() = mics.first()
-        override fun defaultSpeaker() = speakers.first()
+        val micList = listOf(FakeAudio("mic-a"), FakeAudio("mic-b"))
+        val speakerList = listOf(FakeAudio("speaker-a"), FakeAudio("speaker-b"))
+        override fun mics() = micList
+        override fun speakers() = speakerList
+        override fun defaultMic() = micList.first()
+        override fun defaultSpeaker() = speakerList.first()
     }
+
+    private fun withFakeAudio(stun: List<CallIceServer>) = WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule(), audioDevices = fakeAudio)
 
     @Test
     fun twoRealEnginesOverLoopbackSignalingReachConnectedAndFingerprintsMatch() = nativeTest {
@@ -174,7 +176,7 @@ class WebRtcJavaCallEngineTest {
 
     @Test
     fun deviceListIsReportedGracefullyAndCloseUnregistersTheListenerTwiceOver() = nativeTest {
-        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule(), audioDevices = fakeAudio)
+        val engine = withFakeAudio(emptyList())
         val devices = engine.mediaDevices.devices.value
         assertEquals(listOf("mic-a", "mic-b", "speaker-a", "speaker-b"), devices.filter { it.kind != MediaDeviceKind.Camera }.map { it.id })
         val selected = engine.mediaDevices.selected.value
@@ -222,7 +224,7 @@ class WebRtcJavaCallEngineTest {
     fun switchingMicAndSpeakerOnAConnectedCallKeepsItConnectedWithTheTrackEnabled() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val engines = mutableListOf<WebRtcJavaCallEngine>()
-        val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule(), audioDevices = fakeAudio).also { engines += it } }
+        val factory = CallEngineFactory { stun -> withFakeAudio(stun).also { engines += it } }
         try {
             val net = LoopbackSignaling()
             val caller = CallController(frodo, net.endpoint(frodo), factory, scope)
