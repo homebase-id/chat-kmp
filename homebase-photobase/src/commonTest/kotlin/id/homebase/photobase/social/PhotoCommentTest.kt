@@ -5,12 +5,14 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.reactions.GetGroupReactionCountsResponse
 import id.homebase.api.client.drives.files.reactions.GroupReactionCount
 import id.homebase.api.common.OdinId
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.galleryTestFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class PhotoCommentTest {
@@ -96,5 +98,12 @@ class PhotoCommentTest {
 
         assertEquals(mapOf(heart to 2), summary?.reactions?.mapValues { it.value.count })
         assertNull(GetGroupReactionCountsResponse(emptyList(), total = 0).toSummary())
+    }
+
+    @Test
+    fun theLongestCommentFitsTheHeaderAndALongerOneIsCut() {
+        val longest = "😀".repeat(MAX_COMMENT_CODE_POINTS)
+        assertTrue(HomebaseProtocol.fitsHeaderContent(commentContent(longest)))
+        assertEquals(longest, OdinSystemSerializer.deserialize<PhotoCommentContent>(commentContent(longest + "😀")).body)
     }
 }

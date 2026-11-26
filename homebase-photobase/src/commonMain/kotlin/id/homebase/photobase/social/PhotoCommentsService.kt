@@ -32,7 +32,9 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.parseRecord
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
@@ -110,7 +112,8 @@ class PhotoCommentsService(
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     maxRecords = MAX_COMMENTS,
                     includeMetadataHeader = true,
-                    ordering = QueryBatchSortOrder.OldestFirst,
+                    // Newest first, so a cap keeps the latest; shown oldest first.
+                    ordering = QueryBatchSortOrder.NewestFirst,
                     sorting = QueryBatchSortField.UserDate,
                 ),
             ),
@@ -118,7 +121,7 @@ class PhotoCommentsService(
             fileSystemType = FileSystemType.Comment,
             // A comment is encrypted with its photo's key, under its own IV.
             externalFileKey = { _, _, _, _ -> photo.keyHeader.aesKey },
-        ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toPhotoComment(self) }
+        ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toPhotoComment(self) }.asReversed()
         return if (photo.owner == null) stored else pendingLock.withLock { pendingOf(self).over(photo.globalTransitId, stored) }
     }
 
@@ -262,16 +265,22 @@ internal fun commentMetadata(commentId: Uuid, photoGlobalTransitId: Uuid, body: 
         groupId = photoGlobalTransitId,
         fileType = PhotobaseProtocol.CommentFileType,
         userDate = userDate,
-        content = OdinSystemSerializer.serialize(PhotoCommentContent(PhotobaseProtocol.CommentVersion, body)),
+        content = commentContent(body),
     ),
     referencedFile = GlobalTransitIdFileIdentifier(photoGlobalTransitId, TargetDrive(PhotobaseProtocol.DriveAlias, PhotobaseProtocol.DriveType)),
 )
+
+// The longest a comment can be and still fit the encrypted header, at four bytes a code point.
+internal const val MAX_COMMENT_CODE_POINTS = 1000
+
+internal fun commentContent(body: String): String =
+    OdinSystemSerializer.serialize(PhotoCommentContent(PhotobaseProtocol.CommentVersion, body.truncateToCodePoints(MAX_COMMENT_CODE_POINTS)))
 
 internal fun HomebaseFile.toPhotoComment(self: OdinId?): PhotoComment? {
     val appData = fileMetadata.appData
     if (appData.fileType != PhotobaseProtocol.CommentFileType) return null
     val photoId = appData.groupId ?: fileMetadata.referencedFile?.globalTransitId ?: return null
-    val content = appData.content?.let { runCatching { OdinSystemSerializer.deserialize<PhotoCommentContent>(it) }.getOrNull() }
+    val content = parseRecord<PhotoCommentContent>(appData.content, "comment ${appData.uniqueId ?: fileId}")
     val author = (fileMetadata.originalAuthor ?: fileMetadata.senderOdinId)?.takeIf { it != self }
     return PhotoComment(
         id = appData.uniqueId ?: fileId,

@@ -39,6 +39,8 @@ import id.homebase.core.widget.AddReactionChip
 import id.homebase.core.widget.EmojiSelection
 import id.homebase.core.widget.ReactionList
 import id.homebase.core.widget.ReactionMenu
+import id.homebase.api.util.truncateToCodePoints
+import id.homebase.photobase.social.MAX_COMMENT_CODE_POINTS
 import id.homebase.photobase.social.PhotoComment
 import id.homebase.photobase.social.PhotoReactions
 import id.homebase.resources.MR
@@ -55,7 +57,6 @@ import id.homebase.resources.photobase_comments_title
 import id.homebase.resources.save
 import id.homebase.resources.send
 import id.homebase.resources.you
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -151,7 +152,7 @@ private fun Reactions(source: Flow<PhotoReactions>, onReact: () -> Unit, modifie
     val reactions by source.collectAsStateWithLifecycle(PhotoReactions())
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         reactions.summary?.let { summary ->
-            ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own.toImmutableList())
+            ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own)
         }
         AddReactionChip(onClick = onReact)
     }
@@ -205,7 +206,7 @@ private fun CommentField(draft: String, onDraft: (String) -> Unit, editing: Bool
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = draft,
-                onValueChange = onDraft,
+                onValueChange = { onDraft(it.truncateToCodePoints(MAX_COMMENT_CODE_POINTS)) },
                 placeholder = { Text(stringResource(MR.string.photobase_comments_hint)) },
                 maxLines = 4,
                 modifier = Modifier.weight(1f),

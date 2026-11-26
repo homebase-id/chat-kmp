@@ -12,6 +12,9 @@ import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.util.codePointCount
 import id.homebase.chat.services.decodeReactionCode
 import id.homebase.core.photobase.PhotobaseProtocol
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -24,7 +27,7 @@ import kotlin.uuid.Uuid
 
 data class PhotoReactions(
     val summary: ReactionSummary? = null,
-    val own: List<String> = emptyList(),
+    val own: ImmutableList<String> = persistentListOf(),
 )
 
 /**
@@ -43,7 +46,7 @@ class PhotoActionService(
 
     /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
     suspend fun toggleReaction(photo: PhotoTarget, emoji: String) = toggling.withLock {
-        if (emoji.isBlank() || emoji.codePointCount() > MAX_EMOJI_CODEPOINTS) return@withLock
+        if (!isReactionEmoji(emoji)) return@withLock
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         val on = on(photo)
         // Read now, not from the last read: another device may have reacted since.
@@ -66,7 +69,7 @@ class PhotoActionService(
         val on = on(photo)
         val summary = async { on.summary() }
         val own = async { on.own(self) }
-        PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct())
+        PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct().toImmutableList())
     }
 
     // Where the target's reactions are: here by file id, or on its owner's drive over peer by global transit id.
@@ -98,11 +101,12 @@ class PhotoActionService(
         suspend fun own(self: OdinId): List<String>
     }
 
-    private companion object {
-        // A family or flag is several code points; the longest the picker offers fit.
-        const val MAX_EMOJI_CODEPOINTS = 10
-    }
 }
+
+// A family or a flag is several code points; the feed allows as many.
+private const val MAX_EMOJI_CODE_POINTS = 12
+
+internal fun isReactionEmoji(emoji: String): Boolean = emoji.isNotBlank() && emoji.codePointCount() <= MAX_EMOJI_CODE_POINTS
 
 internal fun GetGroupReactionCountsResponse.toSummary(): ReactionSummary? =
     reactions.filter { it.count > 0 }.takeIf { it.isNotEmpty() }
