@@ -22,8 +22,8 @@ sign-in) shows that it's working, every time.
 - **When the work ends**, the button goes back to its idle label, and the user can see the outcome:
   - Success shows itself: the result appears, or the screen closes, or, when neither shows it, a
     snackbar says so ("Shared with Sam.").
-  - Failure says what went wrong and what to do next ("Couldn't change who sees this album. Try
-    again."). Outcomes are one-time events on a `SharedFlow` or `Channel`, not `UiState`.
+  - Failure says what went wrong and what to do next, as section 3 sets out. Outcomes are one-time
+    events on a `SharedFlow` or `Channel`, not `UiState`.
   - The screen never just stops spinning.
 - **Leaving mid-work.** Work the user would expect to finish (a send, an upload, a share) runs in a
   scope that outlives the screen. Work that only feeds the screen is cancelled with it.
@@ -73,3 +73,33 @@ This applies to every operation that names a recipient, not just sharing.
   still pending, the label reads "Still waiting for Sam. Ask them to open Homebase."
 
 Today no feature queues a pending recipient, so every one uses "Try again later".
+
+## 3. When an operation fails
+
+The user is told why it failed and what they can do. The server usually says why; the app never
+throws that away.
+
+- **Known causes are checked before writing, and said in plain words.** Where a failure can be
+  foreseen (a permission the app's circle lacks, someone not connected, a size limit), check it
+  first and stop with a message that says what's wrong and what fixes it, naming the setting or
+  person: "Your Photos circle only gives view access, so albums can't be shared with comments and
+  reactions. Update Photos' permissions in your Homebase settings." Don't detect known causes by
+  matching the server's message text; it carries only a generic code and can change.
+- **An unrecognised failure passes the server's reason on.** The message names the step that failed
+  and quotes the server: "Couldn't share the album: <server's message>." A "Details" action shows
+  the error code, status and correlation ID, so the user can send them on. Never replace a server's
+  reason with a generic "Something went wrong."
+- **No reason at all** (no network, timeout, a crash in the app's own code) says that: "Couldn't
+  reach your Homebase. Check your connection and try again."
+- **"Try again" only when trying again can help**: a network failure, a timeout, a server that's
+  busy. A refusal that will happen again the same way (a permission, a rule, invalid input) says
+  what to change instead.
+- **The log keeps the whole error**, with the operation and its ids, at Warn. The message the user
+  sees comes from the same exception, not a separate guess.
+- **Each foreseeable failure gets its own string resource**, and when a new one is found in a log,
+  it becomes a check plus a message. "Unrecognised" is the exception, not the default.
+- **Never**: "Failed", "Error" or "Try again" on their own; a message that blames the user for
+  something they can't change; a raw stack trace.
+
+Example: sharing an album when the Photos circle grants Read only. Checked before writing and told
+in plain words. Any other server refusal is quoted.
