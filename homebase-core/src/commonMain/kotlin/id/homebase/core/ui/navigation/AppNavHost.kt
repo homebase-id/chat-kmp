@@ -118,6 +118,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseUpgradeState
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
@@ -2536,8 +2537,13 @@ fun AppNavHost(
                             composable<Route.PhotoAlbumShare> { backStackEntry ->
                                 if (isAuthenticated) {
                                     val albumId = Uuid.parse(backStackEntry.toRoute<Route.PhotoAlbumShare>().albumId)
+                                    val youAuth = koinInject<YouAuthFlowManager>()
+                                    val scope = rememberCoroutineScope()
+                                    // On desktop and web the browser's answer only comes back through the launcher.
+                                    val signIn = rememberSignInAgainLauncher { url -> scope.launch { youAuth.handleCallback(url) } }
                                     AlbumShareScreen(
                                         viewModel = koinViewModel(key = "album-share-$albumId", parameters = { parametersOf(albumId) }),
+                                        onOpenSignIn = signIn::open,
                                         onBack = { navController.popBackStack() },
                                     )
                                 }

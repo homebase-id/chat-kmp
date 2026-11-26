@@ -34,6 +34,7 @@ data class AlbumShareUiState(
 
 sealed interface AlbumShareEvent {
     data class OpenUrl(val url: String) : AlbumShareEvent
+    data class OpenSignIn(val url: String) : AlbumShareEvent
     data object Failed : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
@@ -93,7 +94,7 @@ class AlbumShareViewModel(
         viewModelScope.launch {
             if (signedIn.value) return@launch finishSigningIn(openOwnerPage = true)
             val url = guarded { signInUrl { ok -> if (ok) finishSigningIn(openOwnerPage = true) else _events.send(AlbumShareEvent.Failed) } } ?: return@launch
-            _events.send(AlbumShareEvent.OpenUrl(url))
+            _events.send(AlbumShareEvent.OpenSignIn(url))
         }
     }
 

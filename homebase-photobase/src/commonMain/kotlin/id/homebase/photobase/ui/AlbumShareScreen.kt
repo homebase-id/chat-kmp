@@ -64,7 +64,7 @@ private val PhotoAlbumAccess.title: StringResource
     }
 
 @Composable
-fun AlbumShareScreen(viewModel: AlbumShareViewModel, onBack: () -> Unit) {
+fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> Unit, onBack: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
@@ -76,6 +76,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onBack: () -> Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
+                is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
                 AlbumShareEvent.Failed -> snackbar.showSnackbar(getString(MR.string.photobase_share_failed))
                 is AlbumShareEvent.Waiting -> snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who))
                 is AlbumShareEvent.NotAdded -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_added, event.who))
