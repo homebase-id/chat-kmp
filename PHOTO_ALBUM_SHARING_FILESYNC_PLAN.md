@@ -1,6 +1,6 @@
 # Shared photo albums: plan (Filesync method)
 
-Status: plan, not started. Chosen approach: option A from `PHOTO_ALBUM_SHARING.md`. Everything lives on the album
+Status: plan; phase 0 done (findings below). Chosen approach: option A from `PHOTO_ALBUM_SHARING.md`. Everything lives on the album
 owner's Photos drive, viewers read it through share rows, and people allowed to add photos upload into the owner's
 drive the way Filesync members write into a shared folder.
 
@@ -34,6 +34,51 @@ drive the way Filesync members write into a shared folder.
 2. Whether a guest can post a comment and a reaction over peer on a shared photo with Comment and React on its row.
 3. What happens when a member deposits a photo whose content-derived uniqueId (`PhotoUniqueId`) already exists on the
    owner's drive: refused, merged, or a duplicate?
+
+#### Phase 0 findings
+
+Read from odin-core (paths under `src/services/Odin.Services/` and
+`tests/apps/Odin.Hosting.Tests.V2/ZeroKnowledge/`). The Photos drive is a Selective Share drive
+(`AppConfig.kt`, `photosDrive.sharingModel`), so the share-row rules below apply to it.
+
+1. **Drive Write only adds files. Option A stands.** On a Selective Share drive the share rows, not the circle
+   grant, decide what a member may do to a stored file. Every header write and every hard delete asks
+   `AssertMemberMayWriteAsync` (`Drives/FileSystem/Base/DriveStorageServiceBase.cs:2138-2177`, hard delete at
+   `:997-1000`, overwrite at `:1116-1119`). A stored file can be changed by its original sender while it has no
+   share (`SenderMayChangeAsync`, `:2578-2581`), or otherwise only through a live share row with `Write` on that
+   file (`AssertSenderOrShareMayWriteAsync`, `:2197-2208`). `DriveAclAuthorizationService.CallerMayAsync`
+   (`Authorization/Acl/DriveAclAuthorizationService.cs:110-130`) needs both the drive bit and a row granting it.
+   Over peer, a delete goes through the same check (`Peer/Incoming/Drive/Transfer/SentFileChanges.cs:29-57`).
+   A new file needs drive Write alone, and it stays owner-only unless it carries the writer's share rows
+   (`DriveStorageServiceBase.cs:2175-2176`). Tests that pin this: `AMemberWithoutWriteCantEdit` and
+   `AMemberDeletesASharedFileOnlyWithWrite` (`SelectiveShareTests.cs:440-476`),
+   `AMemberOnTheOwnersRoutesChangesASharedFileOnlyWithWrite` (`:520-566`, which also covers hard delete and the
+   YouAuth path), `AFileIsAddedWithDriveWriteAlone` (`:495-518`), and `AFileNoShareNamesAMemberOnIsMissingNotATombstone`
+   (`:590-600`). So a `photobase-edit` member can deposit photos and can't change or delete a photo unless a row
+   gives them Write. **Consequence:** an Add share's rows must not carry `Write`. If they did, every Add member
+   could change or delete every photo in the album. Add rows carry Read+React+Comment, the same as View. Add is
+   only membership in `photobase-edit`.
+2. **Yes, both work over peer. Today's registration blocks them.** A share row narrows its circle's grant: the
+   member needs the bit on the row *and* on the drive through their circle (`DriveAclAuthorizationService.cs:123-129`;
+   `AShareGrantsOnlyWhatItsCircleGrantsTheDriveAtTheTime`, `SelectiveShareTests.cs:619-643`). Reaction: the
+   peer `AddReaction` by global transit id works with React on the row (`AMemberReactsOnlyWithAShareWithReact`,
+   `:602-617`). Comment: a `Comment` file system upload to the transient drive, sent to the owner, with
+   `ReferencedFile` and `AppData.GroupId` both set to the photo's global transit id, encrypted with the photo's
+   file key under a `FileKey` header that carries only the comment's IV (`AssertMayWriteSharedCommentAsync`,
+   `DriveStorageServiceBase.cs:2214-2236`; `AMembersCommentIsEncryptedWithTheFilesKeyAndReadWithTheirShare` and
+   `AMembersCommentIsRefused`, `SelectiveShareTests.cs:718-780`). Only a comment's author can edit or delete it
+   (`OnlyACommentsAuthorDeletesIt`, `:783`). The `photobase` circle currently grants Read only, so phase 1
+   has to add React and Comment.
+3. **Refused, silently. No merge, no duplicate.** An incoming peer file is matched first by global transit id,
+   then by `UniqueId` (`Peer/Incoming/Drive/Transfer/PeerFileWriter.cs:262-266`). A match makes the deposit a
+   "send again" of the stored file. The member isn't that file's original sender, so it's refused
+   (`SentFileChanges.cs:57`, "Sender does not match original sender"). A deposit that matches a tombstone is
+   refused too (`:32-35`), and so are share rows sent with a send again (`PeerFileWriter.cs:283-287`). The
+   inbox logs the refusal and marks the item complete (`PeerInboxProcessor.cs:307-324`). The member's outbox
+   has already reported it delivered, so the member is never told. **Consequence:** the member's client can't
+   rely on delivery. It checks over peer that the photo arrived (by global transit id, through the album's
+   rows) before it reports the add as done. A photo the owner already has stays out of the album until the
+   owner adds it.
 
 ### 1. Photobase session and registration
 - `PhotobaseSession`, like `FilesyncSession`: sign in as the Photobase app, restore on start, sign out at logout.
