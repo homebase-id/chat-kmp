@@ -26,11 +26,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +40,6 @@ import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.ConversationListUiAction.CloseFullScreenOverlay
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.SaveScrollPosition
-import id.homebase.chat.conversationlist.ConversationListUiAction.SendFile
 import id.homebase.chat.conversationlist.ConversationListUiAction.UnAttachFile
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.conversationlist.MessageListContentModel
@@ -55,8 +51,6 @@ import id.homebase.chat.services.convo.EnrichedConversationUiModel
 import id.homebase.core.HomebaseConstants
 import id.homebase.core.util.ScrollPosition
 import id.homebase.core.util.boundedFirstVisibleItemIndex
-import id.homebase.core.camera.CameraModes
-import id.homebase.core.util.rememberCameraManager
 import id.homebase.core.util.toMessageMarkdown
 import id.homebase.resources.MR
 import id.homebase.resources.cd_send_to
@@ -64,9 +58,6 @@ import id.homebase.chat.viewonce.ViewOnceIntroSheet
 import id.homebase.chat.viewonce.ViewOnceToast
 import id.homebase.chat.viewonce.rememberViewOnceComposerState
 import id.homebase.chat.conversationlist.AttachmentPendingFile
-import io.github.vinceglb.filekit.dialogs.FileKitMode
-import io.github.vinceglb.filekit.dialogs.FileKitType
-import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
@@ -77,7 +68,7 @@ import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalMaterial3Api::class, FlowPreview::class)
 @Composable
-fun ConversationMessagesPane(
+internal fun ConversationMessagesPane(
     conversation: EnrichedConversationUiModel,
     uiState: MessageListUiState,
     textFieldState: RichTextState,
@@ -85,53 +76,14 @@ fun ConversationMessagesPane(
     showBackButton: Boolean,
     onBackClick: () -> Unit,
     onUiAction: (ConversationListUiAction) -> Unit,
-    /** Two-pane layouts draw the read-only viewers above the scaffold instead; the pane still
+    /** One set for the pane and a hoisted editor, so a capture's handoff reaches the camera that took it. */
+    launchers: AttachmentLaunchers,
+    /** Two-pane layouts draw the read-only viewers and the attachment editor above the scaffold instead; the pane still
      *  drops [ConversationContent] so the composer cannot hold focus behind one. */
     hoistMediaViewer: Boolean = false,
+    hoistAttachmentEditor: Boolean = false,
     vaultActive: Boolean = false,
 ) {
-    var currentGalleryPage by remember { mutableStateOf(0) }
-
-    val galleryLauncher = rememberFilePickerLauncher(
-        type = FileKitType.ImageAndVideo,
-        mode = FileKitMode.Multiple(),
-    ) { files ->
-        files?.takeIf { it.isNotEmpty() }?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = it,
-                    isImage = true,
-                )
-            )
-        }
-    }
-    val fileLauncher = rememberFilePickerLauncher { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversation.conversation.id,
-                    listOf(file),
-                )
-            )
-        }
-    }
-    val cameraLauncher = rememberCameraManager(
-        modes = CameraModes.PhotoAndVideo,
-        onOpenGallery = { galleryLauncher.launch() },
-        awaitResultShown = true,
-    ) { file ->
-        file?.let {
-            onUiAction(
-                ConversationListUiAction.AttachPlatformFile(
-                    conversationId = conversation.conversation.id,
-                    files = listOf(file),
-                    isImage = true,
-                )
-            )
-        }
-    }
-
     val listState = remember(conversation.conversation.id,uiState.isLoadingMessages) {
         val conversationId = conversation.conversation.id
         if (uiState.isLoadingMessages) {
@@ -322,7 +274,7 @@ fun ConversationMessagesPane(
                     showBackButton = showBackButton,
                     onBackClick = onBackClick,
                     onUiAction = onUiAction,
-                    onCameraClick = { cameraLauncher.launch() },
+                    onCameraClick = { launchers.camera.launch() },
                     animatedVisibilityScope = this@AnimatedContent,
                     sharedTransitionScope = this@SharedTransitionLayout
                 )
@@ -344,24 +296,16 @@ fun ConversationMessagesPane(
                     }
 
                     is FullScreenOverlay.AttachmentData -> {
-                        if (data.isChatListCapture) {
+                        if (data.isChatListCapture || hoistAttachmentEditor) {
                             Spacer(modifier = Modifier.fillMaxSize())
                         } else {
-                            AttachmentEditorHost(
+                            ConversationAttachmentEditor(
                                 data = data,
                                 sendQuality = uiState.sendQuality,
                                 textFieldState = textFieldState,
+                                launchers = launchers,
                                 revealed = transition.currentState == EnterExitState.Visible,
-                                currentPage = currentGalleryPage,
-                                onPageChanged = { currentGalleryPage = it },
-                                onAddFile = { fileLauncher.launch() },
-                                onAddImage = { galleryLauncher.launch() },
-                                onCameraClick = { cameraLauncher.launch() },
-                                onContentShown = cameraLauncher::resultShown,
                                 onUiAction = onUiAction,
-                                onSend = { caption, viewOnce ->
-                                    onUiAction(SendFile(data.conversationId, caption, data.attachments, viewOnce))
-                                },
                             )
                         }
                     }
