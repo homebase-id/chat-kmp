@@ -2335,7 +2335,8 @@ fun AppNavHost(
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenSettings = { navController.navigate(AppsPage.Photobase.route) },
+                                            // Desktop and web: the page's only switch, the bar icon, does nothing where every app shows.
+                                            onOpenSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
                                             onOpenLibrary = { navController.navigate(Route.PhotoLibrary) },
                                         )

@@ -38,9 +38,9 @@ fun startListeningForPhotoBackupUploads() {
 }
 
 private fun handle(task: BGTask, request: BackupRunRequest) {
-    // First, so nothing below can end the chain.
-    submitBackupTasks()
+    // Neither a closed database nor a controller that won't build can say backup is off, so both keep the chain alive.
     if (!isDatabaseOpen()) {
+        submitBackupTasks()
         task.setTaskCompletedWithSuccess(false)
         return
     }
@@ -49,9 +49,17 @@ private fun handle(task: BGTask, request: BackupRunRequest) {
         KoinPlatformTools.defaultContext().get().get<PhotoBackupController>().also { it.onProcessStart() }
     } catch (e: Exception) {
         Logger.e(tag = "PhotoBackupTasks", throwable = e) { "${request.trigger} could not start" }
+        submitBackupTasks()
         task.setTaskCompletedWithSuccess(false)
         return
     }
+    // A task still pending when backup went off ends the chain here.
+    if (!controller.settings.value.enabled) {
+        task.setTaskCompletedWithSuccess(true)
+        return
+    }
+    // Before the run, so nothing in it can end the chain.
+    submitBackupTasks()
     val completed = atomic(false)
     fun complete(success: Boolean) {
         if (completed.compareAndSet(expect = false, update = true)) task.setTaskCompletedWithSuccess(success)
