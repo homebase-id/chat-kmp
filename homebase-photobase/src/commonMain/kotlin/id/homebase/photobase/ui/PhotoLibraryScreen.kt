@@ -34,7 +34,6 @@ import id.homebase.resources.photobase_albums_none
 import id.homebase.resources.photobase_albums_title
 import id.homebase.resources.photobase_album_failed
 import id.homebase.resources.photobase_library_count
-import id.homebase.resources.photobase_library_title
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
@@ -53,7 +52,7 @@ fun PhotoLibraryScreen(viewModel: PhotoLibraryViewModel, onOpen: (PhotoGallery) 
         )
     }
     Scaffold(
-        topBar = { SettingsTopBar(stringResource(MR.string.photobase_library_title), onBack) },
+        topBar = { SettingsTopBar(stringResource(MR.string.photobase_albums_title), onBack) },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { innerPadding ->
         LazyVerticalGrid(columns = GridCells.Adaptive(160.dp), modifier = Modifier.padding(innerPadding)) {

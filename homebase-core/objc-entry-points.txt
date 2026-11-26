@@ -22,7 +22,6 @@ function id.homebase.core.isDatabaseOpen
 function id.homebase.core.onPushArrivedBeforeDatabase
 function id.homebase.core.whenStarted
 function id.homebase.core.handleIncomingLink
-function id.homebase.core.isPhotobaseEnabled
 function id.homebase.core.registerPhotoBackupBackgroundTasks
 function id.homebase.core.startListeningForPhotoBackupUploads
 function id.homebase.core.diagnostics.logPrevention

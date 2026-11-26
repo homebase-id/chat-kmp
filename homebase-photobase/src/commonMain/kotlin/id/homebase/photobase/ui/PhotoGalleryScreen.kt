@@ -102,7 +102,7 @@ import id.homebase.resources.MR
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.atStartOfDayIn
-import id.homebase.resources.photobase_backup_title
+import id.homebase.resources.settings
 import id.homebase.resources.photobase_gallery_photo
 import id.homebase.resources.photobase_gallery_refresh
 import id.homebase.resources.photobase_gallery_sort_newest
@@ -139,8 +139,8 @@ import id.homebase.resources.photobase_album_rename
 import id.homebase.core.widget.SelectionTopBar
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
-import androidx.compose.material.icons.outlined.PhotoAlbum
-import id.homebase.resources.photobase_library_title
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.resources.photobase_albums_title
 import id.homebase.resources.menu_back
 import id.homebase.resources.photobase_bin_delete_confirm_title
 import id.homebase.resources.photobase_bin_delete_forever
@@ -170,7 +170,7 @@ private const val SELECTED_SCALE = 0.86f
 @Composable
 fun PhotoGalleryScreen(
     viewModel: PhotoGalleryViewModel,
-    onOpenBackupSettings: (() -> Unit)?,
+    onOpenSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
     onOpenLibrary: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
@@ -305,7 +305,7 @@ fun PhotoGalleryScreen(
                     )
                 } else {
                     GalleryGrid(
-                        uiState, gallery, title, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
+                        uiState, gallery, title, layout, loaded, selected, onAction, onOpenSettings, backupIndicator, onOpenLibrary, onBack,
                         { asking = it }, { picking = true }, { naming = AlbumNaming.Rename }.takeIf { albumName != null }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
@@ -466,7 +466,7 @@ private fun GalleryGrid(
     loaded: State<Map<Int, List<PhotoGalleryItem>>>,
     selected: State<Set<Uuid>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
-    onOpenBackupSettings: (() -> Unit)?,
+    onOpenSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
     onOpenLibrary: (() -> Unit)?,
     onBack: (() -> Unit)?,
@@ -484,7 +484,7 @@ private fun GalleryGrid(
         topBar = {
             when {
                 uiState.selecting -> SelectionTopBar(uiState.selected.size, onClear = { onAction(PhotoGalleryUiAction.ClearSelection) })
-                gallery == PhotoGallery.Library -> LibraryTopBar(uiState, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary)
+                gallery == PhotoGallery.Library -> LibraryTopBar(uiState, onAction, onOpenSettings, backupIndicator, onOpenLibrary)
                 else -> TopAppBar(
                     navigationIcon = {
                         if (onBack != null) {
@@ -624,19 +624,19 @@ private fun GalleryMenu(items: @Composable (item: MenuItem) -> Unit) {
 private fun LibraryTopBar(
     uiState: PhotoGalleryUiState,
     onAction: (PhotoGalleryUiAction) -> Unit,
-    onOpenBackupSettings: (() -> Unit)?,
+    onOpenSettings: (() -> Unit)?,
     backupIndicator: @Composable () -> Unit,
     onOpenLibrary: (() -> Unit)?,
 ) {
     TopAppBar(
         title = { Text(stringResource(MR.string.photobase_label)) },
         actions = {
-            backupIndicator()
             if (onOpenLibrary != null) {
                 IconButton(onClick = onOpenLibrary) {
-                    Icon(Icons.Outlined.PhotoAlbum, contentDescription = stringResource(MR.string.photobase_library_title))
+                    Icon(Icons.Outlined.PhotoLibrary, contentDescription = stringResource(MR.string.photobase_albums_title))
                 }
             }
+            backupIndicator()
             IconButton(onClick = { onAction(PhotoGalleryUiAction.ToggleSort) }) {
                 Icon(
                     Icons.Outlined.SwapVert,
@@ -647,7 +647,7 @@ private fun LibraryTopBar(
             }
             GalleryMenu { item ->
                 item(MR.string.photobase_gallery_refresh, Icons.Outlined.Refresh, !uiState.isSyncing) { onAction(PhotoGalleryUiAction.Refresh) }
-                if (onOpenBackupSettings != null) item(MR.string.photobase_backup_title, Icons.Outlined.Settings, true, onOpenBackupSettings)
+                if (onOpenSettings != null) item(MR.string.settings, Icons.Outlined.Settings, true, onOpenSettings)
             }
         },
     )
