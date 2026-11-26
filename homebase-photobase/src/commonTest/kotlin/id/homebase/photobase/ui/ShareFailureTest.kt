@@ -24,4 +24,15 @@ class ShareFailureTest {
         assertTrue(failure.unreachable)
         assertFalse(failure.hasDetails)
     }
+
+    @Test
+    fun aServerErrorWithNoTitleHasNoQuotedReasonButItsStatusUnderDetails() {
+        val failure = ShareFailure.of(
+            id.homebase.api.client.ClientException(502, message = "Bad Gateway", correlationId = "abc", problem = id.homebase.api.client.ProblemDetails()),
+        )
+
+        assertNull(failure.reason, "the message carries the status and ids, which aren't for the snackbar")
+        assertEquals(502, failure.status)
+        assertEquals("abc", failure.correlationId)
+    }
 }

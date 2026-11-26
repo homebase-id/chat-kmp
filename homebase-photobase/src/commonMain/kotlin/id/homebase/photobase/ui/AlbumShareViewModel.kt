@@ -84,7 +84,8 @@ data class ShareFailure(
     companion object {
         fun of(e: Throwable): ShareFailure = when {
             e is OdinApiException -> ShareFailure(
-                reason = e.problem?.title ?: e.message,
+                // The problem's title alone: the message adds the status and ids, which Details shows.
+                reason = e.problem?.title?.takeIf { it.isNotBlank() },
                 status = e.status,
                 code = e.problem?.errorCode(),
                 correlationId = e.correlationId ?: e.problem?.correlationId(),
@@ -140,6 +141,8 @@ class AlbumShareViewModel(
                 _events.send(AlbumShareEvent.GroupEditEnded)
                 if (edit.changed) _events.send(AlbumShareEvent.GroupSaved(action.group.name))
                 if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
+                if (edit.notConnected.isNotEmpty()) _events.send(AlbumShareEvent.NotConnected(edit.notConnected.joinToString { it.domainName }))
+                if (edit.notReviewed.isNotEmpty()) _events.send(AlbumShareEvent.NotReviewed(edit.notReviewed.joinToString { it.domainName }))
                 if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(edit.pending.joinToString { it.domainName }, action.group.name))
                 // The pending are told too: their invite opens once their grant lands.
                 val added = edit.joined + edit.pending
@@ -239,6 +242,7 @@ class AlbumShareViewModel(
                 Logger.w(tag = TAG) { "album $albumId: ${e.message}" }
                 _events.send(AlbumShareEvent.CircleTooNarrow(e.circleName, e.circleId, e.granted, e.missing))
             } catch (e: PhotoSharingException.NotSignedIn) {
+                if (step == AlbumShareStep.EditGroup) _events.send(AlbumShareEvent.GroupEditEnded)
                 _uiState.update { it.copy(signedIn = false) }
             } catch (e: Exception) {
                 Logger.w(tag = TAG, throwable = e) { "album $albumId: $step failed" }

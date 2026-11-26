@@ -83,6 +83,9 @@ class PhotoAlbumSharingTest {
     @Volatile private var storedShareKey: String? = null
     @Volatile private var samsPending = "[]"
     @Volatile private var addManyKind = "skipped"
+    private val missingAlbums = mutableSetOf<Uuid>()
+    // Each one's own connection, over samsConnection.
+    private val statuses = mutableMapOf<String, String>()
     // Each one's own enrolment answer, over addManyKind.
     private val kinds = mutableMapOf<String, String>()
     private val enrolled = CopyOnWriteArrayList<Pair<String, List<String>>>()
@@ -146,6 +149,7 @@ class PhotoAlbumSharingTest {
                 val sharersAsked = params["fileType"]?.jsonArray?.any { it.jsonPrimitive.int == PhotobaseProtocol.SharerFileType } == true
                 // One album by id, every album with rows, or (a photo query) nothing.
                 val records = when {
+                    asked != null && Uuid.parse(asked) in missingAlbums -> emptyList()
                     asked != null -> listOf(albumRecord(Uuid.parse(asked)))
                     albumsAsked -> albumRows.keys.map(::albumRecord)
                     sharersAsked -> sharerRecords.map { (sender, sharer) -> sharerRecord(sender, sharer) }
@@ -157,7 +161,11 @@ class PhotoAlbumSharingTest {
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/shares") -> "{}"
-            path.endsWith("/connections/status") -> samsConnection
+            path.endsWith("/connections/status") -> {
+                // The query string goes encrypted, as ss.
+                val asked = request.url.parameters["ss"]?.let { CryptoHelper.decryptContentAsString(it, appSecret).substringAfter("odinId=") }
+                statuses[asked] ?: samsConnection
+            }
             // A collaborative drive can't take shares; everyone else has no Photos drive yet.
             path.endsWith("/public-key") && "/peer/${merry.domainName}/" in path -> """{"publicKeyJwk":"{}","isZeroKnowledge":false}"""
             path.endsWith("/public-key") -> return@MockEngine respond("{}", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
@@ -360,7 +368,7 @@ class PhotoAlbumSharingTest {
     }
 
     @Test
-    fun aNewGroupWhoseShareIsRefusedBeforeAnythingIsWrittenGoesAgain() = runTest {
+    fun aNewGroupIsntMadeWhenThePhotosCircleCantCarryAShare() = runTest {
         samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
         addManyKind = "enrolled"
         photosCircleGrants = "read"
@@ -369,8 +377,22 @@ class PhotoAlbumSharingTest {
             sharing.shareWithNewGroup(trip, "Trip", listOf(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
         }
 
+        assertTrue(created.none { it.startsWith("g") }, "only the owner console widens it, so each retry would make and delete one: $created")
+        assertTrue(calls.none { it.path.endsWith("/shares") || it.path.endsWith("/circles/delete") }, calls.map { it.path }.toString())
+    }
+
+    @Test
+    fun aNewGroupWhoseShareFailsBeforeAnythingIsWrittenGoesAgain() = runTest {
+        reviewed()
+        addManyKind = "enrolled"
+        missingAlbums += trip
+
+        assertFailsWith<IllegalStateException> {
+            sharing.shareWithNewGroup(trip, "Trip", listOf(sam), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
         assertTrue(calls.any { it.path.endsWith("/circles/delete") }, "a retry would otherwise make a second Trip")
-        assertTrue(calls.none { it.path.endsWith("/shares") || it.path.endsWith("/share-key") }, calls.map { it.path }.toString())
+        assertTrue(calls.none { it.path.endsWith("/shares") }, calls.map { it.path }.toString())
     }
 
     private fun reviewed() {
@@ -461,6 +483,31 @@ class PhotoAlbumSharingTest {
         sharerRecords += OdinId("eve.test") to gandalf
 
         assertEquals(listOf(sam, rosie), sharing.sharers(), "eve's record names gandalf, and isn't this identity's to keep")
+    }
+
+    @Test
+    fun aGroupEditStillRemovesWhenSomeoneAddedCantJoinYetAndNamesThem() = runTest {
+        reviewed()
+        statuses[rosie.domainName] = samsConnection.replace(",\"reviewedAt\":1", "").replace("sam.test", rosie.domainName)
+        statuses[merry.domainName] = samsConnection.replace("\"connected\"", "\"none\"").replace("sam.test", merry.domainName)
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam), pending = listOf(pippin))
+
+        val edit = sharing.setMembers(group, listOf(sam, rosie, merry))
+
+        assertEquals(listOf(pippin), edit.removed, "the removal went though the additions couldn't")
+        assertEquals(listOf(rosie), edit.notReviewed)
+        assertEquals(listOf(merry), edit.notConnected)
+        assertEquals(emptyList(), edit.joined)
+        assertEquals(listOf(pippin.domainName), revoked)
+    }
+
+    @Test
+    fun aGroupsPendingMembersJoinTheRecipientsCircleWhenItsShared() = runTest {
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam), pending = listOf(pippin))
+
+        sharing.share(trip, group, PhotoAlbumAccess.View, expiresAt = null)
+
+        assertEquals(listOf(listOf(sam.domainName, pippin.domainName)), addManyTo(photosCircle))
     }
 
     private suspend fun decrypted(call: Call) =

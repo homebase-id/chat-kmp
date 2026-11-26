@@ -101,6 +101,7 @@ import id.homebase.resources.photobase_share_sign_in_body
 import id.homebase.resources.photobase_share_stop
 import id.homebase.resources.photobase_share_title
 import id.homebase.resources.photobase_share_waiting
+import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
@@ -224,35 +225,36 @@ fun AlbumShareScreen(
     }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
+            // A snackbar waits until it's dismissed, so each shows in its own coroutine: nothing after it waits for it.
             when (event) {
                 // The snackbar is under the sheet: an edit's end closes it, before its outcome shows.
                 AlbumShareEvent.GroupEditEnded -> sheetGroup = null
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
                 is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
-                is AlbumShareEvent.GroupSaved -> snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))
-                is AlbumShareEvent.GroupPending -> snackbar.showSnackbar(getString(MR.string.photobase_group_pending, event.who, event.group))
-                AlbumShareEvent.GroupGone -> snackbar.showSnackbar(getString(MR.string.photobase_group_gone))
-                is AlbumShareEvent.LeftOut -> snackbar.showSnackbar(getString(MR.string.photobase_share_left_out, event.who))
+                is AlbumShareEvent.GroupSaved -> launch { snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name)) }
+                is AlbumShareEvent.GroupPending -> launch { snackbar.showSnackbar(getString(MR.string.photobase_group_pending, event.who, event.group)) }
+                AlbumShareEvent.GroupGone -> launch { snackbar.showSnackbar(getString(MR.string.photobase_group_gone)) }
+                is AlbumShareEvent.LeftOut -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_left_out, event.who)) }
                 is AlbumShareEvent.Shared -> {
                     picker.clear()
-                    snackbar.showSnackbar(getString(MR.string.photobase_share_done, event.who))
+                    launch { snackbar.showSnackbar(getString(MR.string.photobase_share_done, event.who)) }
                 }
-                is AlbumShareEvent.Failed -> {
+                is AlbumShareEvent.Failed -> launch {
                     val message = event.failureMessage()
                     val shown = snackbar.showSnackbar(message, actionLabel = event.reason.takeIf { it.hasDetails }?.let { getString(MR.string.details) })
                     if (shown == SnackbarResult.ActionPerformed) details = event.reason.detailsText()
                 }
-                is AlbumShareEvent.CircleTooNarrow -> {
+                is AlbumShareEvent.CircleTooNarrow -> launch {
                     val message = getString(MR.string.photobase_share_circle_too_narrow, event.circleName, event.granted.names(), event.missing.names())
                     val shown = snackbar.showSnackbar(message, actionLabel = getString(MR.string.details), duration = SnackbarDuration.Long)
                     if (shown == SnackbarResult.ActionPerformed) details = getString(MR.string.photobase_share_circle_id, event.circleName, event.circleId.toString())
                 }
-                is AlbumShareEvent.Waiting -> snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who))
-                is AlbumShareEvent.NotAdded -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_added, event.who))
-                is AlbumShareEvent.NotConnected -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_connected, event.who))
-                is AlbumShareEvent.NotReviewed -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_reviewed, event.who))
-                is AlbumShareEvent.Pending -> snackbar.showSnackbar(getString(MR.string.photobase_share_pending, event.who))
-                is AlbumShareEvent.NotTold -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_told, event.who))
+                is AlbumShareEvent.Waiting -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who)) }
+                is AlbumShareEvent.NotAdded -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_not_added, event.who)) }
+                is AlbumShareEvent.NotConnected -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_not_connected, event.who)) }
+                is AlbumShareEvent.NotReviewed -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_not_reviewed, event.who)) }
+                is AlbumShareEvent.Pending -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_pending, event.who)) }
+                is AlbumShareEvent.NotTold -> launch { snackbar.showSnackbar(getString(MR.string.photobase_share_not_told, event.who)) }
             }
         }
     }

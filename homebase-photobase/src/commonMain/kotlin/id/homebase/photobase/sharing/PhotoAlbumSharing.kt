@@ -98,8 +98,18 @@ val AlbumAudience.key: String
 
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
-/** A group's members changed: [joined] see what's shared with it, [pending] will once their identity next calls this one. */
-data class GroupEdit(val joined: List<OdinId>, val pending: List<OdinId>, val refused: List<OdinId>, val removed: List<OdinId>) {
+/**
+ * A group's members changed: [joined] see what's shared with it, [pending] will once their identity next calls this one;
+ * [notConnected] and [notReviewed] weren't added, and odin-core refused [refused].
+ */
+data class GroupEdit(
+    val joined: List<OdinId>,
+    val pending: List<OdinId>,
+    val refused: List<OdinId>,
+    val removed: List<OdinId>,
+    val notConnected: List<OdinId> = emptyList(),
+    val notReviewed: List<OdinId> = emptyList(),
+) {
     val changed: Boolean get() = joined.isNotEmpty() || pending.isNotEmpty() || removed.isNotEmpty()
 }
 
@@ -203,11 +213,13 @@ class PhotoAlbumSharing(
 
     /** Shares album [albumId] with a new group of [members] called [name]; the group goes again if nothing reached it. */
     suspend fun shareWithNewGroup(albumId: Uuid, name: String, members: List<OdinId>, access: PhotoAlbumAccess, expiresAt: Long?): Pair<AlbumAudience.Group, AlbumShared> {
+        // Before the group is made: only the owner console widens it, so a retry would make and delete one each time.
+        assertGrantsAShare(listOf(recipientsCircle()))
         val (group, pendingInGroup) = createGroup(name, members)
         var writing = false
         try {
             val shared = shareTo(albumId, group, access, expiresAt, onWriting = { writing = true })
-            return group to shared.copy(pending = (shared.pending + pendingInGroup).distinct(), waiting = shared.waiting - pendingInGroup.toSet())
+            return group to shared.copy(pending = (shared.pending + pendingInGroup).distinct())
         } catch (e: Throwable) {
             // Once a row may be written it points at the group, so it stays; before that a retry would make a second one.
             if (!writing) withContext(NonCancellable) { runCatching { deleteGroup(group) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${group.circleId} not deleted" } } }
@@ -232,7 +244,8 @@ class PhotoAlbumSharing(
         val reachable = members - unsupported.toSet()
         val circleId = if (group != null) {
             // Their individual shares then don't depend on a group they might leave; its own circle is what reaches them.
-            circles.enroll(recipients, reachable)
+            // The pending too, as an edit adds them.
+            circles.enroll(recipients, reachable + group.pending)
             group.circleId
         } else {
             val toRecipients = enrollAll(recipients, reachable)
@@ -345,9 +358,9 @@ class PhotoAlbumSharing(
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): GroupEdit {
         circles.requireSignedIn()
         val current = (group.members + group.pending).toSet()
-        val joining = members.filter { it !in current }
-        assertMayJoin(joining)
-        val keys = circles.keysOf(joining)
+        // One who can't join yet is named; the rest of the edit, removals too, still goes.
+        val (eligible, notConnected, notReviewed) = mayJoin(members.filter { it !in current })
+        val keys = circles.keysOf(eligible)
         val added = keys.keys.filter { it !in keys.unsupported() }
         val toRecipients = if (added.isEmpty()) Enrolment() else enrollAll(recipientsCircle(), added)
         val toGroup = enrollAll(group.circleId, added - toRecipients.refused)
@@ -363,6 +376,8 @@ class PhotoAlbumSharing(
             pending = added.filter { it in pending },
             refused = refused.toList(),
             removed = removed,
+            notConnected = notConnected,
+            notReviewed = notReviewed,
         )
     }
 
@@ -586,13 +601,19 @@ class PhotoAlbumSharing(
 
     // Before anything is written: odin-core skips anyone not connected or not reviewed, and the share then fails late.
     private suspend fun assertMayJoin(members: List<OdinId>) {
+        val (_, notConnected, notReviewed) = mayJoin(members)
+        if (notConnected.isNotEmpty()) throw PhotoSharingException.NotConnected(notConnected)
+        if (notReviewed.isNotEmpty()) throw PhotoSharingException.NotReviewed(notReviewed)
+    }
+
+    // [members] who may join an app's circle, then the ones not connected, then the connected ones not reviewed.
+    private suspend fun mayJoin(members: List<OdinId>): Triple<List<OdinId>, List<OdinId>, List<OdinId>> {
         val statuses = members.chunked(SelectiveShareCircles.PARALLEL).flatMap { chunk ->
             coroutineScope { chunk.map { async { it to connections.getConnectionStatus(it) } }.awaitAll() }
         }
-        statuses.filter { it.second?.status != ConnectionStatus.Connected }.map { it.first }
-            .takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.NotConnected(it) }
-        statuses.filter { it.second?.reviewedAt == null }.map { it.first }
-            .takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.NotReviewed(it) }
+        val notConnected = statuses.filter { it.second?.status != ConnectionStatus.Connected }.map { it.first }
+        val notReviewed = statuses.filter { it.first !in notConnected && it.second?.reviewedAt == null }.map { it.first }
+        return Triple(members - (notConnected + notReviewed).toSet(), notConnected, notReviewed)
     }
 
     // Checked before anything is written: odin-core refuses every share otherwise.

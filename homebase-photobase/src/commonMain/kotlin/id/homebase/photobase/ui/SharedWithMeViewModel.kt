@@ -42,6 +42,16 @@ data class SharedWithMeUiState(
     val notKept: OdinId? = null,
 )
 
+/**
+ * The sharers to show, in [sharers]' order, each kept as [shown] has it; and the ones to read: new, or not read yet or
+ * failed (albums null).
+ */
+internal fun mergeSharers(shown: List<SharerAlbums>?, sharers: List<OdinId>): Pair<List<SharerAlbums>, List<OdinId>> {
+    val known = shown.orEmpty().associateBy { it.owner }
+    val merged = sharers.map { known[it] ?: SharerAlbums(it) }
+    return merged to merged.filter { it.albums == null }.map { it.owner }
+}
+
 /** The albums others share with this identity: one section per sharer kept, each read from their drive. */
 class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel() {
     private val _uiState = MutableStateFlow(SharedWithMeUiState())
@@ -49,15 +59,20 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
 
     private var refreshing: Job? = null
 
-    /** Reads the sharers and their albums again: each time the list is shown, since one may have been kept meanwhile. */
+    /**
+     * Reads the sharers again, each time the list is shown, since one may have been kept meanwhile: what's been read of
+     * the ones already shown stays, and only the new ones, or one whose read failed, are read over peer. A refresh still
+     * running is left to finish, so a window gaining focus over and over can't keep it from it.
+     */
     fun refresh() {
-        refreshing?.cancel()
+        if (refreshing?.isActive == true) return
         refreshing = viewModelScope.launch {
             val sharers = guarded { sharing.sharers() } ?: return@launch
-            _uiState.update { it.copy(sharers = sharers.map { owner -> SharerAlbums(owner) }) }
+            val (shown, toRead) = mergeSharers(_uiState.value.sharers, sharers)
+            _uiState.update { it.copy(sharers = shown) }
             // Every read goes through this identity's server to another's: a few at a time.
             val reads = Semaphore(SelectiveShareCircles.PARALLEL)
-            sharers.map { owner ->
+            toRead.map { owner ->
                 async {
                     val read = reads.withPermit { read(owner) }
                     show(read)
@@ -76,6 +91,8 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
         _uiState.update { it.copy(identityInvalid = false, notKept = null) }
         viewModelScope.launch {
             guarded { sharing.keepSharer(owner) } ?: return@launch _uiState.update { it.copy(notKept = owner) }
+            // One running mustn't swallow this: it read the sharers before this one was kept.
+            refreshing?.join()
             refresh()
         }
     }
