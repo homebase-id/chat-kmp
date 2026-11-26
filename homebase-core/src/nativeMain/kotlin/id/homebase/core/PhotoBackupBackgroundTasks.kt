@@ -11,6 +11,7 @@ import id.homebase.photobase.backup.PhotoBackupController
 import id.homebase.photobase.backup.PhotoBackupEntry
 import id.homebase.photobase.backup.backupProcessingTaskId
 import id.homebase.photobase.backup.backupRefreshTaskId
+import id.homebase.photobase.backup.cancelBackupTasks
 import id.homebase.photobase.backup.submitBackupTasks
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
@@ -38,9 +39,9 @@ fun startListeningForPhotoBackupUploads() {
 }
 
 private fun handle(task: BGTask, request: BackupRunRequest) {
-    // Neither a closed database nor a controller that won't build can say backup is off, so both keep the chain alive.
+    // First, so nothing below can end the chain.
+    submitBackupTasks()
     if (!isDatabaseOpen()) {
-        submitBackupTasks()
         task.setTaskCompletedWithSuccess(false)
         return
     }
@@ -49,17 +50,15 @@ private fun handle(task: BGTask, request: BackupRunRequest) {
         KoinPlatformTools.defaultContext().get().get<PhotoBackupController>().also { it.onProcessStart() }
     } catch (e: Exception) {
         Logger.e(tag = "PhotoBackupTasks", throwable = e) { "${request.trigger} could not start" }
-        submitBackupTasks()
         task.setTaskCompletedWithSuccess(false)
         return
     }
-    // A task still pending when backup went off ends the chain here.
+    // A task still pending when backup went off: take both requests back, so neither wakes the app again.
     if (!controller.settings.value.enabled) {
+        cancelBackupTasks()
         task.setTaskCompletedWithSuccess(true)
         return
     }
-    // Before the run, so nothing in it can end the chain.
-    submitBackupTasks()
     val completed = atomic(false)
     fun complete(success: Boolean) {
         if (completed.compareAndSet(expect = false, update = true)) task.setTaskCompletedWithSuccess(success)
