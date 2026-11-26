@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -50,5 +51,25 @@ class HoistedMediaViewerTest {
     @Test
     fun `nothing to hoist when no overlay is open`() {
         assertNull(MessageListUiState().hoistedMediaViewer(isExpandedLayout = true))
+    }
+
+    @Test
+    fun `two-pane layout hoists the attachment editor`() {
+        val editor = attachmentEditor()
+        val state = MessageListUiState(fullScreenOverlay = editor)
+        assertSame(editor, state.hoistedAttachmentEditor(isExpandedLayout = true))
+        assertTrue(chatOwnsWindow(ConversationListUiState(), state, isExpanded = true))
+    }
+
+    @Test
+    fun `single-pane layout keeps the attachment editor in the pane`() {
+        val state = MessageListUiState(fullScreenOverlay = attachmentEditor())
+        assertNull(state.hoistedAttachmentEditor(isExpandedLayout = false))
+    }
+
+    @Test
+    fun `chat-list capture editor is not hoisted here`() {
+        val state = MessageListUiState(fullScreenOverlay = attachmentEditor().copy(conversationId = NO_CONVERSATION))
+        assertNull(state.hoistedAttachmentEditor(isExpandedLayout = true))
     }
 }

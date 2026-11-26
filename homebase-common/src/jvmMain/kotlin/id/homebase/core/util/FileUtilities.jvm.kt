@@ -21,6 +21,8 @@ internal class JvmFileSystemHandler(
 
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
         try {
+            // The OS fallback in openSystemBrowser can't report a failure, so catch a scheme-less URL here.
+            require(hasUrlScheme(url)) { "No scheme in URL: $url" }
             BrowserUtils.openSystemBrowser(url, enableClipboardFallback = false)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Failed to open URL: ${e.message}" }

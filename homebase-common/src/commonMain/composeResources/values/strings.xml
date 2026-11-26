@@ -2424,6 +2424,7 @@
     <string name="feed_open_article">Open article</string>
     <string name="feed_view_all_comments">View all comments</string>
     <string name="feed_comment_encrypted">Encrypted comment</string>
+    <string name="feed_open_link_failed">Couldn't open the link.</string>
     <string name="feed_comment_action_failed">Something went wrong. Please try again.</string>
 
     <!-- Native feed: following -->
