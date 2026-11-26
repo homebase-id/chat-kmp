@@ -18,6 +18,7 @@ import id.homebase.resources.photobase_share_send
 import id.homebase.resources.photobase_shared_with_me_add
 import id.homebase.resources.photobase_shared_with_me_failed
 import id.homebase.resources.photobase_shared_with_me_none
+import id.homebase.resources.photobase_shared_with_me_not_kept
 import id.homebase.resources.photobase_shared_with_me_not_reviewed
 import id.homebase.resources.photobase_shared_with_me_not_sealed
 import id.homebase.resources.photobase_shared_with_me_title
@@ -127,6 +128,15 @@ private fun LazyGridScope.sharedWithMeSection(state: SharedWithMeUiState, onAdd:
             IconButton(onClick = onAdd) {
                 Icon(Icons.Outlined.PersonAdd, contentDescription = stringResource(MR.string.photobase_shared_with_me_add))
             }
+        }
+    }
+    state.notKept?.let { who ->
+        item(key = "shared-not-kept", span = { GridItemSpan(maxLineSpan) }) {
+            Text(
+                stringResource(MR.string.photobase_shared_with_me_not_kept, who.domainName),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
     }
     if (state.identityInvalid || state.sharers?.isEmpty() == true) {

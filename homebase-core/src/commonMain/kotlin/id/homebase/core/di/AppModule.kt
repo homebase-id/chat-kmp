@@ -1646,7 +1646,7 @@ val appModule = module {
     single {
         // The backup's own settings, so a change on the settings screen reaches a photo added to someone's album.
         val backup = get<PhotoBackupController>()
-        PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get())
+        PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get(), get())
     }
     single { PhotoCommentsService(get(), get(), get(), get(), get()) }
     single { PeerReactionProvider(get(), get()) }

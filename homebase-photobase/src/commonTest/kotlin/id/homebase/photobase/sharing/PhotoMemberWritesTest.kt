@@ -62,7 +62,10 @@ class PhotoMemberWritesTest {
         outboxEvents = events,
         scope = backgroundScope,
         confirmDelays = listOf(1.seconds, 1.seconds),
+        discard = { discarded += it },
     )
+
+    private val discarded = mutableListOf<String>()
 
     @Test
     fun aPhotoGoesToTheOwnersDriveSealedTaggedAndSharedWithTheAlbumsCircles() = runTest {
@@ -129,5 +132,27 @@ class PhotoMemberWritesTest {
     fun anAlbumReachingThisIdentityThroughNoShareSendsNothing() = runTest {
         assertFailsWith<IllegalStateException> { writes().add(album.copy(shares = emptyList()), "/picked.jpg", "image/jpeg", "picked.jpg", 1_000) }
         assertTrue(enqueued.isEmpty())
+    }
+
+    @Test
+    fun theAppsCopyOfAPickIsDeletedOnceSentAndThePicksOwnFileNever() = runTest {
+        val writes = writes()
+        writes.add(album, "/copy.jpg", "image/jpeg", "picked.jpg", 1_000, ownedCopy = true)
+        testScheduler.runCurrent()
+        assertEquals(emptyList(), discarded, "kept while the outbox reads it")
+
+        events.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotoMemberWrites.DEPOSIT_DRIVE, uniqueId))
+        testScheduler.runCurrent()
+        writes.add(album, "/picked.jpg", "image/jpeg", "picked.jpg", 1_000)
+        events.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotoMemberWrites.DEPOSIT_DRIVE, uniqueId))
+        testScheduler.runCurrent()
+
+        assertEquals(listOf("/copy.jpg"), discarded)
+    }
+
+    @Test
+    fun theAppsCopyOfAPickThatCouldntBeQueuedIsDeleted() = runTest {
+        assertFailsWith<IllegalStateException> { writes().add(album.copy(shares = emptyList()), "/copy.jpg", "image/jpeg", "picked.jpg", 1_000, ownedCopy = true) }
+        assertEquals(listOf("/copy.jpg"), discarded)
     }
 }

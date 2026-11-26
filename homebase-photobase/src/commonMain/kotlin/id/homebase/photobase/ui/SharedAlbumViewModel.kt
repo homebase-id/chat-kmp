@@ -54,6 +54,7 @@ data class SharedAlbumUiState(
 
 sealed interface SharedAlbumEvent {
     data object Failed : SharedAlbumEvent
+    data object SocialFailed : SharedAlbumEvent
     /** A photo picked here wasn't even queued. */
     data object AddFailed : SharedAlbumEvent
     data class Add(val outcome: PhotoAddOutcome) : SharedAlbumEvent
@@ -97,12 +98,14 @@ class SharedAlbumViewModel(
         // The app's scope: building a photo takes a while, and leaving the screen mustn't drop the rest.
         appScope.launch {
             // Every one copied first, while the picker's grant is live: Android and iOS revoke it later.
+            val copied = !isDesktop()
             val picked = files.mapNotNull { file ->
-                attempt { (if (isDesktop()) file else file.materializeForUpload(fileOps)).toUploadPath(fileOps) }
-                    ?.let { path -> Triple(file, path, file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds()) }
+                // Read off the pick itself, before the copy.
+                val modifiedMs = file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds()
+                attempt { (if (copied) file.materializeForUpload(fileOps) else file).toUploadPath(fileOps) }?.let { path -> Triple(file, path, modifiedMs) }
             }
             for ((file, path, modifiedMs) in picked) {
-                attempt { memberWrites.add(album, path, file.contentType(), file.name, modifiedMs) }
+                attempt { memberWrites.add(album, path, file.contentType(), file.name, modifiedMs, ownedCopy = copied) }
             }
         }
     }
@@ -182,7 +185,16 @@ class SharedAlbumViewModel(
     fun onSocial(action: PhotoGalleryUiAction) {
         if (action !is PhotoSocialAction) return
         val target = targetOf(action.photoId) ?: return
-        appScope.launch { guarded { action.write(target, comments, actions) } }
+        appScope.launch {
+            try {
+                action.write(target, comments, actions)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "comment or reaction on $owner's photo not written" }
+                _events.send(SharedAlbumEvent.SocialFailed)
+            }
+        }
     }
 
     // The photo's own key, as its share opened it: comments are encrypted with it.

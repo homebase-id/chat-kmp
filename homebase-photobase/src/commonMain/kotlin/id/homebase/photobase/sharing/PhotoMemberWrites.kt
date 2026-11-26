@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.backup.BackupRequestBuilder
 import id.homebase.photobase.backup.HandOffResult
@@ -63,8 +64,17 @@ class PhotoMemberWrites internal constructor(
     outboxEvents: Flow<BackendEvent>,
     private val scope: CoroutineScope,
     private val confirmDelays: List<Duration> = listOf(2.seconds, 10.seconds, 30.seconds),
+    /** Deletes a copy of a picked file the app made. */
+    private val discard: (String) -> Unit = {},
 ) {
-    constructor(builder: BackupRequestBuilder, sharing: PhotoAlbumSharing, uploadService: UploadService, eventBus: EventBus, scope: CoroutineScope) : this(
+    constructor(
+        builder: BackupRequestBuilder,
+        sharing: PhotoAlbumSharing,
+        uploadService: UploadService,
+        eventBus: EventBus,
+        scope: CoroutineScope,
+        fileOps: FileOperationsProvider,
+    ) : this(
         build = builder::buildPicked,
         sharesOfNewPhoto = sharing::sharesOfNewPhoto,
         ownersDriveKey = sharing::ownersDriveKey,
@@ -72,10 +82,13 @@ class PhotoMemberWrites internal constructor(
         landed = { album, gtid -> sharing.sharedPhoto(album, gtid) != null },
         outboxEvents = eventBus.events,
         scope = scope,
+        discard = { fileOps.deleteTempFile(it) },
     )
 
     private val lock = Mutex()
     private val pending = mutableMapOf<Uuid, Pair<PhotoAdd, SharedAlbum>>()
+    // The app's own copies of picked files, kept until the outbox has sent them.
+    private val copies = mutableMapOf<Uuid, String>()
 
     private val _outcomes = MutableSharedFlow<PhotoAddOutcome>(extraBufferCapacity = 16, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val outcomes: SharedFlow<PhotoAddOutcome> = _outcomes.asSharedFlow()
@@ -93,8 +106,19 @@ class PhotoMemberWrites internal constructor(
         }
     }
 
-    /** Adds the file at [path] to [album]; how it went comes on [outcomes]. Throws when it couldn't be queued. */
-    suspend fun add(album: SharedAlbum, path: String, contentType: String, name: String, modifiedMs: Long): PhotoAdd {
+    /**
+     * Adds the file at [path] to [album]; how it went comes on [outcomes]. Throws when it couldn't be queued. With
+     * [ownedCopy], [path] is the app's copy of a pick, deleted once it's sent or couldn't be.
+     */
+    suspend fun add(album: SharedAlbum, path: String, contentType: String, name: String, modifiedMs: Long, ownedCopy: Boolean = false): PhotoAdd =
+        try {
+            queue(album, path, contentType, name, modifiedMs, ownedCopy)
+        } catch (e: Throwable) {
+            if (ownedCopy) discard(path)
+            throw e
+        }
+
+    private suspend fun queue(album: SharedAlbum, path: String, contentType: String, name: String, modifiedMs: Long, ownedCopy: Boolean): PhotoAdd {
         check(album.canAdd) { "${album.owner}'s album ${album.id} takes no photos from this identity" }
         val globalTransitId = Uuid.random()
         var add: PhotoAdd? = null
@@ -105,17 +129,20 @@ class PhotoMemberWrites internal constructor(
             val deposit = depositSpec(spec, album, globalTransitId, shares, ownersDriveKey(album.owner))
             val made = PhotoAdd(album.owner, album.id, uniqueId, globalTransitId, name)
             // Waiting before it's queued: the outbox may finish it before enqueue returns.
-            lock.withLock { pending[uniqueId] = made to album }
+            lock.withLock {
+                pending[uniqueId] = made to album
+                if (ownedCopy) copies[uniqueId] = path
+            }
             val outcome = try {
                 enqueue(deposit)
             } catch (e: Throwable) {
-                lock.withLock { pending.remove(uniqueId) }
+                lock.withLock { pending.remove(uniqueId); copies.remove(uniqueId) }
                 throw e
             }
             when (outcome) {
                 is UploadOutcome.Enqueued -> add = made
                 else -> {
-                    lock.withLock { pending.remove(uniqueId) }
+                    lock.withLock { pending.remove(uniqueId); copies.remove(uniqueId) }
                     error("photo not queued for ${album.owner}: $outcome")
                 }
             }
@@ -125,8 +152,13 @@ class PhotoMemberWrites internal constructor(
         return checkNotNull(add)
     }
 
-    private suspend fun settled(driveId: Uuid, uniqueId: Uuid): Pair<PhotoAdd, SharedAlbum>? =
-        if (driveId != DEPOSIT_DRIVE) null else lock.withLock { pending.remove(uniqueId) }
+    // The outbox is done with it: sent, or dropped.
+    private suspend fun settled(driveId: Uuid, uniqueId: Uuid): Pair<PhotoAdd, SharedAlbum>? {
+        if (driveId != DEPOSIT_DRIVE) return null
+        val (settled, copy) = lock.withLock { pending.remove(uniqueId) to copies.remove(uniqueId) }
+        copy?.let(discard)
+        return settled
+    }
 
     private suspend fun waiting(driveId: Uuid, uniqueId: Uuid): PhotoAdd? =
         if (driveId != DEPOSIT_DRIVE) null else lock.withLock { pending[uniqueId]?.first }

@@ -37,6 +37,8 @@ data class SharedWithMeUiState(
     /** Null until the sharers are read. */
     val sharers: List<SharerAlbums>? = null,
     val identityInvalid: Boolean = false,
+    /** Typed in, but not kept: offline, say. */
+    val notKept: OdinId? = null,
 )
 
 /** The albums others share with this identity: one section per sharer kept, each read from their drive. */
@@ -70,9 +72,9 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
     /** Keeps someone who shares with this identity, typed in, and reads their albums. */
     fun addSharer(text: String) {
         val owner = typedIdentityOrNull(text) ?: return _uiState.update { it.copy(identityInvalid = true) }
-        _uiState.update { it.copy(identityInvalid = false) }
+        _uiState.update { it.copy(identityInvalid = false, notKept = null) }
         viewModelScope.launch {
-            guarded { sharing.keepSharer(owner) } ?: return@launch
+            guarded { sharing.keepSharer(owner) } ?: return@launch _uiState.update { it.copy(notKept = owner) }
             refresh()
         }
     }

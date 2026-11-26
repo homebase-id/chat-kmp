@@ -40,10 +40,12 @@ class PhotoActionService(
     // The last read of each target's reactions, per identity: a toggle needs only to know whether the emoji is ours.
     private val lastRead = HashMap<Pair<OdinId?, Uuid>, PhotoReactions>()
     private val lastReadLock = Mutex()
+    // One toggle at a time: a quick second tap must see the first one's result.
+    private val toggling = Mutex()
 
     /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
-    suspend fun toggleReaction(photo: PhotoTarget, emoji: String) {
-        if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return
+    suspend fun toggleReaction(photo: PhotoTarget, emoji: String) = toggling.withLock {
+        if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return@withLock
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         val key = credentialsManager.getActiveCredentials()?.domain to photo.globalTransitId
         val known = lastReadLock.withLock { lastRead[key] } ?: read(photo)

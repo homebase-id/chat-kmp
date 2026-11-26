@@ -52,6 +52,7 @@ import id.homebase.core.image.forGridTile
 import id.homebase.core.widget.ScreenBackHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.photobase_comments_failed
 import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_photo_added_by
 import id.homebase.resources.photobase_shared_album_add_failed
@@ -89,6 +90,7 @@ fun SharedAlbumScreen(
             snackbar.showSnackbar(
                 when (event) {
                     SharedAlbumEvent.Failed -> getString(MR.string.photobase_shared_with_me_failed, owner)
+                    SharedAlbumEvent.SocialFailed -> getString(MR.string.photobase_comments_failed)
                     SharedAlbumEvent.AddFailed -> getString(MR.string.photobase_shared_album_add_failed)
                     is SharedAlbumEvent.Add -> when (event.outcome) {
                         is PhotoAddOutcome.Delivered -> getString(MR.string.photobase_shared_album_added)
@@ -113,7 +115,7 @@ fun SharedAlbumScreen(
                 onDismiss = { commentsOn = null },
             )
         }
-        SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, onClose = { viewModel.open(null) }) { photo ->
+        SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, snackbar, onClose = { viewModel.open(null) }) { photo ->
             val photoId = photo.file.fileMetadata.globalTransitId
             if (photoId != null) CommentsButton { commentsOn = photoId }
         }
@@ -168,6 +170,7 @@ private fun SharedPhotoViewer(
     photos: List<SharedPhoto>,
     start: Int,
     owner: OdinId,
+    snackbar: SnackbarHostState,
     onClose: () -> Unit,
     photoActions: @Composable (SharedPhoto) -> Unit,
 ) {
@@ -175,6 +178,7 @@ private fun SharedPhotoViewer(
     val pager = rememberPagerState(initialPage = start) { photos.size }
     val shown = photos.getOrNull(pager.currentPage)
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 navigationIcon = {

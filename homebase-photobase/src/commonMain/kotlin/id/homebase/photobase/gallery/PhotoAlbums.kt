@@ -64,7 +64,7 @@ class PhotoAlbums(
     scope: CoroutineScope,
     private val sync: () -> Unit,
     /** Photos on the server with one tag of the album's but not the other: (local only, app only). */
-    private val tagsApart: suspend (tag: Uuid) -> Pair<List<Uuid>, List<Uuid>> = { emptyList<Uuid>() to emptyList() },
+    private val tagsApart: suspend (tag: Uuid) -> Pair<List<Uuid>, List<AppTagged>> = { emptyList<Uuid>() to emptyList() },
     /** Before an album is deleted: whoever it's shared with stops seeing it. */
     private val beforeDelete: suspend (id: Uuid) -> Unit = {},
 ) : PhotoAlbumSource {
@@ -124,12 +124,15 @@ class PhotoAlbums(
 
     /**
      * Brings album [id]'s two tags together on every photo: an album made before albums could be shared has its local
-     * tag alone, and a photo a member added has its app tag alone. The number of photos changed.
+     * tag alone, and a photo a member added has its app tag alone. One of this identity's own with the app tag alone
+     * is a removal whose header rewrite failed: the tag comes off. The number of photos changed.
      */
     suspend fun bringTagsTogether(id: Uuid): Int {
         val (localOnly, appOnly) = tagsApart(id)
+        val (added, removed) = appOnly.partition { it.byMember }
         if (localOnly.isNotEmpty()) mover.mirrorAppTag(id, on = true, localOnly)
-        if (appOnly.isNotEmpty()) mover.setTag(id, on = true, appOnly)
+        if (removed.isNotEmpty()) mover.mirrorAppTag(id, on = false, removed.map { it.fileId })
+        if (added.isNotEmpty()) mover.setTag(id, on = true, added.map { it.fileId })
         return localOnly.size + appOnly.size
     }
 
@@ -174,13 +177,18 @@ private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
 suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> =
     photosWhere(FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted))).map { it.fileId }
 
+/** A photo with an album's app tag and not its local tag; [byMember] when someone it's shared with added it. */
+data class AppTagged(val fileId: Uuid, val byMember: Boolean)
+
 /** The live photos with album [tag] as a local tag and not an app tag, then the ones with it as an app tag alone. */
-suspend fun DriveQueryProvider.photosWithTagsApart(tag: Uuid): Pair<List<Uuid>, List<Uuid>> {
+suspend fun DriveQueryProvider.photosWithTagsApart(tag: Uuid): Pair<List<Uuid>, List<AppTagged>> {
     val photos = listOf(PhotobaseProtocol.PhotoFileType)
     val localOnly = photosWhere(FileQueryParams(fileType = photos, localTagsMatchAtLeastOne = listOf(tag)))
         .filter { tag !in it.fileMetadata.appData.tags.orEmpty() }.map { it.fileId }
     val appOnly = photosWhere(FileQueryParams(fileType = photos, tagsMatchAtLeastOne = listOf(tag)))
-        .filter { tag !in it.fileMetadata.localAppData?.tags.orEmpty() }.map { it.fileId }
+        .filter { tag !in it.fileMetadata.localAppData?.tags.orEmpty() }
+        // A member's deposit comes in over peer, sent by them.
+        .map { AppTagged(it.fileId, byMember = it.fileMetadata.senderOdinId != null) }
     return localOnly to appOnly
 }
 

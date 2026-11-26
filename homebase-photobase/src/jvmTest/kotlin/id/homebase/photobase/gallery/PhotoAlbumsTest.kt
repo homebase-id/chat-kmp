@@ -43,7 +43,7 @@ class PhotoAlbumsTest {
     private val untagged = mutableListOf<Pair<Uuid, List<Uuid>>>()
     private val tagged = mutableListOf<Pair<Uuid, List<Uuid>>>()
     private val appTagged = mutableListOf<Triple<Uuid, Boolean, List<Uuid>>>()
-    private val apart = mutableMapOf<Uuid, Pair<List<Uuid>, List<Uuid>>>()
+    private val apart = mutableMapOf<Uuid, Pair<List<Uuid>, List<AppTagged>>>()
     private val deleted = mutableListOf<FileVersionTag>()
     private val scope = CoroutineScope(Dispatchers.Unconfined)
     private var syncs = 0
@@ -179,12 +179,20 @@ class PhotoAlbumsTest {
     @Test
     fun anAlbumsPhotosGetTheTagTheyLackOnTheHeaderOrOnTheDevice() = runTest {
         val album = Uuid.random()
-        val (madeBeforeSharing, addedByAMember) = List(2) { Uuid.random() }
-        apart[album] = listOf(madeBeforeSharing) to listOf(addedByAMember)
+        val (madeBeforeSharing, addedByAMember, removalNotMirrored) = List(3) { Uuid.random() }
+        apart[album] = listOf(madeBeforeSharing) to listOf(AppTagged(addedByAMember, byMember = true), AppTagged(removalNotMirrored, byMember = false))
 
-        assertEquals(2, albums.bringTagsTogether(album))
+        assertEquals(3, albums.bringTagsTogether(album))
 
-        assertEquals(listOf(Triple(album, true, listOf(madeBeforeSharing)), Triple(album, true, listOf(addedByAMember))), appTagged)
+        assertEquals(
+            listOf(
+                Triple(album, true, listOf(madeBeforeSharing)),
+                Triple(album, false, listOf(removalNotMirrored)),
+                Triple(album, true, listOf(addedByAMember)),
+            ),
+            appTagged,
+            "one of our own with the app tag alone was taken out: the tag comes off, it isn't put back",
+        )
         assertEquals(listOf(album to listOf(addedByAMember)), tagged)
     }
 

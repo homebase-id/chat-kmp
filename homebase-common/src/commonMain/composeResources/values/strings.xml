@@ -3567,6 +3567,7 @@
     <string name="photobase_shared_with_me_none">No one shares albums with you yet.</string>
     <string name="photobase_shared_with_me_add">Add someone who shares with you</string>
     <string name="photobase_shared_with_me_failed">Couldn't open %1$s's albums.</string>
+    <string name="photobase_shared_with_me_not_kept">Couldn't add %1$s. Try again.</string>
     <string name="photobase_shared_with_me_not_reviewed">%1$s hasn't reviewed your connection yet.</string>
     <string name="photobase_shared_with_me_not_sealed">%1$s's Photos hasn't shared its key with you yet. Try again later.</string>
     <string name="photobase_shared_album_empty">No photos in this album yet.</string>
