@@ -17,6 +17,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.PickerResultLauncher
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlin.uuid.Uuid
 
 internal class AttachmentLaunchers(
     val gallery: PickerResultLauncher,
@@ -26,7 +27,7 @@ internal class AttachmentLaunchers(
 
 @Composable
 internal fun rememberAttachmentLaunchers(
-    conversationId: kotlin.uuid.Uuid,
+    conversationId: Uuid,
     onUiAction: (ConversationListUiAction) -> Unit,
 ): AttachmentLaunchers {
     val gallery = rememberFilePickerLauncher(
