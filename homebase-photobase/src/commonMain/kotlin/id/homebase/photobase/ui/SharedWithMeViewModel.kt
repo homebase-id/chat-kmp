@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlin.time.Clock
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import id.homebase.api.client.drives.shares.SelectiveShareCircles
@@ -32,6 +34,8 @@ data class SharerAlbums(
     val albums: List<SharedAlbum>? = null,
     val problem: SharedProblem? = null,
     val covers: Map<Uuid, SharedPhoto> = emptyMap(),
+    /** When [albums] were read, epoch ms; 0 until they are. */
+    val readAtMs: Long = 0,
 )
 
 data class SharedWithMeUiState(
@@ -43,14 +47,17 @@ data class SharedWithMeUiState(
 )
 
 /**
- * The sharers to show, in [sharers]' order, each kept as [shown] has it; and the ones to read: new, or not read yet or
- * failed (albums null).
+ * The sharers to show, in [sharers]' order, each kept as [shown] has it; and the ones to read: new, not read yet or
+ * failed (albums null), or read more than [maxAgeMs] before [nowMs], since a sharer may have shared another album since.
  */
-internal fun mergeSharers(shown: List<SharerAlbums>?, sharers: List<OdinId>): Pair<List<SharerAlbums>, List<OdinId>> {
+internal fun mergeSharers(shown: List<SharerAlbums>?, sharers: List<OdinId>, nowMs: Long, maxAgeMs: Long): Pair<List<SharerAlbums>, List<OdinId>> {
     val known = shown.orEmpty().associateBy { it.owner }
     val merged = sharers.map { known[it] ?: SharerAlbums(it) }
-    return merged to merged.filter { it.albums == null }.map { it.owner }
+    return merged to merged.filter { it.albums == null || nowMs - it.readAtMs > maxAgeMs }.map { it.owner }
 }
+
+// Reads of what's already shown stop at this, so a window regaining focus doesn't read every sharer again each time.
+private const val SHARER_MAX_AGE_MS = 5 * 60_000L
 
 /** The albums others share with this identity: one section per sharer kept, each read from their drive. */
 class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel() {
@@ -58,24 +65,41 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
     val uiState: StateFlow<SharedWithMeUiState> = _uiState.asStateFlow()
 
     private var refreshing: Job? = null
+    // A refresh asked for while one runs: that one read the sharers before, so it runs again once it's done.
+    private var again = false
 
     /**
      * Reads the sharers again, each time the list is shown, since one may have been kept meanwhile: what's been read of
-     * the ones already shown stays, and only the new ones, or one whose read failed, are read over peer. A refresh still
-     * running is left to finish, so a window gaining focus over and over can't keep it from it.
+     * the ones already shown stays, and only the new ones, a failed one, or one read a while ago are read over peer. A
+     * refresh still running is left to finish, and one asked for meanwhile runs after it.
      */
     fun refresh() {
-        if (refreshing?.isActive == true) return
+        if (refreshing?.isActive == true) {
+            again = true
+            return
+        }
+        again = false
         refreshing = viewModelScope.launch {
-            val sharers = guarded { sharing.sharers() } ?: return@launch
-            val (shown, toRead) = mergeSharers(_uiState.value.sharers, sharers)
+            try {
+                readAll()
+            } finally {
+                if (again) viewModelScope.launch { refresh() }
+            }
+        }
+    }
+
+    private suspend fun readAll() = coroutineScope {
+        run {
+            val sharers = guarded { sharing.sharers() } ?: return@run
+            val (shown, toRead) = mergeSharers(_uiState.value.sharers, sharers, Clock.System.now().toEpochMilliseconds(), SHARER_MAX_AGE_MS)
             _uiState.update { it.copy(sharers = shown) }
             // Every read goes through this identity's server to another's: a few at a time.
             val reads = Semaphore(SelectiveShareCircles.PARALLEL)
             toRead.map { owner ->
                 async {
                     val read = reads.withPermit { read(owner) }
-                    show(read)
+                    // Covers shown already stay until the new ones come, so a re-read doesn't blank them.
+                    show(read, keepCovers = true)
                     // The names first: a cover is one more read over peer per album.
                     val albums = read.albums ?: return@async
                     val covers = albums.map { album -> async { reads.withPermit { coverOf(album) }?.let { album.id to it } } }.awaitAll().filterNotNull().toMap()
@@ -97,8 +121,18 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
         }
     }
 
-    private fun show(sharer: SharerAlbums) =
-        _uiState.update { state -> state.copy(sharers = state.sharers?.map { if (it.owner == sharer.owner) sharer else it }) }
+    private fun show(sharer: SharerAlbums, keepCovers: Boolean = false) =
+        _uiState.update { state ->
+            state.copy(
+                sharers = state.sharers?.map { shown ->
+                    when {
+                        shown.owner != sharer.owner -> shown
+                        keepCovers -> sharer.copy(covers = shown.covers.filterKeys { id -> sharer.albums.orEmpty().any { it.id == id } })
+                        else -> sharer
+                    }
+                }
+            )
+        }
 
     // An album with no cover shows its icon, as an empty one of this identity's does.
     private suspend fun coverOf(album: SharedAlbum): SharedPhoto? =
@@ -114,7 +148,7 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
 
     private suspend fun read(owner: OdinId): SharerAlbums =
         try {
-            SharerAlbums(owner, albums = sharing.sharedAlbums(owner).sortedBy { it.name.lowercase() })
+            SharerAlbums(owner, albums = sharing.sharedAlbums(owner).sortedBy { it.name.lowercase() }, readAtMs = Clock.System.now().toEpochMilliseconds())
         } catch (e: CancellationException) {
             throw e
         } catch (e: PhotoSharingException.NotReviewedByOwner) {

@@ -222,7 +222,10 @@ class PhotoAlbumSharing(
             return group to shared.copy(pending = (shared.pending + pendingInGroup).distinct())
         } catch (e: Throwable) {
             // Once a row may be written it points at the group, so it stays; before that a retry would make a second one.
-            if (!writing) withContext(NonCancellable) { runCatching { deleteGroup(group) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${group.circleId} not deleted" } } }
+            // Straight through the app's circles: a share that failed for a lost sign-in would fail a signed-in check too.
+            if (!writing) withContext(NonCancellable) {
+                runCatching { circles.asApp.deleteCircle(group.circleId, removeMembers = true) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${group.circleId} not deleted" } }
+            }
             throw e
         }
     }
@@ -325,7 +328,7 @@ class PhotoAlbumSharing(
         circles.requireSignedIn()
         assertMayJoin(members)
         // As an edit refuses them: someone whose Homebase can't take shares would be left out of every share.
-        circles.keysOf(members).unsupported().takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.RecipientNotAdded(it) }
+        circles.keysOf(members, lenient = true).unsupported().takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.RecipientNotAdded(it) }
         val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
         val enrolment = try {
             enrollAll(circleId, members).also { if (it.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(it.refused.toList()) }
@@ -360,16 +363,25 @@ class PhotoAlbumSharing(
         val current = (group.members + group.pending).toSet()
         // One who can't join yet is named; the rest of the edit, removals too, still goes.
         val (eligible, notConnected, notReviewed) = mayJoin(members.filter { it !in current })
-        val keys = circles.keysOf(eligible)
+        // Leniently: one whose server can't be read now joins all the same, and the upkeep seals to them later.
+        val keys = circles.keysOf(eligible, lenient = true)
+        // Removals first: once someone has joined, a later failure must not leave them in and untold.
+        // Revoking takes a deposited grant too, so someone pending is removed the same way.
+        val removed = current.filter { it !in members }
+        removed.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
         val added = keys.keys.filter { it !in keys.unsupported() }
         val toRecipients = if (added.isEmpty()) Enrolment() else enrollAll(recipientsCircle(), added)
         val toGroup = enrollAll(group.circleId, added - toRecipients.refused)
         val refused = toRecipients.refused + toGroup.refused + keys.unsupported()
         val pending = toRecipients.pending + toGroup.pending
-        circles.sealCircleKey(group.circleId, keys.points().filterKeys { it in added && it !in refused })
-        // Revoking takes a deposited grant too, so someone pending is removed the same way.
-        val removed = current.filter { it !in members }
-        removed.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
+        try {
+            circles.sealCircleKey(group.circleId, keys.points().filterKeys { it in added && it !in refused })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // They're in: the upkeep seals the key to them (sealPending), and they're still told.
+            Logger.w(tag = TAG, throwable = e) { "group ${group.circleId}: key not sealed to the new members yet" }
+        }
         editorsMayHaveChanged()
         return GroupEdit(
             joined = added.filter { it !in refused && it !in pending },

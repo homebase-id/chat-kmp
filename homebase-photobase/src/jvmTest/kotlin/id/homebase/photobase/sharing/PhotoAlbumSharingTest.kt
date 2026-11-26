@@ -46,6 +46,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
@@ -84,6 +85,8 @@ class PhotoAlbumSharingTest {
     @Volatile private var samsPending = "[]"
     @Volatile private var addManyKind = "skipped"
     private val missingAlbums = mutableSetOf<Uuid>()
+    private val revokeFails = mutableSetOf<String>()
+    private val bilbo = OdinId("bilbo.test")
     // Each one's own connection, over samsConnection.
     private val statuses = mutableMapOf<String, String>()
     // Each one's own enrolment answer, over addManyKind.
@@ -167,6 +170,8 @@ class PhotoAlbumSharingTest {
                 statuses[asked] ?: samsConnection
             }
             // A collaborative drive can't take shares; everyone else has no Photos drive yet.
+            // A server that's down for now.
+            path.endsWith("/public-key") && "/peer/${bilbo.domainName}/" in path -> return@MockEngine respond("{}", HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json"))
             path.endsWith("/public-key") && "/peer/${merry.domainName}/" in path -> """{"publicKeyJwk":"{}","isZeroKnowledge":false}"""
             path.endsWith("/public-key") -> return@MockEngine respond("{}", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
             path.endsWith("/circles/create") -> {
@@ -188,7 +193,11 @@ class PhotoAlbumSharingTest {
                 enrolled += asked["circleId"]!!.jsonPrimitive.content to ids
                 ids.joinToString(prefix = """{"outcomes":[""", postfix = "]}") { """{"odinId":"$it","kind":"${kinds[it] ?: addManyKind}"}""" }
             }
-            path.endsWith("/circles/revoke") -> "true".also { revoked += decrypted(call).jsonObject["odinId"]!!.jsonPrimitive.content }
+            path.endsWith("/circles/revoke") -> {
+                val who = decrypted(call).jsonObject["odinId"]!!.jsonPrimitive.content
+                if (who in revokeFails) return@MockEngine respond("{}", HttpStatusCode.InternalServerError, headersOf(HttpHeaders.ContentType, "application/json"))
+                "true".also { revoked += who }
+            }
             path.endsWith("/circles/delete") -> "true"
             path.endsWith("/circles/pending") -> samsPending
             path.endsWith("/connections/circles") -> "[]"
@@ -508,6 +517,41 @@ class PhotoAlbumSharingTest {
         sharing.share(trip, group, PhotoAlbumAccess.View, expiresAt = null)
 
         assertEquals(listOf(listOf(sam.domainName, pippin.domainName)), addManyTo(photosCircle))
+    }
+
+    @Test
+    fun aGroupEditGoesOnWhenOneAddedsServerIsDown() = runTest {
+        reviewed()
+        kinds[bilbo.domainName] = "enrolled"
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam), pending = listOf(pippin))
+
+        val edit = sharing.setMembers(group, listOf(sam, bilbo))
+
+        assertEquals(listOf(pippin), edit.removed)
+        assertEquals(listOf(bilbo), edit.joined, "their key is sealed by the upkeep once their server answers")
+    }
+
+    @Test
+    fun aGroupEditWhoseRemovalFailsAddsNoOne() = runTest {
+        reviewed()
+        kinds[rosie.domainName] = "enrolled"
+        revokeFails += pippin.domainName
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam), pending = listOf(pippin))
+
+        assertFails { sharing.setMembers(group, listOf(sam, rosie)) }
+
+        assertEquals(emptyList(), addManyTo(groupCircle), "no one joins to be left in, and untold, by a failed edit")
+    }
+
+    @Test
+    fun aNewGroupWithOneWhoseServerIsDownIsMadeAllTheSame() = runTest {
+        reviewed()
+        kinds[bilbo.domainName] = "enrolled"
+        kinds[sam.domainName] = "enrolled"
+
+        val (group, _) = sharing.shareWithNewGroup(trip, "Trip", listOf(sam, bilbo), PhotoAlbumAccess.View, expiresAt = null)
+
+        assertEquals(listOf(bilbo, sam), group.members)
     }
 
     private suspend fun decrypted(call: Call) =

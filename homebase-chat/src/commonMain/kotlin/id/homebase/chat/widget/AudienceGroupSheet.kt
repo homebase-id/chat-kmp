@@ -113,7 +113,7 @@ private fun EditMembers(group: AudienceGroup, saving: Boolean, enabled: Boolean,
     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
         items(people, key = { it.domainName }) { person ->
             val checked = person.domainName in chosenSet
-            PersonCheckRow(person, checked, enabled = !saving) { chosen = if (checked) chosen - person.domainName else chosen + person.domainName }
+            PersonCheckRow(person, checked, enabled = enabled && !saving) { chosen = if (checked) chosen - person.domainName else chosen + person.domainName }
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
