@@ -23,6 +23,7 @@ import kotlinx.io.files.Path
 expect fun getUriHandler(): FileSystemHandler
 
 interface FileSystemHandler {
+    /** Every failed open calls [onError]: a URL with no scheme, one the platform can't parse, or one no app can open. */
     fun openUrl(url: String, onError: (Throwable) -> Unit = {})
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     /** Opens [file] in another app; web: downloads the file. iOS has no default app, so it always shows its Open In menu, whatever [showChooser]. */
@@ -205,3 +206,7 @@ fun FileOperationsProvider.deleteQuietly(path: String) {
 
 // kotlinx.io's Path collapses `content://` to `content:/`; the file providers need it back.
 private fun Path.sourcePath(): String = toString().let { if (it.startsWith("content:/") && !it.startsWith("content://")) "content://${it.removePrefix("content:/")}" else it }
+
+private val urlScheme = Regex("^[A-Za-z][A-Za-z0-9+.-]*:")
+
+internal fun hasUrlScheme(url: String): Boolean = urlScheme.containsMatchIn(url)

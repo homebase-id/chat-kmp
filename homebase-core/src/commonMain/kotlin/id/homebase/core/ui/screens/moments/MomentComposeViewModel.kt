@@ -11,11 +11,13 @@ import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.services.builder.AttachmentInput
 import id.homebase.core.clipboard.platformFileFromPath
+import id.homebase.core.files.toUploadPath
 import id.homebase.core.moments.services.MediaInfo
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.api.file.contentType
 import id.homebase.api.file.resolveContentType
+import id.homebase.api.util.isBlobUrl
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import io.github.vinceglb.filekit.name
@@ -408,38 +410,39 @@ internal fun deriveMomentInstant(attachments: List<AttachmentPendingFile>): Inst
  * `AttachmentInput`. Mirrors the chat send path's mapping (see
  * `ConversationListViewModel.handleSendFile`).
  */
-internal fun AttachmentPendingFile.toAttachmentInput(): AttachmentInput = when (this) {
+internal suspend fun AttachmentPendingFile.toAttachmentInput(fileOps: FileOperationsProvider): AttachmentInput = when (this) {
     is AttachmentPendingFile.File -> AttachmentInput(
-        filePath = file.toString(),
+        filePath = file.toUploadPath(fileOps),
         contentType = file.contentType(),
         displayName = file.name,
     )
 
     is AttachmentPendingFile.FileImage -> AttachmentInput(
-        filePath = file.toString(),
+        filePath = file.toUploadPath(fileOps),
         contentType = file.contentType(),
         displayName = file.name,
     )
 
     is AttachmentPendingFile.FileVideo -> AttachmentInput(
-        filePath = file.toString(),
+        filePath = file.toUploadPath(fileOps),
         contentType = file.contentType(),
         displayName = file.name,
         trimStartMs = trimStartMs,
         trimEndMs = trimEndMs,
+        inputBlobUrl = playablePath?.takeIf { it.isBlobUrl() },
     )
 
     is AttachmentPendingFile.Gallery -> AttachmentInput(
-        filePath = image.file.toString(),
+        filePath = image.file.toUploadPath(fileOps),
         contentType = resolveContentType(image.fileName),
         displayName = image.fileName,
     )
 
     is AttachmentPendingFile.Audio -> AttachmentInput(
-        filePath = audioFile.toString(),
+        filePath = audioFile.toUploadPath(fileOps),
         contentType = audioFile.contentType(),
         displayName = audioFile.name,
-        waveformFile = waveformFile?.toString(),
+        waveformFile = waveformFile?.toUploadPath(fileOps),
         audioLengthSeconds = lengthSeconds,
     )
 }
