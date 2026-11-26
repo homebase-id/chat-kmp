@@ -142,7 +142,6 @@ import id.homebase.core.audio.getProximityAudioRouter
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.auth.toConnectionStatus
 import id.homebase.core.avatars.OwnerAvatarStatus
-import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.util.PlatformInfo
 import id.homebase.core.vault.VaultPreferences
 import id.homebase.api.client.diagnostics.ServerIpCapture
@@ -512,7 +511,7 @@ val appModule = module {
             },
             recordEvent = { peer, event -> recordCallEvent(get(), get(), peer, event) },
             ringback = platformRingbackTone(),
-            networkChanges = get<NetworkMonitor>().defaultNetworkChanges,
+            networkMonitor = get(),
         )
     }
     single { CallsPreferences(get()) }

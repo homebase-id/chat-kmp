@@ -23,6 +23,7 @@ class CallNetworkChangeTest {
     private val calleeConnecting = step(incoming, CallEvent.UserAccept).state
     private val calleeConnected = step(calleeConnecting, connectedMedia).state
     private val calleeReconnecting = step(calleeConnected, CallEvent.Media(MediaEvent.Disconnected)).state
+    private val callerRestarted = step(callerConnected, CallEvent.NetworkChanged).state
 
     @Test
     fun connectedCallerRestartsIceAndStaysConnected() {
@@ -45,15 +46,12 @@ class CallNetworkChangeTest {
     fun aPendingRestartIgnoresTheChange() {
         assertTrue(callerReconnecting.restartPending)
         assertEquals(CallTransition(callerReconnecting), step(callerReconnecting, CallEvent.NetworkChanged))
-
-        val restarted = step(callerConnected, CallEvent.NetworkChanged).state
-        assertEquals(CallTransition(restarted), step(restarted, CallEvent.NetworkChanged))
+        assertEquals(CallTransition(callerRestarted), step(callerRestarted, CallEvent.NetworkChanged))
     }
 
     @Test
     fun theAnsweredRestartLetsTheNextChangeRestartAgain() {
-        val restarted = step(callerConnected, CallEvent.NetworkChanged).state
-        val answered = step(restarted, fromSam(CallSignal.RestartAnswer(c, "ans2"))).state
+        val answered = step(callerRestarted, fromSam(CallSignal.RestartAnswer(c, "ans2"))).state
         assertEquals(listOf<CallEffect>(CallEffect.RestartIce), step(answered, CallEvent.NetworkChanged).effects)
     }
 

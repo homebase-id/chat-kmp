@@ -5,6 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
+import id.homebase.core.util.NetworkMonitor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -17,7 +18,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -42,7 +42,7 @@ class CallService(
     private val ringback: RingbackTone,
     private val recordEvent: suspend (peer: String, event: CallEventDescriptor) -> Unit = { _, _ -> },
     private val onCallActiveChanged: (Boolean) -> Unit = {},
-    private val networkChanges: Flow<Unit> = emptyFlow(),
+    private val networkMonitor: NetworkMonitor,
 ) : CallSession, CallPushTarget {
     val available: Boolean get() = engineFactory != null
 
@@ -113,7 +113,7 @@ class CallService(
             engineFactory = engineFactory,
             scope = CoroutineScope(scope.coroutineContext + job),
             iceServers = iceServers,
-            networkChanges = networkChanges,
+            networkChanges = networkMonitor.defaultNetworkChanges,
         )
     }
 

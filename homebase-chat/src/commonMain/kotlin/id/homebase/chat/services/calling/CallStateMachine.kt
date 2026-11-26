@@ -395,8 +395,6 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     // has not seen: the caller's link can report up while the peer's checks are rejected.
     private fun CallState.restarting() = if (direction == CallDirection.Outgoing) copy(restartPending = true) else this
 
-    // The live candidate pair sits on the old network: restarting now beats waiting seconds for ICE to report it dead,
-    // and is the only way onto a better network while the old one still works.
     private fun networkChanged(s: CallState): CallTransition {
         if ((s.phase != CallPhase.Connected && s.phase != CallPhase.Reconnecting) || s.restartPending) return CallTransition(s)
         return CallTransition(s.restarting(), restartIce(s))

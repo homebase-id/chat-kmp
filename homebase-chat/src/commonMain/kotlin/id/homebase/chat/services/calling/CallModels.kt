@@ -4,7 +4,7 @@ const val RING_TIMEOUT_MS = 45_000L
 const val CONNECT_TIMEOUT_MS = 30_000L
 const val RECONNECT_TICK_MS = 5_000L
 const val OFFER_REPUBLISH_MS = 250L
-// Long enough for a flapping link to settle on one network, short against the seconds ICE takes to notice a dead one.
+// A flapping link settles on one network before ICE restarts; ICE itself takes ~6 s to notice a dead path.
 const val NETWORK_SETTLE_MS = 1_500L
 
 // Must outlast ICE noticing the drop (~6 s) plus a phone rejoining wifi until DNS resolves again (~5 s+).
