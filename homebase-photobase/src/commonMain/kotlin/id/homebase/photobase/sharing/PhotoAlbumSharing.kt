@@ -601,9 +601,6 @@ class PhotoAlbumSharing(
 }
 
 /** An identity a person typed, or null when it can't be one. */
-fun typedIdentityOrNull(text: String): OdinId? =
-    text.trim().lowercase().takeIf { it.contains('.') }?.let { runCatching { OdinId(it) }.getOrNull() }
-
 val AlbumAudience.label: String
     get() = when (this) {
         is AlbumAudience.Person -> odinId.domainName

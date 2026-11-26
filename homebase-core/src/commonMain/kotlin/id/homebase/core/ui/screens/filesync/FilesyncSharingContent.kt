@@ -17,11 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.UploadFile
@@ -35,11 +32,9 @@ import id.homebase.resources.filesync_upload
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Computer
-import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,8 +42,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedTextField
@@ -57,12 +50,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,10 +64,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.common.OdinId
-import id.homebase.chat.services.convo.contact.ConnectionService
+import id.homebase.chat.widget.AudienceChoice
+import id.homebase.chat.widget.AudienceGroup
+import id.homebase.chat.widget.AudiencePicker
+import id.homebase.chat.widget.GroupTile
+import id.homebase.chat.widget.PersonCheckRow
+import id.homebase.chat.widget.rememberAudiencePickerState
+import id.homebase.chat.widget.rememberPeople
 import id.homebase.common.util.formatBytes
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
@@ -84,6 +81,7 @@ import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.core.widget.SettingsRow
 import id.homebase.core.widget.SettingsRowAction
 import id.homebase.resources.MR
+import id.homebase.resources.audience_picker_search
 import id.homebase.resources.cancel
 import id.homebase.resources.filesync_access_edit
 import id.homebase.resources.filesync_access_view
@@ -101,19 +99,11 @@ import id.homebase.resources.filesync_expiry_year
 import id.homebase.resources.filesync_group_edit_members
 import id.homebase.resources.filesync_group_members_body
 import id.homebase.resources.filesync_group_members_title
-import id.homebase.resources.filesync_group_name
-import id.homebase.resources.filesync_group_new_instead
-import id.homebase.resources.filesync_group_same_people
 import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
-import id.homebase.resources.filesync_share_groups
-import id.homebase.resources.filesync_share_no_people
 import id.homebase.resources.filesync_share_note
-import id.homebase.resources.filesync_share_people
 import id.homebase.resources.filesync_share_person
-import id.homebase.resources.filesync_share_search
 import id.homebase.resources.filesync_share_send
-import id.homebase.resources.filesync_share_with
 import id.homebase.resources.filesync_shared_by_none
 import id.homebase.resources.filesync_shared_files_failed
 import id.homebase.resources.filesync_shared_with
@@ -140,7 +130,6 @@ import kotlin.time.Instant
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
-import org.koin.compose.koinInject
 
 private val FilesyncAccess.choice: StringResource
     get() = when (this) {
@@ -204,84 +193,17 @@ private fun TurnOnSharing(turningOn: Boolean, onAction: (FilesyncUiAction) -> Un
 
 @Composable
 private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAction) -> Unit) {
-    val search = rememberTextFieldState()
-    var chosenGroup by rememberSaveable { mutableStateOf<String?>(null) }
-    var chosenPeople by rememberSaveable { mutableStateOf(emptyList<String>()) }
-    var groupName by rememberSaveable { mutableStateOf("") }
-    var newGroupInstead by rememberSaveable { mutableStateOf(false) }
+    val picker = rememberAudiencePickerState()
     var access by rememberSaveable { mutableStateOf(FilesyncAccess.View) }
     var expiry by rememberSaveable { mutableStateOf(FilesyncExpiry.Default) }
     var note by rememberSaveable { mutableStateOf("") }
-    val query = search.text.toString().trim()
-    val groups = remember(sharing.recipients, query) {
-        sharing.recipients.filterIsInstance<FilesyncAudience.Group>().filter { group ->
-            query.isEmpty() || group.name.contains(query, ignoreCase = true) || group.members.any { it.domainName.contains(query, ignoreCase = true) }
-        }
-    }
-    val people = rememberPeople(query, first = sharing.recipients.filterIsInstance<FilesyncAudience.Person>().mapTo(HashSet()) { it.odinId.domainName })
-    // Picking the people of a group already made shares with it, unless a new one is asked for.
-    val sameGroup = remember(sharing.recipients, chosenPeople) {
-        chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked ->
-            sharing.recipients.filterIsInstance<FilesyncAudience.Group>().firstOrNull { g -> g.members.map { it.domainName }.toSet() == picked }
-        }
-    }
-    val audience: FilesyncAudience? = when {
-        chosenGroup != null -> sharing.recipients.filterIsInstance<FilesyncAudience.Group>().firstOrNull { it.circleId.toString() == chosenGroup }
-        chosenPeople.size == 1 -> FilesyncAudience.Person(OdinId(chosenPeople.single()))
-        sameGroup != null && !newGroupInstead -> sameGroup
-        else -> null
-    }
-    val makesGroup = audience == null && chosenPeople.size > 1
+    val filesyncGroups = remember(sharing.recipients) { sharing.recipients.filterIsInstance<FilesyncAudience.Group>() }
+    val groups = remember(filesyncGroups) { filesyncGroups.map { AudienceGroup(it.circleId.toString(), it.name, it.members) } }
+    val first = remember(sharing.recipients) { sharing.recipients.filterIsInstance<FilesyncAudience.Person>().mapTo(HashSet()) { it.odinId.domainName } }
+    val choice = picker.choice(groups)
     LaunchedEffect(sharing.offered) { if (access !in sharing.offered) sharing.offered.firstOrNull()?.let { access = it } }
 
-    Text(stringResource(MR.string.filesync_share_with), style = MaterialTheme.typography.titleMedium)
-    MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.filesync_share_search), modifier = Modifier.fillMaxWidth())
-    if (groups.isEmpty() && people.isEmpty()) {
-        Text(stringResource(MR.string.filesync_share_no_people), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
-        if (groups.isNotEmpty()) {
-            item(key = "groups") { PickerHeading(MR.string.filesync_share_groups) }
-            items(groups, key = { it.circleId.toString() }) { group ->
-                val selected = chosenGroup == group.circleId.toString()
-                val members = group.members.joinToString { it.domainName }
-                ListItem(
-                    supportingContent = { Text(members, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingContent = { AudienceAvatar(group, 36.dp) },
-                    trailingContent = { RadioButton(selected = selected, onClick = null) },
-                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.selectable(selected = selected, role = Role.RadioButton) {
-                        chosenGroup = group.circleId.toString()
-                        chosenPeople = emptyList()
-                    },
-                ) { Text(group.name) }
-            }
-        }
-        if (people.isNotEmpty()) {
-            item(key = "people") { PickerHeading(MR.string.filesync_share_people) }
-            items(people, key = { it.domainName }) { person ->
-                val checked = person.domainName in chosenPeople
-                PersonCheckRow(person, checked) {
-                    chosenGroup = null
-                    newGroupInstead = false
-                    chosenPeople = if (checked) chosenPeople - person.domainName else chosenPeople + person.domainName
-                }
-            }
-        }
-    }
-    if (sameGroup != null && !newGroupInstead) {
-        Text(stringResource(MR.string.filesync_group_same_people, sameGroup.name), style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = { newGroupInstead = true }) { Text(stringResource(MR.string.filesync_group_new_instead)) }
-    }
-    if (makesGroup) {
-        OutlinedTextField(
-            value = groupName,
-            onValueChange = { groupName = it },
-            label = { Text(stringResource(MR.string.filesync_group_name)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
+    AudiencePicker(picker, groups, first)
     sharing.offered.forEach { option ->
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -308,11 +230,13 @@ private fun PersonPicker(sharing: FilesyncSharingState, onAction: (FilesyncUiAct
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = { onAction(FilesyncUiAction.DismissShareWith) }) { Text(stringResource(MR.string.cancel)) }
         Button(
-            enabled = (audience != null || (makesGroup && groupName.isNotBlank())) && access in sharing.offered && !sharing.sending,
+            enabled = choice != null && access in sharing.offered && !sharing.sending,
             onClick = {
-                when {
-                    audience != null -> onAction(FilesyncUiAction.ShareWith(audience, access, expiry, note))
-                    makesGroup -> onAction(FilesyncUiAction.ShareWithNewGroup(groupName.trim(), chosenPeople.map(::OdinId), access, expiry, note))
+                when (choice) {
+                    is AudienceChoice.Group -> filesyncGroups.firstOrNull { it.circleId.toString() == choice.id }?.let { onAction(FilesyncUiAction.ShareWith(it, access, expiry, note)) }
+                    is AudienceChoice.Person -> onAction(FilesyncUiAction.ShareWith(FilesyncAudience.Person(choice.odinId), access, expiry, note))
+                    is AudienceChoice.NewGroup -> onAction(FilesyncUiAction.ShareWithNewGroup(choice.name, choice.members, access, expiry, note))
+                    null -> Unit
                 }
             },
         ) {
@@ -405,26 +329,12 @@ private fun SharerSyncSwitch(sharer: OdinId, synced: Boolean, onAction: (Filesyn
     )
 }
 
-@Composable
-private fun PickerHeading(text: StringResource) {
-    Text(
-        stringResource(text),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-    )
-}
-
 /** A person's avatar, or for a group a round tile with the groups icon. */
 @Composable
 internal fun AudienceAvatar(audience: FilesyncAudience, size: Dp) {
     when (audience) {
         is FilesyncAudience.Person -> IdentityAvatar(audience.odinId, AvatarOptions(size = size))
-        is FilesyncAudience.Group -> Surface(shape = CircleShape, color = MaterialTheme.colorScheme.tertiaryContainer, modifier = Modifier.size(size)) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer, modifier = Modifier.size(size * 0.6f))
-            }
-        }
+        is FilesyncAudience.Group -> GroupTile(size)
     }
 }
 
@@ -515,28 +425,6 @@ internal fun FilesyncShareView(
     }
 }
 
-/** Connected people whose name has [query], and [extra] who may no longer be connected; those in [first] first. */
-@Composable
-private fun rememberPeople(query: String, first: Set<String>, extra: List<OdinId> = emptyList()): List<OdinId> {
-    val connectionService: ConnectionService = koinInject()
-    val connections by connectionService.connections.collectAsStateWithLifecycle()
-    return remember(connections, query, first, extra) {
-        (connections.map.values.filter { it.status == ConnectionStatus.Connected }.map { it.odinId } + extra).distinct()
-            .filter { query.isEmpty() || it.domainName.contains(query, ignoreCase = true) }
-            .sortedWith(compareBy<OdinId> { it.domainName !in first }.thenBy { it.domainName })
-    }
-}
-
-@Composable
-private fun PersonCheckRow(person: OdinId, checked: Boolean, onToggle: () -> Unit) {
-    ListItem(
-        leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
-        trailingContent = { Checkbox(checked = checked, onCheckedChange = null) },
-        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.toggleable(value = checked, role = Role.Checkbox) { onToggle() },
-    ) { Text(person.domainName) }
-}
-
 // A shared list's failure, loading and empty states; [list] once there is something to show.
 @Composable
 private fun SharedFilesBody(failed: Boolean, count: Int?, empty: StringResource, list: @Composable () -> Unit) {
@@ -562,7 +450,7 @@ private fun GroupMembersSheet(group: FilesyncAudience.Group, onDismiss: () -> Un
         Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(MR.string.filesync_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(MR.string.filesync_group_members_body, group.name), style = MaterialTheme.typography.bodyMedium)
-            MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.filesync_share_search), modifier = Modifier.fillMaxWidth())
+            MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.audience_picker_search), modifier = Modifier.fillMaxWidth())
             LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
                 items(people, key = { it.domainName }) { person ->
                     val checked = person.domainName in chosen

@@ -10,7 +10,7 @@ import id.homebase.photobase.sharing.AlbumShared
 import id.homebase.photobase.sharing.PhotoAlbumAccess
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotoSharingException
-import id.homebase.photobase.sharing.typedIdentityOrNull
+import id.homebase.chat.widget.AudienceChoice
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -27,15 +27,16 @@ data class AlbumShareUiState(
     /** Null until read. */
     val recipients: List<AlbumShareRecipient>? = null,
     val busy: Boolean = false,
-    val identity: String = "",
     val access: PhotoAlbumAccess = PhotoAlbumAccess.View,
-    val identityInvalid: Boolean = false,
+    /** The groups made for sharing albums, to share this one with too. */
+    val groups: List<AlbumAudience.Group> = emptyList(),
 )
 
 sealed interface AlbumShareEvent {
     data class OpenUrl(val url: String) : AlbumShareEvent
     data class OpenSignIn(val url: String) : AlbumShareEvent
     data object Failed : AlbumShareEvent
+    data object Shared : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
     /** Shared, but the chat message telling them didn't go. */
@@ -44,9 +45,8 @@ sealed interface AlbumShareEvent {
 
 sealed interface AlbumShareUiAction {
     data object SignIn : AlbumShareUiAction
-    data class Identity(val text: String) : AlbumShareUiAction
     data class Access(val access: PhotoAlbumAccess) : AlbumShareUiAction
-    data object Share : AlbumShareUiAction
+    data class Share(val choice: AudienceChoice) : AlbumShareUiAction
     data class Withdraw(val recipient: AlbumShareRecipient) : AlbumShareUiAction
 }
 
@@ -77,9 +77,8 @@ class AlbumShareViewModel(
     fun onAction(action: AlbumShareUiAction) {
         when (action) {
             AlbumShareUiAction.SignIn -> signIn()
-            is AlbumShareUiAction.Identity -> _uiState.update { it.copy(identity = action.text, identityInvalid = false) }
             is AlbumShareUiAction.Access -> _uiState.update { it.copy(access = action.access) }
-            AlbumShareUiAction.Share -> share()
+            is AlbumShareUiAction.Share -> share(action.choice)
             is AlbumShareUiAction.Withdraw -> busy { sharing.withdraw(albumId, action.recipient.audience) }
         }
     }
@@ -120,13 +119,17 @@ class AlbumShareViewModel(
         load()
     }
 
-    private fun share() {
+    private fun share(choice: AudienceChoice) {
         val state = _uiState.value
-        val person = typedIdentityOrNull(state.identity) ?: return _uiState.update { it.copy(identityInvalid = true) }
         busy {
-            val shared = sharing.share(albumId, AlbumAudience.Person(person), state.access, expiresAt = null)
-            _uiState.update { it.copy(identity = "") }
-            val untold = tell(listOf(person), shared, state.access)
+            val audience = when (choice) {
+                is AudienceChoice.Group -> state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy
+                is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId)
+                is AudienceChoice.NewGroup -> sharing.createGroup(choice.name, choice.members)
+            }
+            val shared = sharing.share(albumId, audience, state.access, expiresAt = null)
+            _events.send(AlbumShareEvent.Shared)
+            val untold = tell(audience.members, shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }
@@ -154,7 +157,9 @@ class AlbumShareViewModel(
     }
 
     private suspend fun load() {
-        guarded { sharing.sharedWith(albumId) }?.let { recipients -> _uiState.update { it.copy(recipients = recipients) } }
+        guarded { sharing.sharedWith(albumId) to sharing.audiences().filterIsInstance<AlbumAudience.Group>() }?.let { (recipients, groups) ->
+            _uiState.update { it.copy(recipients = recipients, groups = groups) }
+        }
     }
 
     private suspend fun <T> guarded(block: suspend () -> T): T? =

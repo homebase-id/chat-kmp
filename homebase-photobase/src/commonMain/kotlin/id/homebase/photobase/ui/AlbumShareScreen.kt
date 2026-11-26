@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.Button
@@ -14,7 +13,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -25,10 +23,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import id.homebase.chat.widget.AudienceGroup
+import id.homebase.chat.widget.AudiencePicker
+import id.homebase.chat.widget.rememberAudiencePickerState
+import id.homebase.photobase.sharing.AlbumAudience
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -41,8 +42,6 @@ import id.homebase.resources.MR
 import id.homebase.resources.photobase_share_access_add
 import id.homebase.resources.photobase_share_access_view
 import id.homebase.resources.photobase_share_failed
-import id.homebase.resources.photobase_share_identity
-import id.homebase.resources.photobase_share_identity_invalid
 import id.homebase.resources.photobase_share_none
 import id.homebase.resources.photobase_share_not_added
 import id.homebase.resources.photobase_share_not_told
@@ -68,6 +67,11 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
+    val picker = rememberAudiencePickerState()
+    val groups = remember(uiState.groups) { uiState.groups.map { AudienceGroup(it.circleId.toString(), it.name, it.members) } }
+    // The people it's shared with already come first.
+    val first = remember(uiState.recipients) { uiState.recipients.orEmpty().mapNotNullTo(HashSet()) { (it.audience as? AlbumAudience.Person)?.odinId?.domainName } }
+    val choice = picker.choice(groups)
     LifecycleResumeEffect(viewModel) {
         viewModel.resumed()
         onPauseOrDispose {}
@@ -77,6 +81,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
             when (event) {
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
                 is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
+                AlbumShareEvent.Shared -> picker.clear()
                 AlbumShareEvent.Failed -> snackbar.showSnackbar(getString(MR.string.photobase_share_failed))
                 is AlbumShareEvent.Waiting -> snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who))
                 is AlbumShareEvent.NotAdded -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_added, event.who))
@@ -98,18 +103,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
         LazyColumn(Modifier.padding(innerPadding)) {
             item(key = "add") {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = uiState.identity,
-                        onValueChange = { viewModel.onAction(AlbumShareUiAction.Identity(it)) },
-                        label = { Text(stringResource(MR.string.photobase_share_identity)) },
-                        isError = uiState.identityInvalid,
-                        supportingText = if (uiState.identityInvalid) {
-                            { Text(stringResource(MR.string.photobase_share_identity_invalid)) }
-                        } else null,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    AudiencePicker(picker, groups, first, typedFallback = true, enabled = !uiState.busy)
                     SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                         PhotoAlbumAccess.entries.forEachIndexed { index, access ->
                             SegmentedButton(
@@ -120,8 +114,8 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
                         }
                     }
                     Button(
-                        onClick = { viewModel.onAction(AlbumShareUiAction.Share) },
-                        enabled = !uiState.busy && uiState.identity.isNotBlank(),
+                        onClick = { choice?.let { viewModel.onAction(AlbumShareUiAction.Share(it)) } },
+                        enabled = !uiState.busy && choice != null,
                     ) { Text(stringResource(MR.string.photobase_share_send)) }
                 }
             }

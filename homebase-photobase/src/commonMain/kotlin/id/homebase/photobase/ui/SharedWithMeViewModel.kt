@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import id.homebase.api.client.drives.shares.SelectiveShareCircles
-import id.homebase.photobase.sharing.typedIdentityOrNull
+import id.homebase.chat.widget.typedIdentityOrNull
 import kotlin.uuid.Uuid
 
 /** Why a sharer's albums didn't open. */
