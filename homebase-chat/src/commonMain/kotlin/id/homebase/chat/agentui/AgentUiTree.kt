@@ -380,24 +380,23 @@ data class AgentUiTree(
         private fun button(id: String, obj: JsonObject): AgentUiNode? {
             val label = obj.label("label") ?: ""
             if (label.isBlank()) return fail(missing("button '$id' has no label", obj, "label", "text", "markdown", "title"))
-            // An explicit JSON null counts as absent, for copy and action alike.
+            // An explicit JSON null counts as absent, for copy, url and action alike.
+            listOf("copy", "url", "action").filter { obj.present(it) != null }.takeIf { it.size > 1 }?.let { (a, b) ->
+                return fail("button '$id' has both $a and $b; a button does one thing")
+            }
             val copy = if (obj.present("copy") == null) null else {
                 val s = obj.strictString("copy")?.takeIf { it.isNotBlank() } ?: return fail("button '$id' copy must be a non-blank string")
                 val cp = s.codePointCount()
                 if (cp > AgentUiLimits.MAX_COPY_CP) return fail("button '$id' copy is $cp code points, limit ${AgentUiLimits.MAX_COPY_CP}")
-                if (obj.present("action") != null) return fail("button '$id' has both copy and action; a copy button sends nothing")
                 s
             }
             val url = if (obj.present("url") == null) null else {
                 val s = obj.strictString("url") ?: return fail("button '$id' url must be a string")
                 if (s.length > AgentUiLimits.MAX_URL_LENGTH) return fail("button '$id' url is ${s.length} characters, limit ${AgentUiLimits.MAX_URL_LENGTH}")
                 if (!AgentUiLimits.HTTPS_URL.matches(s)) return fail("button '$id' url must be an https:// link with a host and no spaces")
-                if (copy != null) return fail("button '$id' has both url and copy; a button does one thing")
-                if (obj.present("action") != null) return fail("button '$id' has both url and action; a link button sends nothing")
                 s
             }
-            val action = if (copy == null && url == null) action(id, obj["action"]) else null
-            return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), action, copy, url)
+            return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), action(id, obj["action"]), copy, url)
         }
 
         private fun JsonObject.present(key: String): JsonElement? = this[key]?.takeUnless { it is JsonNull }

@@ -204,7 +204,7 @@ private fun toneColor(tone: Tone): Color = when (tone) {
 private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier) {
     when (node) {
         is AgentUiNode.Column -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(node.spacing.dp())) {
-            Children(node.children, env)
+            Children(node.children, env, divideListItems = true)
         }
         is AgentUiNode.Row -> FlowRow(
             modifier.fillMaxWidth(),
@@ -232,7 +232,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
         is AgentUiNode.Divider -> HorizontalDivider(modifier, color = MaterialTheme.colorScheme.outlineVariant)
         is AgentUiNode.ListNode -> when (node.direction) {
             ListDirection.Vertical -> Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Children(node.children, env)
+                Children(node.children, env, divideListItems = true)
             }
             ListDirection.Horizontal -> LazyRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(node.children, key = { it.id }) { child -> Box(Modifier.width(ListItemWidth)) { NodeView(child, env) } }
@@ -259,7 +259,7 @@ private fun NodeView(node: AgentUiNode, env: Env, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun Children(children: List<AgentUiNode>, env: Env, divideListItems: Boolean = true) {
+private fun Children(children: List<AgentUiNode>, env: Env, divideListItems: Boolean) {
     children.forEachIndexed { i, child ->
         key(child.id) {
             if (divideListItems && child is AgentUiNode.ListItem && children.getOrNull(i - 1) is AgentUiNode.ListItem) {
@@ -331,7 +331,7 @@ private fun BadgeView(node: AgentUiNode.Badge, modifier: Modifier) {
 
 @Composable
 private fun CardBody(children: List<AgentUiNode>, env: Env, spacing: Arrangement.Vertical, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth(), verticalArrangement = spacing) { Children(children, env) }
+    Column(modifier.fillMaxWidth(), verticalArrangement = spacing) { Children(children, env, divideListItems = true) }
 }
 
 @Composable

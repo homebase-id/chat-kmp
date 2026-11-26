@@ -479,7 +479,7 @@ class AgentUiTreeTest {
         assertReason("button 'root' url must be a string", button("5"))
         assertReason("button 'root' url is 2001 characters, limit 2000", button("\"https://a.example/${"x".repeat(1983)}\""))
         assertReason("button 'root' has both url and action", button("\"https://acme.example\"", ""","action":{"id":"go"}"""))
-        assertReason("button 'root' has both url and copy", button("\"https://acme.example\"", ""","copy":"x""""))
+        assertReason("button 'root' has both copy and url", button("\"https://acme.example\"", ""","copy":"x""""))
         assertNull(assertIs<AgentUiNode.Button>(valid(button("null", ""","action":{"id":"go"}""")).root).url)
     }
 

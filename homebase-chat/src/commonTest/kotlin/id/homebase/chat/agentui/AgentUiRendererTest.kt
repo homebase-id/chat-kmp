@@ -53,10 +53,8 @@ class AgentUiRendererTest {
                     answeredActionIds = answered,
                 )
             }
-            val withUri = @androidx.compose.runtime.Composable {
-                if (uriHandler == null) view() else CompositionLocalProvider(LocalUriHandler provides uriHandler) { view() }
-            }
-            if (clipboard == null) withUri() else CompositionLocalProvider(LocalClipboard provides clipboard) { withUri() }
+            val locals = listOfNotNull(clipboard?.let { LocalClipboard provides it }, uriHandler?.let { LocalUriHandler provides it })
+            CompositionLocalProvider(*locals.toTypedArray()) { view() }
         }
     }
 

@@ -118,7 +118,7 @@ private fun AgentUiNode.collectText(out: MutableList<String>) {
         is AgentUiNode.Facts -> items.forEach { out += "${it.label}\t${it.value}" }
         is AgentUiNode.ListItem -> {
             listOfNotNull(title.takeIf { it.isNotBlank() }, subtitle, caption).forEach(out::add)
-            trailing?.collectText(out)
+            children()?.forEach { it.collectText(out) }
         }
         else -> children()?.forEach { it.collectText(out) }
     }
