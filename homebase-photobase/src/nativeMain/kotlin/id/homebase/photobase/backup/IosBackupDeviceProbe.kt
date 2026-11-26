@@ -34,7 +34,7 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
 
     override suspend fun state(): DeviceState {
         val (hasNetwork, isUnmetered) = networkPath()
-        // UIDevice is main-thread only; callers poll from IO.
+        // UIDevice is main-thread only.
         val (batteryState, level) = withContext(Dispatchers.Main) {
             val device = UIDevice.currentDevice
             device.batteryMonitoringEnabled = true
