@@ -47,7 +47,7 @@ actual fun rememberDocumentScanner(onPages: (List<ByteArray>) -> Unit): Document
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Logger.w(TAG) { "could not read scanned pages: ${e.message}" }
+                Logger.w(tag = TAG) { "could not read scanned pages: ${e.message}" }
                 return@launch
             }
             currentOnPages(pages)
@@ -69,7 +69,7 @@ actual fun rememberDocumentScanner(onPages: (List<ByteArray>) -> Unit): Document
             GmsDocumentScanning.getClient(options).getStartScanIntent(activity)
                 .addOnSuccessListener { launcher.launch(IntentSenderRequest.Builder(it).build()) }
                 .addOnFailureListener {
-                    Logger.w(TAG) { "scanner unavailable: ${it.message}" }
+                    Logger.w(tag = TAG) { "scanner unavailable: ${it.message}" }
                     onNoPages()
                 }
         }

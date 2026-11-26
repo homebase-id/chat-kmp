@@ -94,7 +94,7 @@ val apiModule = module {
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
     // Last-known-good owner-server IP: the store + the production-capture bridge (its init arms
-    // the global registry the Android OkHttp EventListener forwards to).
+    // the global registry the Android and desktop OkHttp EventListener forwards to).
     singleOf(::ServerIpStore)
     single { ServerIpCapture(get(), get(), get()) }
     singleOf(::PublicIdentityRepository)

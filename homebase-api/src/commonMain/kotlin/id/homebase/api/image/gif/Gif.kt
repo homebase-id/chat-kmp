@@ -557,10 +557,10 @@ internal class GifWriter(
             for (y in 0 until height) {
                 val row = y * width
                 var left = 0
-                while (left < width && indices[row + left] == prev!![row + left]) left++
+                while (left < width && indices[row + left] == prev[row + left]) left++
                 if (left == width) continue
                 var right = width - 1
-                while (indices[row + right] == prev!![row + right]) right--
+                while (indices[row + right] == prev[row + right]) right--
                 if (left < x0) x0 = left
                 if (right > x1) x1 = right
                 if (y0 == height) y0 = y
@@ -577,7 +577,7 @@ internal class GifWriter(
                 val row = y * width
                 for (x in x0..x1) {
                     val i = row + x
-                    rect[k++] = if (indices[i] == prev!![i]) clear else indices[i]
+                    rect[k++] = if (indices[i] == prev[i]) clear else indices[i]
                 }
             }
         }
