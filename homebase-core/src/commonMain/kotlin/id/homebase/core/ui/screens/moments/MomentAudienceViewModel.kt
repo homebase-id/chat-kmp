@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.connections.RedactedCircleDefinition
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.core.moments.services.MomentCreateFlowState
@@ -40,6 +41,7 @@ class MomentAudienceViewModel(
     private val flowState: MomentCreateFlowState,
     private val contactRepository: ContactRepository,
     private val connectionService: ConnectionService,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel(), IdentityScoped {
 
     private val _uiState = MutableStateFlow(
@@ -194,7 +196,7 @@ class MomentAudienceViewModel(
                     // Editor stores AttachmentPendingFile so back-nav can
                     // rehydrate the composer; convert to AttachmentInput at
                     // the post boundary (HEIC/trim/etc. metadata flows through).
-                    attachments = draft.attachments.map { it.toAttachmentInput() },
+                    attachments = draft.attachments.map { it.toAttachmentInput(fileOperationsProvider) },
                     description = draft.description,
                     recipients = odinIds,
                     source = source,
