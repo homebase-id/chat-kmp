@@ -241,6 +241,7 @@ import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.ui.PhotoLibraryScreen
 import id.homebase.photobase.ui.AlbumShareScreen
+import id.homebase.photobase.ui.SharedAlbumScreen
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -332,6 +333,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -2474,6 +2476,8 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         onOpen = { navController.navigate(Route.PhotoGalleryView(it.key)) },
                                         onBack = { navController.popBackStack() },
+                                        sharedWithMe = koinViewModel(),
+                                        onOpenShared = { owner, albumId -> navController.navigate(Route.PhotoSharedAlbum(owner.domainName, albumId.toString())) },
                                     )
                                 }
                             }
@@ -2489,6 +2493,18 @@ fun AppNavHost(
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },
                                         onShareAlbum = { navController.navigate(Route.PhotoAlbumShare(it.toString())) },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoSharedAlbum> { backStackEntry ->
+                                if (isAuthenticated) {
+                                    val route = backStackEntry.toRoute<Route.PhotoSharedAlbum>()
+                                    val owner = OdinId(route.owner)
+                                    val albumId = Uuid.parse(route.albumId)
+                                    SharedAlbumScreen(
+                                        viewModel = koinViewModel(key = "shared-album-${route.owner}-$albumId", parameters = { parametersOf(owner, albumId) }),
+                                        onBack = { navController.popBackStack() },
                                     )
                                 }
                             }

@@ -228,6 +228,8 @@ import id.homebase.photobase.gallery.photosWithTagsApart
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotobaseSession
 import id.homebase.photobase.ui.AlbumShareViewModel
+import id.homebase.photobase.ui.SharedAlbumViewModel
+import id.homebase.photobase.ui.SharedWithMeViewModel
 import id.homebase.photobase.sharing.PhotoShareUpkeep
 import id.homebase.photobase.gallery.OpenGallery
 import id.homebase.photobase.gallery.PhotoGalleries
@@ -254,6 +256,7 @@ import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
@@ -1575,6 +1578,8 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
+    viewModel { SharedWithMeViewModel(get()) }
+    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get()) }
     viewModel { (albumId: Uuid) ->
         val credentials = get<CredentialsManager>()
         AlbumShareViewModel(
