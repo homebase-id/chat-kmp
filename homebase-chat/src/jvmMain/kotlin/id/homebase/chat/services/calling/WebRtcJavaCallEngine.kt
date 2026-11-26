@@ -61,8 +61,9 @@ import kotlinx.coroutines.withContext
 import id.homebase.api.coroutines.ioDispatcher
 
 /**
- * Desktop engine over webrtc-java. Pass [audioDevice] (e.g. a headless module) and [cameraSource] to avoid touching
- * real hardware.
+ * Desktop engine over webrtc-java. A supplied [audioDevice] (e.g. a headless module) lists no mics or speakers, since
+ * asking the host for them can block forever without sound hardware; with [renderVideo] false as well, no cameras are
+ * listed and no hot-plug listener is registered. [cameraSource] replaces the camera as the video source.
  */
 class WebRtcJavaCallEngine(
     iceServers: List<CallIceServer>,
@@ -74,7 +75,6 @@ class WebRtcJavaCallEngine(
     private val renderVideo: Boolean = true,
     private val ownsAudioDevice: Boolean = audioDevice == null,
 ) : CallEngine {
-    // A supplied module has no host mic or speaker behind it, and asking the host for them can block forever (e.g. in a container).
     private val hostAudio = audioDevice == null
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()

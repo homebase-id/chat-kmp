@@ -161,7 +161,7 @@ class WebRtcJavaCallEngineTest {
 
     @Test
     fun deviceListIsReportedGracefullyAndCloseUnregistersTheListenerTwiceOver() = nativeTest {
-        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule())
+        val engine = WebRtcJavaCallEngine(emptyList())
         val devices = engine.mediaDevices.devices.value
         val selected = engine.mediaDevices.selected.value
         MediaDeviceKind.entries.forEach { kind ->
@@ -208,7 +208,7 @@ class WebRtcJavaCallEngineTest {
     fun switchingMicAndSpeakerOnAConnectedCallKeepsItConnectedWithTheTrackEnabled() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val engines = mutableListOf<WebRtcJavaCallEngine>()
-        val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule()).also { engines += it } }
+        val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun).also { engines += it } }
         try {
             val net = LoopbackSignaling()
             val caller = CallController(frodo, net.endpoint(frodo), factory, scope)
