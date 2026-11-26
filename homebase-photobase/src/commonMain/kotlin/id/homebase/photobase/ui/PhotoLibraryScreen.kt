@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import id.homebase.api.common.OdinId
 import id.homebase.core.widget.NameDialog
-import id.homebase.photobase.gallery.PhotoAlbum
 import id.homebase.resources.photobase_share_identity
 import id.homebase.resources.photobase_share_identity_invalid
 import id.homebase.resources.photobase_share_send
@@ -153,7 +152,7 @@ private fun LazyGridScope.sharedWithMeSection(state: SharedWithMeUiState, onAdd:
             }
         }
         items(sharer.albums.orEmpty(), key = { "shared-${sharer.owner.domainName}-${it.id}" }) { album ->
-            AlbumCard(PhotoAlbum(album.id, album.name), onOpen = { onOpen(sharer.owner, album.id) }, modifier = Modifier.padding(8.dp))
+            SharedAlbumCard(album.name, sharer.covers[album.id], sharer.owner, onOpen = { onOpen(sharer.owner, album.id) }, modifier = Modifier.padding(8.dp))
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
+import id.homebase.photobase.gallery.toGalleryItem
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotoSharingException
 import id.homebase.photobase.sharing.SharedAlbum
@@ -15,12 +16,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 /** Why a sharer's albums didn't open. */
 enum class SharedProblem { NotReviewed, NotSealedYet, Failed }
 
-/** [albums] null while read, and when [problem] says why they couldn't be. */
-data class SharerAlbums(val owner: OdinId, val albums: List<SharedAlbum>? = null, val problem: SharedProblem? = null)
+/** [albums] null while read, and when [problem] says why they couldn't be; [covers] by album id, each its newest photo. */
+data class SharerAlbums(
+    val owner: OdinId,
+    val albums: List<SharedAlbum>? = null,
+    val problem: SharedProblem? = null,
+    val covers: Map<Uuid, SharedPhoto> = emptyMap(),
+)
 
 data class SharedWithMeUiState(
     /** Null until the sharers are read. */
@@ -41,9 +48,16 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
         viewModelScope.launch {
             val sharers = guarded { sharing.sharers() } ?: return@launch
             _uiState.update { it.copy(sharers = sharers.map { owner -> SharerAlbums(owner) }) }
-            sharers.map { owner -> async { owner to read(owner) } }.awaitAll().forEach { (owner, read) ->
-                _uiState.update { state -> state.copy(sharers = state.sharers?.map { if (it.owner == owner) read else it }) }
-            }
+            sharers.map { owner ->
+                async {
+                    val read = read(owner)
+                    show(read)
+                    // The names first: a cover is one more read over peer per album.
+                    val albums = read.albums ?: return@async
+                    val covers = albums.map { album -> async { coverOf(album)?.let { album.id to it } } }.awaitAll().filterNotNull().toMap()
+                    show(read.copy(covers = covers))
+                }
+            }.awaitAll()
         }
     }
 
@@ -59,6 +73,21 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
     }
 
     fun clearInvalid() = _uiState.update { it.copy(identityInvalid = false) }
+
+    private fun show(sharer: SharerAlbums) =
+        _uiState.update { state -> state.copy(sharers = state.sharers?.map { if (it.owner == sharer.owner) sharer else it }) }
+
+    // An album with no cover shows its icon, as an empty one of this identity's does.
+    private suspend fun coverOf(album: SharedAlbum): SharedPhoto? =
+        try {
+            sharing.sharedPhotos(album, cursor = null, pageSize = 1).first.firstOrNull()
+                ?.let { file -> file.toGalleryItem()?.let { SharedPhoto(file, it, addedBy = null) } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "${album.owner}'s album ${album.id} cover not read" }
+            null
+        }
 
     private suspend fun read(owner: OdinId): SharerAlbums =
         try {
