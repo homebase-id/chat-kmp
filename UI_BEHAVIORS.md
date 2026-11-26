@@ -29,3 +29,45 @@ sign-in) shows that it's working, every time.
   scope that outlives the screen. Work that only feeds the screen is cancelled with it.
 
 Example: `AlbumShareScreen`'s Share button and `AlbumShareViewModel.busy`.
+
+## 2. When a recipient is pending
+
+When an app (Photos, Filesync, or any add-on) adds someone to one of its circles, odin-core may only
+*deposit* the grant. It becomes real the next time that person's identity contacts yours (their app
+syncs, they send a message, they open something of yours). Until then, anything that needs them to
+hold the grant can't be done yet: sharing with them, giving them access, adding them to a group,
+letting them add or edit. The person is **pending**: added, but not reachable yet.
+
+This applies to every operation that names a recipient, not just sharing.
+
+- **Detect it before writing.** A recipient is pending when `SelectiveShareCircles.enroll` reports
+  them as deposited, or they're in the circle's pending list (`getPendingCircleMembers`) and not its
+  members (`getCircleMembers`). Check before the operation's write. Don't find out by catching the
+  server's refusal afterwards, and never show its error text ("isn't granted the drive Read…").
+- **It isn't an error.** The operation goes ahead for everyone who can be reached, ends normally
+  (the spinner stops), and says what happened to the pending ones. Never "Failed" or "Couldn't" for
+  them. Never retry in a loop from the screen, and never keep the user waiting on the pending person.
+- **Only say what's true.** The UI may say something will happen later only if the feature really
+  makes it happen: the operation is stored durably (on the drive, or in storage that survives a
+  restart) *and* a named upkeep step retries it until it succeeds or is cancelled. Without both,
+  it doesn't say "later".
+  - If the feature queues and retries it: "Sam will get this once they're next online. You don't
+    need to do anything." Use the operation's own words: "…will be able to add photos once…",
+    "…will join the group once…".
+  - If it doesn't: "Sam can't get this until they're next online. Try again later." Don't imply it
+    will happen by itself.
+  - Either way, name the person and what hasn't happened for them yet.
+- **Wherever recipients are listed** (shared with, group members, editors):
+  - Queued: list them with a "Waiting for Sam" label and a clock icon. Tapping it explains: "Sam
+    was added, but their Homebase hasn't been in touch since. This finishes automatically the next
+    time it is, usually when they open the app."
+  - Not queued: don't list them as if they had it, because nothing was done for them.
+  - Removing them works as for anyone else, and deletes anything queued for them.
+- **When queued work completes**, the upkeep finishes it with no action from the user. The label
+  changes to their normal status the next time the list is shown, with no notification. After 7 days
+  still pending, the label reads "Still waiting for Sam. Ask them to open Homebase."
+- **Each feature documents its own case** next to the operation: whether a pending recipient is
+  queued, where the entry is stored, and which upkeep step retries it. Until that's written, the
+  feature uses the "Try again later" wording.
+
+Today no feature queues a pending recipient, so every one uses "Try again later".
