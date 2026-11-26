@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.contacts.ContactInfoGateway
+import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.video.VideoThumbnailService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.chat.conversationlist.revokePlayableUrl
@@ -39,6 +40,7 @@ class PostComposeViewModel(
     private val credentialsManager: CredentialsManager,
     private val contactInfo: ContactInfoGateway,
     private val connectionProvider: ConnectionNetworkProvider,
+    private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PostComposeUiState())
@@ -140,7 +142,7 @@ class PostComposeViewModel(
                 postSender.createPost(
                     channelId = state.selectedChannelId,
                     caption = state.caption,
-                    attachments = state.attachments.map { it.toAttachmentInput() },
+                    attachments = state.attachments.map { it.toAttachmentInput(fileOperationsProvider) },
                     acl = postAcl(state.audience, state.selectedCircleIds.toList()),
                 )
                 _events.tryEmit(PostComposeEvent.Dismiss)
