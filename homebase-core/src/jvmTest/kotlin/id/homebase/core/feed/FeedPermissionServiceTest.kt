@@ -181,17 +181,59 @@ class FeedPermissionServiceTest {
         assertEquals(0, f.requestCount)
     }
 
-    @Test
-    fun peerAuthoredPost_degradesPermissive_withoutARequest() = runTest {
-        val f = fixture(okEngine())
-        assertEquals(CanReact.All, f.service.canReact(post(author = peer)))
-        assertEquals(0, f.requestCount, "no v2 over-peer security-context route exists to call")
+    private fun peerEngine(permission: String?, status: HttpStatusCode = HttpStatusCode.OK) = MockEngine { request ->
+        assertEquals("/api/v2/peer/$peer/auth/context", request.url.encodedPath)
+        if (status != HttpStatusCode.OK) {
+            respondError(status)
+        } else {
+            val body = if (permission == null) """{"caller":{"securityLevel":"connected"}}""" else contextJson(permission)
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
     }
 
-    // The degrade is permissive about grants only — the post's own reactAccess still applies.
+    @Test
+    fun peerGrantsReactAndComment_isAllowed() = runTest {
+        val f = fixture(peerEngine("react,comment"))
+        assertEquals(CanReact.All, f.service.canReact(post(author = peer)))
+    }
+
+    @Test
+    fun peerGrantsCommentOnly_isCommentOnly() = runTest {
+        val f = fixture(peerEngine("comment"))
+        assertEquals(CanReact.CommentOnly, f.service.canReact(post(author = peer)))
+    }
+
+    @Test
+    fun peerGrantsNothing_isNotAuthorized() = runTest {
+        val f = fixture(peerEngine(null))
+        assertEquals(CanReact.Denied(DenyReason.NotAuthorized), f.service.canReact(post(author = peer)))
+    }
+
+    @Test
+    fun peerFetchFails_isUnknown_andNotCached() = runTest {
+        val f = fixture(peerEngine(null, HttpStatusCode.InternalServerError))
+        assertEquals(CanReact.Denied(DenyReason.Unknown), f.service.canReact(post(author = peer)))
+        f.service.canReact(post(author = peer))
+        assertEquals(2, f.requestCount)
+    }
+
+    @Test
+    fun peerRouteMissingOnOlderServer_isUnknown() = runTest {
+        val f = fixture(peerEngine(null, HttpStatusCode.NotFound))
+        assertEquals(CanReact.Denied(DenyReason.Unknown), f.service.canReact(post(author = peer)))
+    }
+
+    @Test
+    fun peerContext_isCachedPerAuthor() = runTest {
+        val f = fixture(peerEngine("react,comment"))
+        f.service.canReact(post(author = peer))
+        f.service.canReact(post(author = peer))
+        assertEquals(1, f.requestCount)
+    }
+
     @Test
     fun peerAuthoredPostWithReactAccessOff_isDisabledOnPost() = runTest {
-        val f = fixture(okEngine())
+        val f = fixture(peerEngine("react,comment"))
         assertEquals(
             CanReact.Denied(DenyReason.DisabledOnPost),
             f.service.canReact(post(author = peer, reactAccess = ReactAccess.None)),

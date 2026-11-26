@@ -3,18 +3,10 @@ package id.homebase.core.feed.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
-import id.homebase.api.youauth.CallerContext
-import id.homebase.api.youauth.DriveGrant
-import id.homebase.api.youauth.DrivePermission
-import id.homebase.api.youauth.DriveReference
-import id.homebase.api.youauth.PermissionContext
-import id.homebase.api.youauth.PermissionGroup
-import id.homebase.api.youauth.PermissionedDrive
 import id.homebase.api.youauth.SecurityContext
 import id.homebase.api.youauth.SecurityContextProvider
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.uuid.Uuid
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -34,7 +26,7 @@ class FeedPermissionService(
     // Immutable map, always replaced — @Volatile makes the lock-free hit path safe; fetchLock only serialises
     // misses so a screenful of posts can't stampede the endpoint. Keyed by identity: the context is identity-scoped.
     @Volatile
-    private var localContexts: Map<OdinId, SecurityContext> = emptyMap()
+    private var contexts: Map<OdinId, SecurityContext> = emptyMap()
     private val fetchLock = Mutex()
 
     suspend fun canReact(post: FeedPostItem): CanReact = try {
@@ -48,7 +40,7 @@ class FeedPermissionService(
             post.channelId.toUuidOrNull() ?: FeedProtocol.PublicChannelDriveAlias
 
         val context =
-            if (author == self) localContext(self) else assumedPeerContext(channelDriveAlias)
+            contextFor(author, self)
 
         evaluateCanReact(
             securityContext = context,
@@ -67,45 +59,18 @@ class FeedPermissionService(
     }
 
     fun reset() {
-        localContexts = emptyMap()
+        contexts = emptyMap()
     }
 
-    private suspend fun localContext(self: OdinId): SecurityContext? {
-        localContexts[self]?.let { return it }
+    private suspend fun contextFor(identity: OdinId, self: OdinId): SecurityContext? {
+        contexts[identity]?.let { return it }
         // A failed fetch is deliberately not cached — it is transient, and caching it would pin
         // DenyReason.Unknown for the rest of the session.
         return fetchLock.withLock {
-            localContexts[self]
-                ?: securityContextProvider.getSecurityContext()
-                    ?.also { localContexts = localContexts + (self to it) }
+            contexts[identity]
+                ?: (if (identity == self) securityContextProvider.getSecurityContext()
+                else securityContextProvider.getPeerSecurityContext(identity))
+                    ?.also { contexts = contexts + (identity to it) }
         }
     }
-
-    // SERVER GAP: the over-peer security context exists only on v1, gated by [AuthorizeValidAppToken], which
-    // 401s this client's UnifiedV2 bearer. Until a v2 route lands, a followed identity's channel is assumed to
-    // grant React + Comment so the UI keeps offering the action instead of falsely blocking it. Everything the
-    // post itself carries is still honoured — reactAccess: false still yields DenyReason.DisabledOnPost.
-    private fun assumedPeerContext(channelDriveAlias: Uuid): SecurityContext = SecurityContext(
-        caller = CallerContext(securityLevel = "connected"),
-        permissionContext = PermissionContext(
-            permissionGroups = listOf(
-                PermissionGroup(
-                    driveGrants = listOf(
-                        DriveGrant(
-                            permissionedDrive = PermissionedDrive(
-                                drive = DriveReference(
-                                    alias = channelDriveAlias.toString(),
-                                    type = FeedProtocol.ChannelDriveType.toString(),
-                                ),
-                                permission = listOf(
-                                    DrivePermission.React,
-                                    DrivePermission.Comment,
-                                ),
-                            ),
-                        ),
-                    ),
-                ),
-            ),
-        ),
-    )
 }

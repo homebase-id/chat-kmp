@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ApiResponse
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -34,15 +35,20 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
      * For owner API type, returns a minimal context with owner security level. For app API type,
      * fetches from /security/context and parses drive permissions.
      */
-    suspend fun getSecurityContext(): SecurityContext? {
+    suspend fun getSecurityContext(): SecurityContext? = fetchContext("/auth/context")
+
+    /**
+     * What [odinId] grants the signed-in identity. Null on any failure, including a 404 from a server
+     * that predates the route.
+     */
+    suspend fun getPeerSecurityContext(odinId: OdinId): SecurityContext? =
+        fetchContext("/peer/$odinId/auth/context")
+
+    private suspend fun fetchContext(path: String): SecurityContext? {
         return try {
-
-            val creds = requireCreds()
-            val url = apiUrl(creds.domain, "/auth/context")
-
             val credentials = requireCreds()
             val response: ApiResponse = encryptedGet(
-                url = url,
+                url = apiUrl(credentials.domain, path),
                 token = credentials.accessToken,
                 secret = credentials.secret
             )
@@ -50,7 +56,7 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
             throwForFailure(response)
             parseSecurityContext(response.body)
         } catch (e: Exception) {
-            Logger.e(throwable = e, tag = TAG) { "Error fetching security context: ${e.message}" }
+            Logger.e(throwable = e, tag = TAG) { "Error fetching security context ($path): ${e.message}" }
             null
         }
     }
