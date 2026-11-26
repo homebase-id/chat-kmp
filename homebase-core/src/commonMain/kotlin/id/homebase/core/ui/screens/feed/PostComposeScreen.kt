@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -117,6 +118,7 @@ import id.homebase.resources.feed_compose_remove_attachment
 import id.homebase.resources.feed_compose_title
 import id.homebase.resources.menu_back
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -457,7 +459,14 @@ private fun AttachmentThumbnailRow(
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.align(Alignment.BottomStart).size(120.dp),
                 ) {
-                    AsyncImage(
+                    if (attachment is AttachmentPendingFile.File) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.InsertDriveFile,
+                                contentDescription = attachment.file.name,
+                            )
+                        }
+                    } else AsyncImage(
                         imageLoader = imageLoader,
                         model = when (attachment) {
                             is AttachmentPendingFile.FileImage -> attachment.file
@@ -710,8 +719,8 @@ internal fun PlatformFile.toPendingMedia(
 ): AttachmentPendingFile {
     val type = contentType()
     return when {
-        canReadVideo(type) -> AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
-        type.startsWith("image/") -> AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
-        else -> AttachmentPendingFile.File(Uuid.generateV7(), this, sourceContentType = type)
+        canReadVideo(type) -> AttachmentPendingFile.FileVideo(Uuid.generateV7(), this, sourceContentType = type)
+        type.startsWith("video/") -> AttachmentPendingFile.File(Uuid.generateV7(), this, sourceContentType = type)
+        else -> AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
     }
 }

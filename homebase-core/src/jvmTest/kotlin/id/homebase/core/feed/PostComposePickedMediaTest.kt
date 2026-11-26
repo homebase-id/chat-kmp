@@ -28,4 +28,9 @@ class PostComposePickedMediaTest {
         val file = assertIs<AttachmentPendingFile.File>(picked("picked.mkv").toPendingMedia { false })
         assertEquals("video/x-matroska", file.sourceContentType)
     }
+
+    @Test
+    fun aPickWithNoKnownTypeStaysAnImage() {
+        assertIs<AttachmentPendingFile.FileImage>(picked("picked").toPendingMedia())
+    }
 }
