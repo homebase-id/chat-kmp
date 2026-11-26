@@ -15,9 +15,16 @@ import androidx.core.content.ContextCompat
 
 class AndroidBackupDeviceProbe(private val context: Context) : BackupDeviceProbe {
 
-    override suspend fun state(): DeviceState {
+    private fun networkCapabilities(): NetworkCapabilities? {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        val capabilities = connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+        return connectivity.getNetworkCapabilities(connectivity.activeNetwork)
+    }
+
+    override suspend fun isUnmetered(): Boolean =
+        networkCapabilities()?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
+
+    override suspend fun state(): DeviceState {
+        val capabilities = networkCapabilities()
         val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         val status = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1

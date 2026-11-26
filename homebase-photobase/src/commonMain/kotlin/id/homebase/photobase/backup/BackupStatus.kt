@@ -103,8 +103,8 @@ data class DeviceState(
  * Contract for every implementation: [state] answers for the moment of the call and [libraryAccess]
  * never raises the system permission dialog. Neither one suspends for longer than a few seconds.
  * [state] fills in `freeStorageBytes` and `isOverheated` on every platform that backs up; it's
- * polled every few seconds during a run, so both must be cheap. [isUnmetered] answers from the network alone
- * wherever reading the rest of [state] is unsafe off the main thread.
+ * polled every few seconds during a run, so both must be cheap. [state] and [isUnmetered] may be called from any
+ * thread; [isUnmetered] reads only the network, as chat's send loop polls it on every drain.
  */
 interface BackupDeviceProbe {
     suspend fun state(): DeviceState
@@ -117,7 +117,7 @@ interface BackupDeviceProbe {
     /** True when the OS won't launch the app in the background for backup. */
     suspend fun isBackgroundRefreshOff(): Boolean = false
 
-    suspend fun isUnmetered(): Boolean = state().isUnmetered
+    suspend fun isUnmetered(): Boolean
 }
 
 suspend fun BackupDeviceProbe.holdsBulkSends(settings: BackupSettings): Boolean = settings.wifiOnly && !isUnmetered()

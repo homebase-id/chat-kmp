@@ -59,6 +59,7 @@ internal class FakeProbe(
     var locationsWithheld: Boolean = false,
 ) : BackupDeviceProbe {
     override suspend fun state() = state
+    override suspend fun isUnmetered() = state.isUnmetered
     override fun libraryAccess() = access
     override fun photoLocationsWithheld() = locationsWithheld
 }
