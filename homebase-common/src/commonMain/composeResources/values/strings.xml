@@ -3538,7 +3538,6 @@
     <string name="photobase_comments_open">Comments and reactions</string>
     <string name="photobase_comments_empty">No comments yet</string>
     <string name="photobase_comments_hint">Add a comment</string>
-    <string name="photobase_comments_editing">Editing your comment</string>
     <string name="photobase_comments_more">Comment options</string>
     <string name="photobase_comments_byline">%1$s · %2$s</string>
     <string name="photobase_comments_failed">Couldn't save your comment or reaction. Try again.</string>

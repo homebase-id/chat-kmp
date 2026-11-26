@@ -423,7 +423,7 @@ private fun GalleryViewer(
                 onDelete = onMoveToBin,
                 extraActions = {
                     if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
-                    val photoId = item.uniqueId
+                    val photoId = item.globalTransitId
                     if (onComments != null && photoId != null) CommentsButton { onComments(photoId) }
                 },
                 onDismiss = close,

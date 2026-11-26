@@ -29,6 +29,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlin.uuid.Uuid
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -85,7 +88,22 @@ fun SharedAlbumScreen(
     }
     val opened = uiState.opened
     if (opened != null && uiState.photos.isNotEmpty()) {
-        SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, onClose = { viewModel.open(null) }, photoActions)
+        var commentsOn by remember { mutableStateOf<Uuid?>(null) }
+        commentsOn?.let { photoId ->
+            PhotoCommentsSheet(
+                photoId = photoId,
+                comments = remember(photoId) { viewModel.commentsOf(photoId) },
+                reactionsOf = viewModel::reactionsOf,
+                onAction = viewModel::onSocial,
+                onDismiss = { commentsOn = null },
+                canDelete = false,
+            )
+        }
+        SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, onClose = { viewModel.open(null) }) { photo ->
+            photoActions(photo)
+            val photoId = photo.file.fileMetadata.globalTransitId
+            if (viewModel.canComment && photoId != null) CommentsButton { commentsOn = photoId }
+        }
         return
     }
     Scaffold(

@@ -20,6 +20,12 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.emptyFlow
+import id.homebase.photobase.social.PhotoActionService
+import id.homebase.photobase.social.PhotoComment
+import id.homebase.photobase.social.PhotoCommentsService
+import id.homebase.photobase.social.PhotoReactions
+import id.homebase.photobase.social.PhotoTarget
 import id.homebase.photobase.sharing.SharedAlbum
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -63,6 +69,8 @@ class SharedAlbumViewModel(
     private val sharing: PhotoAlbumSharing,
     private val memberWrites: PhotoMemberWrites? = null,
     private val fileOps: FileOperationsProvider? = null,
+    private val comments: PhotoCommentsService? = null,
+    private val actions: PhotoActionService? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SharedAlbumUiState())
     val uiState: StateFlow<SharedAlbumUiState> = _uiState.asStateFlow()
@@ -143,6 +151,32 @@ class SharedAlbumViewModel(
     }
 
     fun open(index: Int?) = _uiState.update { it.copy(opened = index) }
+
+    val canComment: Boolean get() = comments != null && actions != null
+
+    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = targetOf(photoId)?.let { comments?.commentsOf(it) } ?: emptyFlow()
+
+    fun reactionsOf(photoId: Uuid): Flow<PhotoReactions> = targetOf(photoId)?.let { actions?.reactionsOf(it) } ?: emptyFlow()
+
+    /** A comment or reaction on one of the album's photos, sent to its owner. */
+    fun onSocial(action: PhotoGalleryUiAction) {
+        val write: suspend (PhotoTarget) -> Unit = when (action) {
+            is PhotoGalleryUiAction.PostComment -> { target -> comments?.post(target, action.body.trim()) }
+            is PhotoGalleryUiAction.ToggleReaction -> { target -> actions?.toggleReaction(target, action.emoji) }
+            else -> return
+        }
+        val target = when (action) {
+            is PhotoGalleryUiAction.PostComment -> targetOf(action.photoId)
+            is PhotoGalleryUiAction.ToggleReaction -> targetOf(action.photoId)
+            else -> null
+        } ?: return
+        viewModelScope.launch { guarded { write(target) } }
+    }
+
+    // The photo's own key, as its share opened it: comments are encrypted with it.
+    private fun targetOf(photoId: Uuid): PhotoTarget? =
+        _uiState.value.photos.firstOrNull { it.file.fileMetadata.globalTransitId == photoId }
+            ?.let { PhotoTarget(owner = owner, fileId = it.file.fileId, globalTransitId = photoId, keyHeader = it.file.keyHeader) }
 
     private fun HomebaseFile.addedBy(): OdinId? = fileMetadata.senderOdinId?.takeIf { !it.domainName.equals(owner.domainName, ignoreCase = true) }
 

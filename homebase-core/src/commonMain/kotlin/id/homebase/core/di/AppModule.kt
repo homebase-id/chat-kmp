@@ -226,6 +226,7 @@ import id.homebase.photobase.gallery.PhotoAlbums
 import id.homebase.photobase.gallery.photosTagged
 import id.homebase.photobase.gallery.photosWithTagsApart
 import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.photobase.sharing.PhotoMemberWrites
 import id.homebase.photobase.sharing.PhotobaseSession
 import id.homebase.photobase.ui.AlbumShareViewModel
@@ -1580,7 +1581,7 @@ val appModule = module {
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel { SharedWithMeViewModel(get()) }
-    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get()) }
+    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get()) }
     viewModel { (albumId: Uuid) ->
         val credentials = get<CredentialsManager>()
         AlbumShareViewModel(
@@ -1640,8 +1641,9 @@ val appModule = module {
         val settings = BackupSettingsStore(get())
         PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { settings.settings.value }), get(), get(), get(), get())
     }
-    single { PhotoCommentsService(get(), get(), get(), get(), get(), get()) }
-    single { PhotoActionService(get(), get(), get(), get(), get(), get()) }
+    single { PhotoCommentsService(get(), get(), get(), get()) }
+    single { PeerReactionProvider(get(), get()) }
+    single { PhotoActionService(get(), get(), get()) }
     // The tab's own gallery has no parameter.
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {
