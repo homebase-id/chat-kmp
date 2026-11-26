@@ -3,7 +3,6 @@ package id.homebase.photobase.backup
 import co.touchlab.kermit.Logger
 import id.homebase.photobase.PhotobaseConfigFile
 import kotlinx.coroutines.CancellationException
-import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -27,7 +26,6 @@ class PhotoBackupController(
 ) {
     private var foregroundJob: Job? = null
 
-    @Volatile
     private var inForeground = false
 
     init {
@@ -46,20 +44,14 @@ class PhotoBackupController(
         scope.launch { readSettingsAgain() }
     }
 
-    // The triggers armed for the defaults while the settings were unreadable; arm them for the real ones.
+    // Nothing armed the triggers while the settings were unreadable; the next foreground starts a run.
     private suspend fun readSettingsAgain() {
-        if (!settingsStore.retryIfUnreadable()) return
-        triggers?.rearm(settingsStore.settings.value)
-        if (inForeground) startForegroundRun()
+        if (settingsStore.retryIfUnreadable()) triggers?.rearm(settingsStore.settings.value)
     }
 
     fun onAppForeground() {
         inForeground = true
         if (settingsStore.unreadable.value) return retrySettings()
-        startForegroundRun()
-    }
-
-    private fun startForegroundRun() {
         val run = run ?: return
         if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
@@ -68,8 +60,6 @@ class PhotoBackupController(
             return
         }
         foregroundJob = scope.launch {
-            // Started from a retry, the app may have left the screen since.
-            if (!inForeground) return@launch
             launch { pushSchedule.ensure(adoptSharedInterval()) }
             val fullScan = triggers?.rescansAfterBackgroundWake == true && run.takeWokenInBackground()
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), forceFullScan = fullScan))
@@ -98,8 +88,7 @@ class PhotoBackupController(
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {
-        readSettingsAgain()
-        // The defaults say off: a run on them would disarm the triggers.
+        // While unreadable the settings are the defaults, which say off: a run on them would disarm the triggers.
         if (settingsStore.unreadable.value) return
         if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
@@ -111,6 +100,7 @@ class PhotoBackupController(
 
     fun backUpNow() {
         val run = run ?: return
+        if (settingsStore.unreadable.value) return
         val inApp: suspend () -> Unit = {
             run.run(BackupRunRequest(BackupTrigger.UserRequested, BackupBudget(null)))
         }
@@ -123,7 +113,6 @@ class PhotoBackupController(
     /** One call from a push: enqueues on Android, runs in what's left of the wake on iOS. */
     suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) {
         val triggers = triggers ?: return
-        readSettingsAgain()
         if (!settingsStore.settings.value.enabled || remaining < MIN_WAKE) return
         if (!isBackupPush && (!triggers.usesOtherPushes || run?.takeOtherPushWake(OTHER_PUSH_WAKE_GAP) != true)) return
         triggers.onWake(remaining) { request -> runFromBackground(request) }
@@ -165,7 +154,7 @@ class PhotoBackupController(
             try {
                 settingsStore.update(transform)
             } catch (e: BackupSettingsUnreadable) {
-                // The settings screen shows why.
+                // Backup settings show the notice; nothing is saved over unread settings.
                 Logger.w(tag = TAG, throwable = e) { "not saved" }
                 return@launch
             }
@@ -222,7 +211,6 @@ class PhotoBackupController(
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
-        settingsStore.retryIfUnreadable()
         foregroundJob?.cancel()
         run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))
