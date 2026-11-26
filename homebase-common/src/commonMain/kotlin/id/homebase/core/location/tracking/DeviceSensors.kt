@@ -14,7 +14,7 @@ data class StepSample(val deltaSteps: Int?, val cumulative: Long?)
  * activity/motion runtime permission and degrade to null when denied.
  */
 interface DeviceSensors {
-    /** Battery charge 0..100, or null if unavailable (desktop/web, simulator). */
+    /** Battery charge 0..100, or null if unavailable (desktop/web, simulator). Callable from any thread. */
     suspend fun batteryPercent(): Int?
 
     /**
