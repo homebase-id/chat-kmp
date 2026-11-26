@@ -248,7 +248,7 @@ class LiveRelayCallFlowTest {
         val elsewhere = relay.posts.single { it.sender == frodo && (it.signal as? CallSignal.Hangup)?.reason == HangupReason.AnsweredElsewhere }
         assertEquals(listOf(sam), elsewhere.recipients)
         assertTrue(relay.posts.none { it.sender == sam && it.recipients == listOf(sam) }, "the relay drops self-addressed posts, so none may carry the signal")
-        assertEquals("hangup", elsewhere.body.getValue("push").jsonObject.getValue("kind").jsonPrimitive.content)
+        assertEquals("handled", elsewhere.body.getValue("push").jsonObject.getValue("kind").jsonPrimitive.content)
         assertEquals("c-elsewhere", elsewhere.body.getValue("push").jsonObject.getValue("tagId").jsonPrimitive.content)
     }
 
