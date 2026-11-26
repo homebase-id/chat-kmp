@@ -107,9 +107,33 @@ class PhotoMover(
     private val sync: () -> Unit,
     /** Photos put in an album or taken out: a shared album's shares follow. */
     private val albumChanged: suspend (album: Uuid, on: Boolean, fileIds: Set<Uuid>) -> Unit = { _, _, _ -> },
+    /** Photos went to the Bin, or came out of it, each album's own: their shares follow. */
+    private val binChanged: suspend (photosByAlbum: Map<Uuid, Set<Uuid>>, binned: Boolean) -> Unit = { _, _ -> },
 ) {
-    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult =
-        write(fileIds, filesOf(fileIds), from.status, to.status)
+    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult {
+        val files = filesOf(fileIds)
+        val result = write(fileIds, files, from.status, to.status)
+        val binned = to == PhotoShelf.Bin
+        if (binned != (from == PhotoShelf.Bin)) followTheBin(files.filter { it.fileId in result.written }, binned)
+        return result
+    }
+
+    // The move itself is done; shares that didn't follow are caught up by the album's next share or upkeep.
+    private suspend fun followTheBin(moved: List<HomebaseFile>, binned: Boolean) {
+        val byAlbum = HashMap<Uuid, MutableSet<Uuid>>()
+        for (photo in moved) {
+            val albums = photo.fileMetadata.appData.tags.orEmpty() + photo.fileMetadata.localAppData?.tags.orEmpty() - PhotobaseProtocol.FavoriteTag
+            albums.forEach { byAlbum.getOrPut(it) { HashSet() } += photo.fileId }
+        }
+        if (byAlbum.isEmpty()) return
+        try {
+            binChanged(byAlbum, binned)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "${moved.size} photos' shares didn't follow them ${if (binned) "into" else "out of"} the Bin" }
+        }
+    }
 
     suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)

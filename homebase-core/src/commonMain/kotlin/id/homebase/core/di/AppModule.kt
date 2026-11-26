@@ -1582,7 +1582,7 @@ val appModule = module {
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel { SharedWithMeViewModel(get()) }
-    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get()) }
+    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get(), get()) }
     viewModel { (albumId: Uuid) ->
         val credentials = get<CredentialsManager>()
         AlbumShareViewModel(
@@ -1604,6 +1604,7 @@ val appModule = module {
             binned = { store.filesOn(PhotoShelf.Bin) },
             sync = { syncPhotos() },
             albumChanged = { album, on, fileIds -> get<PhotoAlbumSharing>().albumTagChanged(album, on, fileIds) },
+            binChanged = { photosByAlbum, binned -> get<PhotoAlbumSharing>().photosBinned(photosByAlbum, binned) },
         )
     }
     single {
@@ -1640,8 +1641,9 @@ val appModule = module {
     }
     single { PhotoShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single {
-        val settings = BackupSettingsStore(get())
-        PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { settings.settings.value }), get(), get(), get(), get())
+        // The backup's own settings, so a change on the settings screen reaches a photo added to someone's album.
+        val backup = get<PhotoBackupController>()
+        PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get())
     }
     single { PhotoCommentsService(get(), get(), get(), get(), get()) }
     single { PeerReactionProvider(get(), get()) }

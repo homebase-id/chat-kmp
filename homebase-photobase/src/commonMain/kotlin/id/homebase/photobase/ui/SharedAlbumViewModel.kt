@@ -29,6 +29,8 @@ import id.homebase.photobase.social.PhotoTarget
 import id.homebase.photobase.sharing.SharedAlbum
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +68,8 @@ class SharedAlbumViewModel(
     private val fileOps: FileOperationsProvider,
     private val comments: PhotoCommentsService,
     private val actions: PhotoActionService,
+    /** The app's: a comment sent as the screen closes must still be sent. */
+    private val appScope: CoroutineScope,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SharedAlbumUiState())
     val uiState: StateFlow<SharedAlbumUiState> = _uiState.asStateFlow()
@@ -74,7 +78,7 @@ class SharedAlbumViewModel(
     val events: Flow<SharedAlbumEvent> = _events.receiveAsFlow()
 
     private var cursor: String? = null
-    private var reading = false
+    private var page: Job? = null
     private var sharerKept = false
 
     init {
@@ -82,7 +86,7 @@ class SharedAlbumViewModel(
         viewModelScope.launch {
             memberWrites.outcomes.filter { it.add.owner == owner && it.add.albumId == albumId }.collect { outcome ->
                 _events.send(SharedAlbumEvent.Add(outcome))
-                if (outcome is PhotoAddOutcome.Delivered) reload()
+                if (outcome is PhotoAddOutcome.Delivered) showAdded(outcome.add.globalTransitId)
             }
         }
     }
@@ -108,7 +112,9 @@ class SharedAlbumViewModel(
         }
     }
 
-    fun reload() {
+    private fun reload() {
+        page?.cancel()
+        page = null
         cursor = null
         _uiState.update { it.copy(photos = emptyList(), allRead = false, loading = true) }
         viewModelScope.launch {
@@ -124,24 +130,37 @@ class SharedAlbumViewModel(
     /** The next page, when there's more and none is being read. */
     fun loadMore() {
         val album = _uiState.value.album ?: return
-        if (reading || _uiState.value.allRead) return
-        reading = true
+        if (page?.isActive == true || _uiState.value.allRead) return
         _uiState.update { it.copy(loading = true) }
-        viewModelScope.launch {
+        page = viewModelScope.launch {
             try {
                 val (files, next) = guarded { sharing.sharedPhotos(album, cursor) } ?: return@launch
                 cursor = next
-                val photos = files.mapNotNull { file -> file.toGalleryItem()?.let { SharedPhoto(file, it, file.addedBy()) } }
+                val photos = files.mapNotNull { it.toSharedPhoto() }
                 _uiState.update { state ->
                     val known = state.photos.mapTo(HashSet()) { it.file.fileId }
                     state.copy(photos = state.photos + photos.filter { it.file.fileId !in known }, allRead = next == null)
                 }
             } finally {
-                reading = false
                 _uiState.update { it.copy(loading = false) }
             }
         }
     }
+
+    // A photo this identity added, put where the newest-first list has it; one older than the pages read comes with them.
+    private suspend fun showAdded(globalTransitId: Uuid) {
+        val album = _uiState.value.album ?: return
+        val added = guarded { sharing.sharedPhoto(album, globalTransitId) }?.toSharedPhoto() ?: return
+        _uiState.update { state ->
+            if (state.photos.any { it.file.fileId == added.file.fileId }) return@update state
+            val at = state.photos.indexOfFirst { it.item.capturedAtMs < added.item.capturedAtMs }.takeIf { it >= 0 }
+                ?: if (state.allRead) state.photos.size else return@update state
+            val opened = state.openedIndex?.let { if (it >= at) it + 1 else it }
+            state.copy(photos = state.photos.toMutableList().apply { add(at, added) }, openedIndex = opened)
+        }
+    }
+
+    private fun HomebaseFile.toSharedPhoto(): SharedPhoto? = toGalleryItem()?.let { SharedPhoto(this, it, addedBy()) }
 
     // Opened from a chat message, the sharer is kept so the Library finds the album again; the album itself showed either way.
     private suspend fun keepSharer() {
@@ -168,7 +187,7 @@ class SharedAlbumViewModel(
     fun onSocial(action: PhotoGalleryUiAction) {
         if (action !is PhotoSocialAction) return
         val target = targetOf(action.photoId) ?: return
-        viewModelScope.launch { guarded { action.write(target, comments, actions) } }
+        appScope.launch { guarded { action.write(target, comments, actions) } }
     }
 
     // The photo's own key, as its share opened it: comments are encrypted with it.

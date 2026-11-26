@@ -47,7 +47,10 @@ class PhotoActionService(
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         val known = lastReadLock.withLock { lastRead[photo.globalTransitId] } ?: read(photo)
         val on = on(photo)
-        if (emoji in known.own) on.delete(reaction) else on.add(reaction)
+        val mine = emoji in known.own
+        if (mine) on.delete(reaction) else on.add(reaction)
+        // Before the re-read lands, so a second tap undoes this one.
+        lastReadLock.withLock { lastRead[photo.globalTransitId] = known.copy(own = if (mine) known.own - emoji else known.own + emoji) }
         toggled.emit(photo.globalTransitId)
     }
 

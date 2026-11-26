@@ -23,6 +23,7 @@ import id.homebase.resources.chat_album_share_open
 import id.homebase.resources.chat_album_share_unparseable
 import id.homebase.resources.chat_album_share_you
 import id.homebase.resources.chat_file_share_can_view
+import id.homebase.resources.photobase_label
 import org.jetbrains.compose.resources.stringResource
 
 /** An album shared from [sharer]'s Photos, or from this identity's when [sharer] is null. [onOpen] null leaves the card inert, as in a preview. */
@@ -43,7 +44,7 @@ fun AlbumShareBubble(
     val access = stringResource(if (descriptor.canAdd) MR.string.chat_album_share_can_add else MR.string.chat_file_share_can_view)
     ShareCard(
         icon = Icons.Outlined.PhotoAlbum,
-        iconDescription = null,
+        iconDescription = stringResource(MR.string.photobase_label),
         title = { Text(descriptor.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         subtitle = shared,
         openLabel = stringResource(MR.string.chat_album_share_open),

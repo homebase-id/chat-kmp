@@ -97,6 +97,32 @@ class PhotoMoverTest {
     private fun statusOnServer(file: HomebaseFile) = server.files.getValue(file.fileId).let { if (it.fileState == FileState.Deleted) null else it.fileMetadata.appData.archivalStatus }
 
     @Test
+    fun aPhotoInAnAlbumTakesItsSharesIntoTheBinAndBackButAnArchiveMoveDoesnt() = runTest {
+        val trip = Uuid.random()
+        val hike = Uuid.random()
+        val inTrip = photo().let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(tags = listOf(trip, PhotobaseProtocol.FavoriteTag)))) }
+            .also { device[it.fileId] = it; server.files[it.fileId] = it }
+        val inHike = photo().let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(tags = listOf(hike)))) }
+            .also { device[it.fileId] = it; server.files[it.fileId] = it }
+        val loose = photo()
+        val followed = mutableListOf<Pair<Map<Uuid, Set<Uuid>>, Boolean>>()
+        val sharing = PhotoMover(server, { ids -> ids.mapNotNull { device[it] } }, { emptyList() }, {}, binChanged = { byAlbum, binned -> followed += byAlbum to binned })
+
+        sharing.move(listOf(inTrip.fileId, inHike.fileId, loose.fileId), PhotoShelf.Library, PhotoShelf.Bin)
+        sharing.move(listOf(inTrip.fileId), PhotoShelf.Bin, PhotoShelf.Library)
+        sharing.move(listOf(inHike.fileId), PhotoShelf.Library, PhotoShelf.Archive)
+
+        assertEquals(
+            listOf(
+                mapOf(trip to setOf(inTrip.fileId), hike to setOf(inHike.fileId)) to true,
+                mapOf(trip to setOf(inTrip.fileId)) to false,
+            ),
+            followed,
+            "each album its own photos; the heart is no album, and the Archive is shown to guests",
+        )
+    }
+
+    @Test
     fun aMoveSendsEachPhotoAtTheVersionTheDeviceHoldsThenSyncsOnce() = runTest {
         val photos = List(3) { photo() }
 

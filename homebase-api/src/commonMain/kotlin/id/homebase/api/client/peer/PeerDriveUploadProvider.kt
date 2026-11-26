@@ -26,6 +26,13 @@ import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import kotlinx.serialization.Serializable
 
+@Serializable
+private data class SendDeleteRequest(
+    val globalTransitIdFileIdentifier: GlobalTransitIdFileIdentifier,
+    val fileSystemType: FileSystemType,
+    val recipients: List<String>,
+)
+
 /**
  * Writes a file straight onto a **peer's** drive (a community owner's collaborative drive) over
  * transit. Mirrors the JS `uploadFileOverPeer` (`js-lib/.../peer/peerData/Upload/PeerFileUploader.ts`).
@@ -38,13 +45,6 @@ import kotlinx.serialization.Serializable
  *
  * This is what honours the previously-unused [id.homebase.api.client.drives.upload.TransitOptions.remoteTargetDrive].
  */
-@Serializable
-private data class SendDeleteRequest(
-    val globalTransitIdFileIdentifier: GlobalTransitIdFileIdentifier,
-    val fileSystemType: FileSystemType,
-    val recipients: List<String>,
-)
-
 class PeerDriveUploadProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,

@@ -37,6 +37,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -89,6 +91,8 @@ class PhotoCommentsService(
     private val drive = PhotobaseProtocol.DriveAlias
     // A write here reads the photo's comments again; others' come at the next open.
     private val written = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
+    private val pending = PendingComments()
+    private val pendingLock = Mutex()
 
     /** The photo's comments, oldest first, read again after each write from here. */
     fun commentsOf(photo: PhotoTarget): Flow<List<PhotoComment>> = flow {
@@ -98,7 +102,7 @@ class PhotoCommentsService(
 
     private suspend fun read(photo: PhotoTarget): List<PhotoComment> {
         val self = credentialsManager.getActiveCredentials()?.domain
-        return query.queryBatch(
+        val stored = query.queryBatch(
             driveId = drive,
             request = QueryBatchRequest(
                 queryParams = FileQueryParams(fileType = listOf(PhotobaseProtocol.CommentFileType), groupId = listOf(photo.globalTransitId)),
@@ -114,13 +118,15 @@ class PhotoCommentsService(
             // A comment is encrypted with its photo's key, under its own IV.
             externalFileKey = { _, _, _, _ -> photo.keyHeader.aesKey },
         ).searchResults.filter { it.fileState == FileState.Active }.mapNotNull { it.toPhotoComment(self) }
+        return if (photo.owner == null) stored else pendingLock.withLock { pending.over(photo.globalTransitId, stored) }
     }
 
     suspend fun post(photo: PhotoTarget, body: String, commentId: Uuid = Uuid.random()) {
         val keyHeader = photo.commentKeyHeader()
         val guest = photo.owner != null
-        val metadata = commentMetadata(commentId, photo.globalTransitId, body, Clock.System.now().toEpochMilliseconds(), sentToOwner = guest)
-        uploads.uploadFile(
+        val now = Clock.System.now().toEpochMilliseconds()
+        val metadata = commentMetadata(commentId, photo.globalTransitId, body, now, sentToOwner = guest)
+        val sent = uploads.uploadFile(
             UploadFileRequest(
                 driveId = if (guest) SystemDriveConstants.transientTempDrive.alias else drive,
                 keyHeader = keyHeader,
@@ -132,6 +138,10 @@ class PhotoCommentsService(
                 withCommentedFileKey = true,
             )
         )
+        if (guest) {
+            val posted = PhotoComment(commentId, Uuid.NIL, photo.globalTransitId, senderOdinId = null, body, now, globalTransitId = sent?.globalTransitId)
+            pendingLock.withLock { pending.posted(posted) }
+        }
         written.emit(photo.globalTransitId)
     }
 
@@ -148,6 +158,7 @@ class PhotoCommentsService(
                 owner, drive, globalTransitId, commentedFileKeyHeader(keyHeader.iv), metadata, payloads = emptyList(),
                 fileSystemType = FileSystemType.Comment,
             )
+            pendingLock.withLock { pending.edited(comment.id, body) }
         } else {
             uploads.updateFileByUniqueId(
                 UpdateFileByUniqueIdRequest(
@@ -177,6 +188,7 @@ class PhotoCommentsService(
             peerUploads.sendDeleteRequest(
                 owner, GlobalTransitIdFileIdentifier(globalTransitId, TargetDrive(drive, PhotobaseProtocol.DriveType)), FileSystemType.Comment,
             )
+            pendingLock.withLock { pending.deleted(comment.id) }
         } else {
             files.deleteFiles(drive, listOf(comment.fileId), fileSystemType = FileSystemType.Comment)
         }
@@ -188,6 +200,39 @@ class PhotoCommentsService(
 
     private companion object {
         const val MAX_COMMENTS = 1000
+    }
+}
+
+/**
+ * A guest's comments on someone's photo that the owner's drive doesn't show yet: each goes there through the outbox, so
+ * a read straight after doesn't have it. Each is shown as written until a read does, kept for the app's run only.
+ */
+internal class PendingComments {
+    private val posted = LinkedHashMap<Uuid, PhotoComment>()
+    private val bodies = HashMap<Uuid, String>()
+    private val deleted = HashSet<Uuid>()
+
+    fun posted(comment: PhotoComment) {
+        posted[comment.id] = comment
+    }
+
+    fun edited(commentId: Uuid, body: String) {
+        if (commentId in posted) posted[commentId] = posted.getValue(commentId).copy(body = body) else bodies[commentId] = body
+    }
+
+    fun deleted(commentId: Uuid) {
+        if (posted.remove(commentId) == null) deleted += commentId
+        bodies -= commentId
+    }
+
+    /** [stored], the photo's comments as its owner's drive has them, with the writes it doesn't have yet. */
+    fun over(photoId: Uuid, stored: List<PhotoComment>): List<PhotoComment> {
+        val byId = stored.associateBy { it.id }
+        posted.keys.removeAll { it in byId }
+        deleted.retainAll(byId.keys)
+        bodies.keys.removeAll { id -> byId[id]?.body.let { it == null || it == bodies[id] } }
+        val shown = stored.filter { it.id !in deleted }.map { c -> bodies[c.id]?.let { c.copy(body = it) } ?: c }
+        return (shown + posted.values.filter { it.photoId == photoId }).sortedBy { it.userDateMs }
     }
 }
 

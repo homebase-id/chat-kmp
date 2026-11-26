@@ -82,23 +82,26 @@ class AlbumShareViewModel(
         }
     }
 
-    /** Back from the browser: the sign-in or the owner's page may have finished. */
+    /** Back from the browser: the sign-in or the owner's page may have finished. Only Sign in opens the browser again. */
     fun resumed() {
-        if (signedIn.value && !_uiState.value.signedIn) viewModelScope.launch { finishSigningIn() }
+        if (signedIn.value && !_uiState.value.signedIn) viewModelScope.launch { finishSigningIn(openOwnerPage = false) }
     }
 
     private fun signIn() {
         if (_uiState.value.busy) return
         viewModelScope.launch {
-            if (signedIn.value) return@launch finishSigningIn()
-            val url = guarded { signInUrl { ok -> if (ok) finishSigningIn() else _events.send(AlbumShareEvent.Failed) } } ?: return@launch
+            if (signedIn.value) return@launch finishSigningIn(openOwnerPage = true)
+            val url = guarded { signInUrl { ok -> if (ok) finishSigningIn(openOwnerPage = true) else _events.send(AlbumShareEvent.Failed) } } ?: return@launch
             _events.send(AlbumShareEvent.OpenUrl(url))
         }
     }
 
-    private suspend fun finishSigningIn() {
+    private suspend fun finishSigningIn(openOwnerPage: Boolean) {
         val missing = guarded { missingPermissionsUrl() }
-        if (missing != null) return _events.send(AlbumShareEvent.OpenUrl(missing))
+        if (missing != null) {
+            if (openOwnerPage) _events.send(AlbumShareEvent.OpenUrl(missing))
+            return
+        }
         ready()
     }
 

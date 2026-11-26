@@ -14,6 +14,7 @@ import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.DriveGrantRequest
 import id.homebase.api.client.connections.PermissionedDrive
 import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
@@ -156,7 +157,7 @@ class PhotoAlbumSharing(
 
         albums.bringTagsTogether(albumId)
         val recordFile = albumRecord(albumId) ?: error("album $albumId isn't on the drive")
-        val files = listOf(recordFile) + albumPhotos(albumId)
+        val files = listOf(recordFile) + albumPhotos(albumId, includeBinned = false)
         files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
             circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk.map { circles.shareRequest(it.fileId, it.keyHeader, circleId, ROW_PERMISSIONS, expiresAt) })
         }
@@ -256,6 +257,20 @@ class PhotoAlbumSharing(
         withdrawRows(photos.flatMap { photo -> (circleIds - keptBy(photo, albumId, otherRows)).map { photo.fileId to it } })
     }
 
+    /**
+     * Photos went to the Bin or came back out, [photosByAlbum] each album's: the Bin isn't shown to an album's guests,
+     * so a binned photo's shares are withdrawn, and a restored one is shared again as each of its albums is.
+     */
+    suspend fun photosBinned(photosByAlbum: Map<Uuid, Set<Uuid>>, binned: Boolean) {
+        if (photosByAlbum.isEmpty()) return
+        if (!PhotobaseSession.restoreFor(appCredentials)) return
+        if (!binned) return photosByAlbum.forEach { (album, fileIds) -> albumTagChanged(album, on = true, fileIds) }
+        val rows = photosByAlbum.flatMap { (album, fileIds) ->
+            albumPhotos(album, includeBinned = true).filter { it.fileId in fileIds }.flatMap { photo -> photo.shares.orEmpty().map { photo.fileId to it.circleId } }
+        }
+        withdrawRows(rows.distinct())
+    }
+
     /** Seals each circle's key to the members who have set up Photos since they were shared with. */
     suspend fun sealPending() {
         circles.requireSignedIn()
@@ -342,7 +357,7 @@ class PhotoAlbumSharing(
         val page = query.queryBatch(
             PhotobaseProtocol.DriveAlias,
             QueryBatchRequest(
-                queryParams = FileQueryParams(fileType = listOf(PhotobaseProtocol.PhotoFileType), tagsMatchAtLeastOne = listOf(album.id)),
+                queryParams = FileQueryParams(fileType = listOf(PhotobaseProtocol.PhotoFileType), tagsMatchAtLeastOne = listOf(album.id), archivalStatus = SHOWN_IN_ALBUMS),
                 resultOptionsRequest = QueryBatchResultOptionsRequest(
                     cursorState = cursor,
                     maxRecords = pageSize,
@@ -378,7 +393,7 @@ class PhotoAlbumSharing(
 
     private suspend fun withdrawCircles(albumId: Uuid, circleIds: Set<Uuid>) {
         val recordFile = albumRecord(albumId)
-        val photos = albumPhotos(albumId)
+        val photos = albumPhotos(albumId, includeBinned = true)
         val otherRows = HashMap<Uuid, Set<Uuid>>()
         val rows = listOfNotNull(recordFile).flatMap { file -> file.shares.orEmpty().filter { it.circleId in circleIds }.map { file.fileId to it.circleId } } +
             photos.flatMap { photo ->
@@ -442,8 +457,15 @@ class PhotoAlbumSharing(
     private suspend fun albumRecords(): List<HomebaseFile> =
         allActive(FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType)), withHeaders = true)
 
-    private suspend fun albumPhotos(albumId: Uuid): List<HomebaseFile> =
-        allActive(FileQueryParams(fileType = listOf(PhotobaseProtocol.PhotoFileType), tagsMatchAtLeastOne = listOf(albumId)), withHeaders = false)
+    private suspend fun albumPhotos(albumId: Uuid, includeBinned: Boolean): List<HomebaseFile> =
+        allActive(
+            FileQueryParams(
+                fileType = listOf(PhotobaseProtocol.PhotoFileType),
+                tagsMatchAtLeastOne = listOf(albumId),
+                archivalStatus = if (includeBinned) null else SHOWN_IN_ALBUMS,
+            ),
+            withHeaders = false,
+        )
 
     private suspend fun allActive(params: FileQueryParams, withHeaders: Boolean): List<HomebaseFile> = buildList {
         appQuery.forEachPage(
@@ -494,6 +516,8 @@ class PhotoAlbumSharing(
         private const val PAGE = 1000
         private const val PHOTO_PAGE = 120
         private const val ADDING = "adding"
+        // The album's own view leaves out the Bin.
+        private val SHOWN_IN_ALBUMS = listOf(ArchivalStatus.None.value, ArchivalStatus.Archived.value)
         private const val ODIN_ID = "odinId"
         private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
         private val recipientsDeclared = photobaseAppRegistration.circles.single { it.slug == PhotobaseProtocol.CircleSlug }
