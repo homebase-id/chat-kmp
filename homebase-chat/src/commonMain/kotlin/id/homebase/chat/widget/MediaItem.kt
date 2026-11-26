@@ -54,7 +54,6 @@ import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.services.localImageOnly
 import id.homebase.chat.services.imageStandIn
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.builder.LocationPreviewDescriptor
 import id.homebase.chat.services.collectContext
 import id.homebase.common.widget.VideoInfoOverlay
 import id.homebase.core.image.HomebaseImage
@@ -111,8 +110,6 @@ fun MediaItem(
     onClick: (() -> Unit)? = null,
     onLongPress: ((Offset) -> Unit)? = null,
     onRequestDecryptedFile: (() -> Unit)? = null,
-    liveControls: LiveLocationBubbleControls? = null,
-    locationHeaderDescriptor: LocationPreviewDescriptor? = null,
     shape: Shape =
         RoundedCornerShape(
             topStart = Dimens.Message.cornerRadius,
@@ -191,12 +188,9 @@ fun MediaItem(
         }
 
         payload.key == ChatProtocol.PAYLOAD_KEY_LOCATION -> {
-            // NEW messages carry the descriptor in the header (locationHeaderDescriptor); OLD ones
-            // parse it from the payload's descriptorContent. Header wins when present.
-            val payloadDescriptor = remember(payload.descriptorContent) {
+            val descriptor = remember(payload.descriptorContent) {
                 payload.locationPreviews()?.firstOrNull()
             }
-            val descriptor = locationHeaderDescriptor ?: payloadDescriptor
 
             val payloadIv = payload.iv?.bytes
 
@@ -211,9 +205,6 @@ fun MediaItem(
                         ?: previewThumbnail,
                     modifier = baseModifier,
                     onLongPress = onLongPress?.let { lp -> { lp(Offset.Zero) } },
-                    // Live-share only on new-format (header-descriptor) messages; an old payload-only
-                    // location can't be edited via updateMessage, so don't offer the toggle there.
-                    liveControls = liveControls.takeIf { locationHeaderDescriptor != null },
                 )
             } else {
                 MediaPlaceholder(
