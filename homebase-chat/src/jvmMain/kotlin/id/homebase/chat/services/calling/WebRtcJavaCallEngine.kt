@@ -74,7 +74,7 @@ class WebRtcJavaCallEngine(
     private val renderVideo: Boolean = true,
     private val ownsAudioDevice: Boolean = audioDevice == null,
 ) : CallEngine {
-    // A supplied module has no host mic or speaker behind it, and asking the host for them can block forever (a container).
+    // A supplied module has no host mic or speaker behind it, and asking the host for them can block forever (e.g. in a container).
     private val hostAudio = audioDevice == null
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
