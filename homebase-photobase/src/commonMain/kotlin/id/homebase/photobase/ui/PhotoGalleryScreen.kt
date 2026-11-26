@@ -294,6 +294,7 @@ fun PhotoGalleryScreen(
             photoId = photoId,
             comments = remember(photoId) { viewModel.commentsOf(photoId) },
             reactionsOf = viewModel::reactionsOf,
+            commentReactionsOf = { viewModel.commentReactionsOf(photoId, it) },
             onAction = onAction,
             onDismiss = { commentsOn = null },
         )

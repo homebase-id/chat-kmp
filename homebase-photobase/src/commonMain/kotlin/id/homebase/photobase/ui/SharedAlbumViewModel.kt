@@ -158,18 +158,28 @@ class SharedAlbumViewModel(
 
     fun reactionsOf(photoId: Uuid): Flow<PhotoReactions> = targetOf(photoId)?.let { actions?.reactionsOf(it) } ?: emptyFlow()
 
+    fun commentReactionsOf(photoId: Uuid, comment: PhotoComment): Flow<PhotoReactions> =
+        targetOf(photoId)?.forComment(comment)?.let { actions?.reactionsOf(it) } ?: emptyFlow()
+
     /** A comment or reaction on one of the album's photos, sent to its owner. */
     fun onSocial(action: PhotoGalleryUiAction) {
         val write: suspend (PhotoTarget) -> Unit = when (action) {
             is PhotoGalleryUiAction.PostComment -> { target -> comments?.post(target, action.body.trim()) }
             is PhotoGalleryUiAction.ToggleReaction -> { target -> actions?.toggleReaction(target, action.emoji) }
+            is PhotoGalleryUiAction.EditComment -> { target -> comments?.edit(target, action.comment, action.body.trim()) }
+            is PhotoGalleryUiAction.DeleteComment -> { target -> comments?.delete(target, action.comment) }
+            is PhotoGalleryUiAction.ToggleCommentReaction -> { target -> target.forComment(action.comment)?.let { actions?.toggleReaction(it, action.emoji) } }
             else -> return
         }
-        val target = when (action) {
-            is PhotoGalleryUiAction.PostComment -> targetOf(action.photoId)
-            is PhotoGalleryUiAction.ToggleReaction -> targetOf(action.photoId)
-            else -> null
-        } ?: return
+        val photoId = when (action) {
+            is PhotoGalleryUiAction.PostComment -> action.photoId
+            is PhotoGalleryUiAction.ToggleReaction -> action.photoId
+            is PhotoGalleryUiAction.EditComment -> action.photoId
+            is PhotoGalleryUiAction.DeleteComment -> action.photoId
+            is PhotoGalleryUiAction.ToggleCommentReaction -> action.photoId
+            else -> return
+        }
+        val target = targetOf(photoId) ?: return
         viewModelScope.launch { guarded { write(target) } }
     }
 

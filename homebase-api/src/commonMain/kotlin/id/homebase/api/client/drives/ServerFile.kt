@@ -185,7 +185,7 @@ suspend fun lockKeyHeader(
     sealedTo: ByteArray? = null,
 ): EncryptedKeyHeader =
     if (keyHeader != null && withCommentedFileKey) {
-        EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = keyHeader.iv, encryptedAesKey = ByteArray(0))
+        commentedFileKeyHeader(keyHeader.iv)
     } else if (keyHeader != null && sealedTo != null) {
         sealKeyHeader(keyHeader, sealedTo)
     } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
@@ -197,6 +197,10 @@ suspend fun lockKeyHeader(
 /** [keyHeader] sealed to a drive's write-only public point, `0x04 ‖ x ‖ y`: only that drive's owner opens it. */
 suspend fun sealKeyHeader(keyHeader: KeyHeader, point: ByteArray): EncryptedKeyHeader =
     EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = keyHeader.iv, encryptedAesKey = ZkSeal.seal(keyHeader.iv + keyHeader.aesKey.toByteArray(), point))
+
+/** A comment encrypted with the key of the file it comments on: its own IV alone. */
+fun commentedFileKeyHeader(iv: ByteArray): EncryptedKeyHeader =
+    EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = iv, encryptedAesKey = ByteArray(0))
 
 /** A member's change to a shared file, keeping its key: the new IV alone. */
 fun keepFileKeyHeader(iv: ByteArray): EncryptedKeyHeader =

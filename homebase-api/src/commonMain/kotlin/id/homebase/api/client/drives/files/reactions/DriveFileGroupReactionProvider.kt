@@ -3,6 +3,7 @@ package id.homebase.api.client.drives.files.reactions
 
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.api.client.websockets.InternalDriveFileId
 import id.homebase.api.common.OdinId
@@ -76,7 +77,8 @@ class DriveFileGroupReactionProvider(
         driveId: Uuid,
         fileId: Uuid,
         reaction: String,
-        recipients: List<OdinId>
+        recipients: List<OdinId>,
+        fileSystemType: FileSystemType? = null,
     ) {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
@@ -97,7 +99,8 @@ class DriveFileGroupReactionProvider(
                     )
                 )
             ),
-            secret = creds.secret
+            secret = creds.secret,
+            extraHeaders = fileSystemType.asHeader(),
         )
 
         throwForFailure(response)
@@ -109,7 +112,8 @@ class DriveFileGroupReactionProvider(
         driveId: Uuid,
         fileId: Uuid,
         reaction: String,
-        recipients: List<OdinId>
+        recipients: List<OdinId>,
+        fileSystemType: FileSystemType? = null,
     ) {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
@@ -129,7 +133,8 @@ class DriveFileGroupReactionProvider(
                     )
                 )
             ),
-            secret = creds.secret
+            secret = creds.secret,
+            extraHeaders = fileSystemType.asHeader(),
         )
 
         throwForFailure(response)
@@ -204,7 +209,8 @@ class DriveFileGroupReactionProvider(
 
     suspend fun getReactionSummary(
         driveId: Uuid,
-        fileId: Uuid
+        fileId: Uuid,
+        fileSystemType: FileSystemType? = null,
     ): GetGroupReactionCountsResponse {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -217,6 +223,7 @@ class DriveFileGroupReactionProvider(
             url = apiUrl(creds.domain, endpoint),
             token = creds.accessToken,
             secret = creds.secret,
+            extraHeaders = fileSystemType.asHeader(),
         )
 
         throwForFailure(response)
@@ -228,7 +235,8 @@ class DriveFileGroupReactionProvider(
     suspend fun listReactionsByIdentity(
         driveId: Uuid,
         fileId: Uuid,
-        identity: OdinId
+        identity: OdinId,
+        fileSystemType: FileSystemType? = null,
     ): List<String> {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
@@ -242,6 +250,7 @@ class DriveFileGroupReactionProvider(
             token = creds.accessToken,
             secret = creds.secret,
             queryString = "identity=${identity.domainName}",
+            extraHeaders = fileSystemType.asHeader(),
         )
 
         throwForFailure(response)
@@ -249,4 +258,5 @@ class DriveFileGroupReactionProvider(
     }
 }
 
-
+// The server's group reaction routes read the file system from this header, Standard without it.
+private fun FileSystemType?.asHeader(): Map<String, String> = this?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }.orEmpty()

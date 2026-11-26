@@ -23,8 +23,8 @@ data class PhotoReactions(
 )
 
 /**
- * Reactions on photos: the server's group reactions on the photo where it lives, on this identity's drive or, for a
- * guest, on its owner's over peer by global transit id.
+ * Reactions on photos and their comments: the server's group reactions on the file where it lives, on this identity's
+ * drive or, for a guest, on its owner's over peer by global transit id (which finds a comment too).
  */
 class PhotoActionService(
     private val reactionProvider: DriveFileGroupReactionProvider,
@@ -41,8 +41,8 @@ class PhotoActionService(
         val mine = emoji in read(photo).own
         val owner = photo.owner
         when {
-            owner == null && mine -> reactionProvider.deleteReaction(drive, photo.fileId, reaction, recipients = emptyList())
-            owner == null -> reactionProvider.addReaction(drive, photo.fileId, reaction, recipients = emptyList())
+            owner == null && mine -> reactionProvider.deleteReaction(drive, photo.fileId, reaction, recipients = emptyList(), photo.fileSystemType)
+            owner == null -> reactionProvider.addReaction(drive, photo.fileId, reaction, recipients = emptyList(), photo.fileSystemType)
             mine -> peerReactions.deleteReaction(owner, drive, photo.globalTransitId, reaction)
             else -> peerReactions.addReaction(owner, drive, photo.globalTransitId, reaction)
         }
@@ -59,10 +59,10 @@ class PhotoActionService(
         val self = credentialsManager.getActiveCredentials()?.domain ?: return@coroutineScope PhotoReactions()
         val owner = photo.owner
         val summary = async {
-            if (owner == null) reactionProvider.getReactionSummary(drive, photo.fileId) else peerReactions.getReactionSummary(owner, drive, photo.globalTransitId)
+            if (owner == null) reactionProvider.getReactionSummary(drive, photo.fileId, photo.fileSystemType) else peerReactions.getReactionSummary(owner, drive, photo.globalTransitId)
         }
         val own = async {
-            if (owner == null) reactionProvider.listReactionsByIdentity(drive, photo.fileId, self)
+            if (owner == null) reactionProvider.listReactionsByIdentity(drive, photo.fileId, self, photo.fileSystemType)
             else peerReactions.listReactionsByIdentity(owner, drive, photo.globalTransitId, self)
         }
         PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::emojiOf).distinct())

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.DropdownMenu
@@ -41,13 +42,17 @@ import id.homebase.core.widget.ReactionMenu
 import id.homebase.photobase.social.PhotoComment
 import id.homebase.photobase.social.PhotoReactions
 import id.homebase.resources.MR
+import id.homebase.resources.cancel
 import id.homebase.resources.delete
+import id.homebase.resources.edit
 import id.homebase.resources.photobase_comments_byline
+import id.homebase.resources.photobase_comments_editing
 import id.homebase.resources.photobase_comments_empty
 import id.homebase.resources.photobase_comments_hint
 import id.homebase.resources.photobase_comments_more
 import id.homebase.resources.photobase_comments_open
 import id.homebase.resources.photobase_comments_title
+import id.homebase.resources.save
 import id.homebase.resources.send
 import id.homebase.resources.you
 import kotlinx.collections.immutable.toImmutableList
@@ -63,25 +68,29 @@ internal fun CommentsButton(onClick: () -> Unit) {
     }
 }
 
-/** The photo's reactions and comments, and a field to add one. */
+/** The photo's reactions and comments, and a field to add one or edit one of this identity's own. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PhotoCommentsSheet(
     photoId: Uuid,
     comments: Flow<List<PhotoComment>>,
     reactionsOf: (Uuid) -> Flow<PhotoReactions>,
+    commentReactionsOf: (PhotoComment) -> Flow<PhotoReactions>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onDismiss: () -> Unit,
-    /** Own comments are deleted on this identity's drive only. */
-    canDelete: Boolean = true,
 ) {
     val shown by comments.collectAsStateWithLifecycle(null)
     var reacting by remember { mutableStateOf(false) }
+    // The comment whose emoji menu is open; null with [reacting] is the photo's.
+    var reactingTo by remember { mutableStateOf<PhotoComment?>(null) }
     var pickingAll by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<PhotoComment?>(null) }
     var draft by remember { mutableStateOf("") }
     val react = { emoji: String ->
-        onAction(PhotoGalleryUiAction.ToggleReaction(photoId, emoji))
+        val comment = reactingTo
+        onAction(if (comment != null) PhotoGalleryUiAction.ToggleCommentReaction(photoId, comment, emoji) else PhotoGalleryUiAction.ToggleReaction(photoId, emoji))
         reacting = false
+        reactingTo = null
         pickingAll = false
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), sheetMaxWidth = 640.dp) {
@@ -91,7 +100,7 @@ internal fun PhotoCommentsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Reactions(photoId, reactionsOf, onReact = { reacting = true }, modifier = Modifier.padding(horizontal = 12.dp))
+            Reactions(remember(photoId) { reactionsOf(photoId) }, onReact = { reacting = true; reactingTo = null }, modifier = Modifier.padding(horizontal = 12.dp))
             if (reacting) {
                 if (pickingAll) {
                     Box(Modifier.heightIn(max = 320.dp)) { EmojiSelection(onEmojiSelected = { react(it) }) }
@@ -110,9 +119,13 @@ internal fun PhotoCommentsSheet(
                 )
                 else -> LazyColumn(Modifier.weight(1f, fill = false)) {
                     items(list, key = { it.id.toString() }) { comment ->
+                        val own = comment.senderOdinId == null
                         CommentRow(
                             comment,
-                            onDelete = { onAction(PhotoGalleryUiAction.DeleteComment(photoId, comment)) }.takeIf { comment.senderOdinId == null && canDelete },
+                            reactions = remember(comment.id, comment.versionTag) { commentReactionsOf(comment) },
+                            onReact = { reacting = true; reactingTo = comment; pickingAll = false },
+                            onEdit = { editing = comment; draft = comment.body }.takeIf { own },
+                            onDelete = { onAction(PhotoGalleryUiAction.DeleteComment(photoId, comment)) }.takeIf { own },
                         )
                     }
                 }
@@ -120,10 +133,14 @@ internal fun PhotoCommentsSheet(
             CommentField(
                 draft = draft,
                 onDraft = { draft = it },
+                editing = editing != null,
+                onCancelEdit = { editing = null; draft = "" },
                 onSend = {
                     val body = draft.trim()
                     if (body.isNotEmpty()) {
-                        onAction(PhotoGalleryUiAction.PostComment(photoId, body))
+                        val edited = editing
+                        onAction(if (edited != null) PhotoGalleryUiAction.EditComment(photoId, edited, body) else PhotoGalleryUiAction.PostComment(photoId, body))
+                        editing = null
                         draft = ""
                     }
                 },
@@ -133,8 +150,8 @@ internal fun PhotoCommentsSheet(
 }
 
 @Composable
-private fun Reactions(targetId: Uuid, reactionsOf: (Uuid) -> Flow<PhotoReactions>, onReact: () -> Unit, modifier: Modifier = Modifier) {
-    val reactions by remember(targetId) { reactionsOf(targetId) }.collectAsStateWithLifecycle(PhotoReactions())
+private fun Reactions(source: Flow<PhotoReactions>, onReact: () -> Unit, modifier: Modifier = Modifier) {
+    val reactions by source.collectAsStateWithLifecycle(PhotoReactions())
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         reactions.summary?.let { summary ->
             ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own.toImmutableList())
@@ -144,7 +161,13 @@ private fun Reactions(targetId: Uuid, reactionsOf: (Uuid) -> Flow<PhotoReactions
 }
 
 @Composable
-private fun CommentRow(comment: PhotoComment, onDelete: (() -> Unit)?) {
+private fun CommentRow(
+    comment: PhotoComment,
+    reactions: Flow<PhotoReactions>,
+    onReact: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -152,14 +175,16 @@ private fun CommentRow(comment: PhotoComment, onDelete: (() -> Unit)?) {
             val byline = stringResource(MR.string.photobase_comments_byline, who, formatMomentDate(Instant.fromEpochMilliseconds(comment.userDateMs)))
             Text(byline, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(comment.body, style = MaterialTheme.typography.bodyMedium)
+            Reactions(reactions, onReact)
         }
-        if (onDelete != null) {
+        if (onEdit != null || onDelete != null) {
             Box {
                 IconButton(onClick = { menu = true }) {
                     Icon(Icons.Default.MoreVert, contentDescription = stringResource(MR.string.photobase_comments_more))
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(MR.string.delete)) }, onClick = { menu = false; onDelete() })
+                    onEdit?.let { edit -> DropdownMenuItem(text = { Text(stringResource(MR.string.edit)) }, onClick = { menu = false; edit() }) }
+                    onDelete?.let { delete -> DropdownMenuItem(text = { Text(stringResource(MR.string.delete)) }, onClick = { menu = false; delete() }) }
                 }
             }
         }
@@ -167,8 +192,19 @@ private fun CommentRow(comment: PhotoComment, onDelete: (() -> Unit)?) {
 }
 
 @Composable
-private fun CommentField(draft: String, onDraft: (String) -> Unit, onSend: () -> Unit) {
+private fun CommentField(draft: String, onDraft: (String) -> Unit, editing: Boolean, onCancelEdit: () -> Unit, onSend: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+        if (editing) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(MR.string.photobase_comments_editing),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onCancelEdit) { Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel)) }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = draft,
@@ -180,7 +216,7 @@ private fun CommentField(draft: String, onDraft: (String) -> Unit, onSend: () ->
             IconButton(onClick = onSend, enabled = draft.isNotBlank()) {
                 Icon(
                     Icons.AutoMirrored.Filled.Send,
-                    contentDescription = stringResource(MR.string.send),
+                    contentDescription = stringResource(if (editing) MR.string.save else MR.string.send),
                 )
             }
         }

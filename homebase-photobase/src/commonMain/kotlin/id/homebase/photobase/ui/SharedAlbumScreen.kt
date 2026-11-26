@@ -105,9 +105,9 @@ fun SharedAlbumScreen(
                 photoId = photoId,
                 comments = remember(photoId) { viewModel.commentsOf(photoId) },
                 reactionsOf = viewModel::reactionsOf,
+                commentReactionsOf = { viewModel.commentReactionsOf(photoId, it) },
                 onAction = viewModel::onSocial,
                 onDismiss = { commentsOn = null },
-                canDelete = false,
             )
         }
         SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, onClose = { viewModel.open(null) }) { photo ->

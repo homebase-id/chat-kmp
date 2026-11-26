@@ -1,5 +1,7 @@
 package id.homebase.photobase.social
 
+import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.files.reactions.GetGroupReactionCountsResponse
 import id.homebase.api.client.drives.files.reactions.GroupReactionCount
 import id.homebase.api.common.OdinId
@@ -51,6 +53,22 @@ class PhotoCommentTest {
     fun aPhotoOrACommentWithNoPhotoIsNoComment() {
         assertNull(galleryTestFile(5).toPhotoComment(frodo))
         assertNull(comment(groupId = null).toPhotoComment(frodo))
+    }
+
+    @Test
+    fun aCommentsReactionsGoOnTheCommentInTheCommentFileSystemOnThePhotosDrive() {
+        val commentGtid = Uuid.random()
+        val read = comment().let { it.copy(fileMetadata = it.fileMetadata.copy(globalTransitId = commentGtid)) }.toPhotoComment(frodo)!!
+        val photo = PhotoTarget(owner = sam, fileId = Uuid.random(), globalTransitId = photoGtid, keyHeader = KeyHeader.newRandom16())
+
+        val target = photo.forComment(read)!!
+
+        assertEquals(commentGtid, read.globalTransitId)
+        assertEquals(sam, target.owner, "still on the photo owner's drive")
+        assertEquals(read.fileId, target.fileId)
+        assertEquals(commentGtid, target.globalTransitId)
+        assertEquals(FileSystemType.Comment, target.fileSystemType)
+        assertNull(photo.forComment(read.copy(globalTransitId = null)), "a comment not yet sent has nowhere to react")
     }
 
     @Test

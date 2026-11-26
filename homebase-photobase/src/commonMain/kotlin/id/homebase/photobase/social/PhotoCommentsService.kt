@@ -13,15 +13,21 @@ import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
+import id.homebase.api.client.drives.commentedFileKeyHeader
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.SecurityGroupType
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
+import id.homebase.api.client.peer.PeerDriveUploadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
@@ -38,8 +44,21 @@ import kotlin.uuid.Uuid
 @Serializable
 data class PhotoCommentContent(val version: Int, val body: String)
 
-/** A photo comments and reactions go on: one of this identity's ([owner] null), or one [owner] shares with it. */
-data class PhotoTarget(val owner: OdinId?, val fileId: Uuid, val globalTransitId: Uuid, val keyHeader: KeyHeader)
+/**
+ * A photo comments and reactions go on: one of this identity's ([owner] null), or one [owner] shares with it. A
+ * comment's reactions go on the comment, in the Comment file system ([forComment]).
+ */
+data class PhotoTarget(
+    val owner: OdinId?,
+    val fileId: Uuid,
+    val globalTransitId: Uuid,
+    val keyHeader: KeyHeader,
+    val fileSystemType: FileSystemType = FileSystemType.Standard,
+) {
+    /** [comment] as a target of its own, on the same drive; null until it has a global transit id. */
+    fun forComment(comment: PhotoComment): PhotoTarget? =
+        comment.globalTransitId?.let { copy(fileId = comment.fileId, globalTransitId = it, fileSystemType = FileSystemType.Comment) }
+}
 
 data class PhotoComment(
     val id: Uuid,
@@ -50,6 +69,9 @@ data class PhotoComment(
     val senderOdinId: OdinId?,
     val body: String,
     val userDateMs: Long,
+    /** How the comment is known on the other identity's drive: a guest edits and deletes it by this. */
+    val globalTransitId: Uuid? = null,
+    val versionTag: Uuid? = null,
 )
 
 /**
@@ -61,6 +83,7 @@ class PhotoCommentsService(
     private val query: DriveQueryProvider,
     private val uploads: DriveUploadProvider,
     private val files: DriveFileProvider,
+    private val peerUploads: PeerDriveUploadProvider,
     private val credentialsManager: CredentialsManager,
 ) {
     private val drive = PhotobaseProtocol.DriveAlias
@@ -113,10 +136,52 @@ class PhotoCommentsService(
         written.emit(photo.globalTransitId)
     }
 
-    /** Deletes one of this identity's comments on one of its own photos. */
+    /** Rewrites one of this identity's comments, on its own photo or, over peer, on the photo's owner's drive. */
+    suspend fun edit(photo: PhotoTarget, comment: PhotoComment, body: String) {
+        // The photo's key under a new IV: the server keeps a comment on its file's key (EncryptionType.FileKey).
+        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), photo.keyHeader.aesKey.toByteArray().toSecureByteArray())
+        val owner = photo.owner
+        val metadata = commentMetadata(comment.id, photo.globalTransitId, body, comment.userDateMs, sentToOwner = owner != null)
+            .copy(versionTag = comment.versionTag)
+            .encryptContent(keyHeader)
+        if (owner != null) {
+            val globalTransitId = requireNotNull(comment.globalTransitId) { "comment ${comment.id} has no global transit id" }
+            uploads.updateFileOverPeerByGlobalTransitId(
+                owner, drive, globalTransitId, commentedFileKeyHeader(keyHeader.iv), metadata, payloads = emptyList(),
+                fileSystemType = FileSystemType.Comment,
+            )
+        } else {
+            uploads.updateFileByUniqueId(
+                UpdateFileByUniqueIdRequest(
+                    driveId = drive,
+                    uniqueId = comment.id,
+                    keyHeader = keyHeader,
+                    instructions = FileUpdateInstructionSet(
+                        transferIv = ByteArrayUtil.getRndByteArray(16),
+                        locale = UpdateLocale.Local,
+                        recipients = emptyList(),
+                        manifest = UpdateManifest.build(),
+                    ),
+                    metadata = metadata,
+                    fileSystemType = FileSystemType.Comment,
+                    withCommentedFileKey = true,
+                )
+            )
+        }
+        written.emit(photo.globalTransitId)
+    }
+
+    /** Deletes one of this identity's comments: here on its own photo, or by asking the photo's owner to. */
     suspend fun delete(photo: PhotoTarget, comment: PhotoComment) {
-        check(photo.owner == null) { "a comment on ${photo.owner}'s photo is deleted on their drive" }
-        files.deleteFiles(drive, listOf(comment.fileId), fileSystemType = FileSystemType.Comment)
+        val owner = photo.owner
+        if (owner != null) {
+            val globalTransitId = requireNotNull(comment.globalTransitId) { "comment ${comment.id} has no global transit id" }
+            peerUploads.sendDeleteRequest(
+                owner, GlobalTransitIdFileIdentifier(globalTransitId, TargetDrive(drive, PhotobaseProtocol.DriveType)), FileSystemType.Comment,
+            )
+        } else {
+            files.deleteFiles(drive, listOf(comment.fileId), fileSystemType = FileSystemType.Comment)
+        }
         written.emit(photo.globalTransitId)
     }
 
@@ -156,5 +221,7 @@ internal fun HomebaseFile.toPhotoComment(self: OdinId?): PhotoComment? {
         senderOdinId = author,
         body = content?.body.orEmpty(),
         userDateMs = appData.userDate ?: fileMetadata.created.milliseconds,
+        globalTransitId = fileMetadata.globalTransitId,
+        versionTag = fileMetadata.versionTag,
     )
 }

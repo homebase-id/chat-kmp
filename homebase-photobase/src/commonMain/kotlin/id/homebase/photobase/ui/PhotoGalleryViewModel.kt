@@ -132,6 +132,8 @@ sealed interface PhotoGalleryUiAction {
     data class ToggleReaction(val photoId: Uuid, val emoji: String) : PhotoGalleryUiAction
     data class PostComment(val photoId: Uuid, val body: String) : PhotoGalleryUiAction
     data class DeleteComment(val photoId: Uuid, val comment: PhotoComment) : PhotoGalleryUiAction
+    data class EditComment(val photoId: Uuid, val comment: PhotoComment, val body: String) : PhotoGalleryUiAction
+    data class ToggleCommentReaction(val photoId: Uuid, val comment: PhotoComment, val emoji: String) : PhotoGalleryUiAction
 }
 
 /**
@@ -173,6 +175,9 @@ class PhotoGalleryViewModel(
 
     fun reactionsOf(photoId: Uuid): Flow<PhotoReactions> =
         targetOf(photoId)?.let { target -> actions?.reactionsOf(target)?.flowOn(Dispatchers.Default) } ?: emptyFlow()
+
+    fun commentReactionsOf(photoId: Uuid, comment: PhotoComment): Flow<PhotoReactions> =
+        targetOf(photoId)?.forComment(comment)?.let { target -> actions?.reactionsOf(target)?.flowOn(Dispatchers.Default) } ?: emptyFlow()
 
     // Comments and reactions are on the photo where it is, by its global transit id; only shown photos have them.
     private fun targetOf(photoId: Uuid): PhotoTarget? =
@@ -300,6 +305,10 @@ class PhotoGalleryViewModel(
             is PhotoGalleryUiAction.ToggleReaction -> actions?.let { social(action.photoId) { target -> it.toggleReaction(target, action.emoji) } }
             is PhotoGalleryUiAction.PostComment -> comments?.let { social(action.photoId) { target -> it.post(target, action.body.trim()) } }
             is PhotoGalleryUiAction.DeleteComment -> comments?.let { social(action.photoId) { target -> it.delete(target, action.comment) } }
+            is PhotoGalleryUiAction.EditComment -> comments?.let { social(action.photoId) { target -> it.edit(target, action.comment, action.body.trim()) } }
+            is PhotoGalleryUiAction.ToggleCommentReaction -> actions?.let {
+                social(action.photoId) { target -> target.forComment(action.comment)?.let { comment -> it.toggleReaction(comment, action.emoji) } }
+            }
         }
     }
 
