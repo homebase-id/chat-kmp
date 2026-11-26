@@ -41,15 +41,17 @@ class PhotoBackupController(
     val settingsUnreadable: StateFlow<Boolean> get() = settingsStore.unreadable
 
     fun retrySettings() {
-        scope.launch { settingsStore.retryIfUnreadable() }
+        scope.launch { readSettingsAgain() }
+    }
+
+    // The triggers armed for the defaults while the settings were unreadable; arm them for the real ones.
+    private suspend fun readSettingsAgain() {
+        if (settingsStore.retryIfUnreadable()) triggers?.rearm(settingsStore.settings.value)
     }
 
     fun onAppForeground() {
         inForeground = true
-        if (settingsStore.unreadable.value) {
-            scope.launch { settingsStore.retryIfUnreadable(); if (!settingsStore.unreadable.value && inForeground) onAppForeground() }
-            return
-        }
+        if (settingsStore.unreadable.value) return retrySettings()
         val run = run ?: return
         if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
@@ -86,7 +88,7 @@ class PhotoBackupController(
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {
-        settingsStore.retryIfUnreadable()
+        readSettingsAgain()
         if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
@@ -109,7 +111,7 @@ class PhotoBackupController(
     /** One call from a push: enqueues on Android, runs in what's left of the wake on iOS. */
     suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) {
         val triggers = triggers ?: return
-        settingsStore.retryIfUnreadable()
+        readSettingsAgain()
         if (!settingsStore.settings.value.enabled || remaining < MIN_WAKE) return
         if (!isBackupPush && (!triggers.usesOtherPushes || run?.takeOtherPushWake(OTHER_PUSH_WAKE_GAP) != true)) return
         triggers.onWake(remaining) { request -> runFromBackground(request) }
@@ -180,7 +182,6 @@ class PhotoBackupController(
     suspend fun setPushInterval(intervalMs: Long) = scope.async {
         val clamped = intervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds)
         // Before the shared file: it and this phone's settings must not disagree.
-        settingsStore.retryIfUnreadable()
         if (settingsStore.unreadable.value) throw BackupSettingsUnreadable()
         configFile.update { it.copy(pushIntervalMs = clamped) }
         adopt(clamped)
@@ -199,6 +200,7 @@ class PhotoBackupController(
     }
 
     private suspend fun adopt(intervalMs: Long) {
+        if (settingsStore.unreadable.value) return
         if (settingsStore.settings.value.pushIntervalMs != intervalMs) {
             settingsStore.update { it.copy(pushIntervalMs = intervalMs) }
         }
@@ -208,7 +210,7 @@ class PhotoBackupController(
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
-        settingsStore.retryIfUnreadable()
+        readSettingsAgain()
         foregroundJob?.cancel()
         run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))
@@ -225,7 +227,7 @@ class PhotoBackupController(
         results.start()
         scope.launch {
             run.resetStatus()
-            triggers?.rearm(settingsStore.settings.value)
+            if (!settingsStore.unreadable.value) triggers?.rearm(settingsStore.settings.value)
             if (inForeground) onAppForeground()
         }
     }

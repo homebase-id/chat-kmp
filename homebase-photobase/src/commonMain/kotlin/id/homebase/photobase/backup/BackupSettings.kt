@@ -1,8 +1,10 @@
 package id.homebase.photobase.backup
 
+import co.touchlab.kermit.Logger
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,27 +44,40 @@ class BackupSettingsUnreadable : IllegalStateException("backup settings couldn't
 class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     private val keyValue get() = databaseManager.keyValue
 
-    // Declared before _settings: read() sets it during init.
-    private val _unreadable = MutableStateFlow(false)
-
-    /** The stored settings couldn't be read, so [settings] holds the defaults. */
-    val unreadable: StateFlow<Boolean> = _unreadable.asStateFlow()
-
-    private val _settings = MutableStateFlow(read())
+    private val _settings = MutableStateFlow(BackupSettings())
     val settings: StateFlow<BackupSettings> = _settings.asStateFlow()
 
-    fun reset() {
-        _settings.value = read()
+    private val _unreadable = MutableStateFlow(false)
+
+    /** The stored settings couldn't be read or decoded: [settings] holds the defaults, and [update] refuses. */
+    val unreadable: StateFlow<Boolean> = _unreadable.asStateFlow()
+
+    // A retry started before a reset() reads the identity that was signed in then.
+    private var generation = 0
+
+    init {
+        reset()
     }
 
-    /** A failed read may have been a moment's lock: read again, on the read lane. */
-    suspend fun retryIfUnreadable() {
-        if (_unreadable.value) _settings.value = parse(runCatching { keyValue.selectByKey(SETTINGS_KEY) { _, data -> data } })
+    // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
+    fun reset() {
+        generation++
+        apply(decode(runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }))
+    }
+
+    /** Reads again after a failure, on the read lane; true when the settings are back. */
+    suspend fun retryIfUnreadable(): Boolean {
+        if (!_unreadable.value) return false
+        val started = generation
+        val read = runCatching { keyValue.selectByKey(SETTINGS_KEY) { _, data -> data } }
+        (read.exceptionOrNull() as? CancellationException)?.let { throw it }
+        if (started != generation) return false
+        apply(decode(read))
+        return !_unreadable.value
     }
 
     /** Throws [BackupSettingsUnreadable] while the stored settings can't be read: saving the defaults would replace them. */
     suspend fun update(transform: (BackupSettings) -> BackupSettings) {
-        retryIfUnreadable()
         if (_unreadable.value) throw BackupSettingsUnreadable()
         val next = transform(_settings.value).let {
             it.copy(pushIntervalMs = it.pushIntervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds))
@@ -71,14 +86,15 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
         _settings.value = next
     }
 
-    // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
-    private fun read(): BackupSettings = parse(runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } })
+    private fun decode(read: Result<ByteArray?>): BackupSettings? = read
+        .mapCatching { bytes -> if (bytes == null || bytes.isEmpty()) BackupSettings() else OdinSystemSerializer.deserialize<BackupSettings>(bytes.decodeToString()) }
+        .onFailure { Logger.w(tag = "BackupSettingsStore", throwable = it) { "couldn't read the backup settings" } }
+        .getOrNull()
 
-    private fun parse(read: Result<ByteArray?>): BackupSettings {
-        _unreadable.value = read.isFailure
-        val bytes = read.getOrNull()
-        if (bytes == null || bytes.isEmpty()) return BackupSettings()
-        return OdinSystemSerializer.deserialize(bytes.decodeToString())
+    // The settings first: nothing may see them readable while they still hold the defaults.
+    private fun apply(stored: BackupSettings?) {
+        _settings.value = stored ?: BackupSettings()
+        _unreadable.value = stored == null
     }
 
     private companion object {

@@ -122,22 +122,26 @@ class BackupPolicyTest {
     fun aFailedReadKeepsBackupOffAndSavesNothingOverTheStoredSettingsUntilARetryReadsThem() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         val db = testDatabase(driver)
-        BackupSettingsStore(db).update { it.copy(enabled = true, albumIds = setOf("camera")) }
-        // The read fails, as a locked database would, and then works again.
-        driver.execute(null, "ALTER TABLE KeyValue RENAME TO KeyValueAway", 0)
-        val store = BackupSettingsStore(db)
+        try {
+            BackupSettingsStore(db).update { it.copy(enabled = true, albumIds = setOf("camera")) }
+            // The read fails, as a locked database would, and then works again.
+            driver.execute(null, "ALTER TABLE KeyValue RENAME TO KeyValueAway", 0)
+            val store = BackupSettingsStore(db)
 
-        assertTrue(store.unreadable.value)
-        assertFalse(store.settings.value.enabled)
-        assertFailsWith<BackupSettingsUnreadable> { store.update { it.copy(wifiOnly = false) } }
+            assertTrue(store.unreadable.value)
+            assertFalse(store.settings.value.enabled)
+            assertFailsWith<BackupSettingsUnreadable> { store.update { it.copy(wifiOnly = false) } }
 
-        driver.execute(null, "ALTER TABLE KeyValueAway RENAME TO KeyValue", 0)
-        store.retryIfUnreadable()
+            driver.execute(null, "ALTER TABLE KeyValueAway RENAME TO KeyValue", 0)
+            assertTrue(store.retryIfUnreadable())
 
-        assertFalse(store.unreadable.value)
-        assertTrue(store.settings.value.enabled)
-        assertEquals(setOf("camera"), store.settings.value.albumIds)
-        assertTrue(store.settings.value.wifiOnly, "the change refused while unreadable wasn't kept")
+            assertFalse(store.unreadable.value)
+            assertTrue(store.settings.value.enabled)
+            assertEquals(setOf("camera"), store.settings.value.albumIds)
+            assertTrue(store.settings.value.wifiOnly, "the change refused while unreadable wasn't kept")
+        } finally {
+            db.close()
+        }
     }
 
     private object Offline : OutboxUploader {
