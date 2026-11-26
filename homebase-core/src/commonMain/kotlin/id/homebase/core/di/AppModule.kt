@@ -226,6 +226,7 @@ import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
 import id.homebase.photobase.backup.BackgroundUploaderContext
 import id.homebase.photobase.backup.BackupLedger
+import id.homebase.photobase.backup.holdsBulkSends
 import id.homebase.photobase.backup.BackupRequestBuilder
 import id.homebase.photobase.backup.BackupOutboxResults
 import id.homebase.photobase.backup.BackupPushSchedule
@@ -1778,7 +1779,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         get<OutboxSync>().holdBulkSends = {
             // Runs inside chat's send loop, which a backup problem must not take down.
             try {
-                settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
+                backup.probe.holdsBulkSends(settings.settings.value)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

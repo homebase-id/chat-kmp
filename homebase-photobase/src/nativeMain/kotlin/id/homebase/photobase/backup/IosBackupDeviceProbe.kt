@@ -34,10 +34,12 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
 
     override suspend fun state(): DeviceState {
         val (hasNetwork, isUnmetered) = networkPath()
-        val device = UIDevice.currentDevice
-        device.batteryMonitoringEnabled = true
-        val batteryState = device.batteryState
-        val level = device.batteryLevel
+        // UIDevice is main-thread only; callers poll from IO.
+        val (batteryState, level) = withContext(Dispatchers.Main) {
+            val device = UIDevice.currentDevice
+            device.batteryMonitoringEnabled = true
+            device.batteryState to device.batteryLevel
+        }
         return DeviceState(
             hasNetwork = hasNetwork,
             isUnmetered = isUnmetered,
@@ -55,6 +57,8 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
         val values = NSURL.fileURLWithPath(NSHomeDirectory()).resourceValuesForKeys(listOf(NSURLVolumeAvailableCapacityForImportantUsageKey), null)
         return (values?.get(NSURLVolumeAvailableCapacityForImportantUsageKey) as? NSNumber)?.longLongValue
     }
+
+    override suspend fun isUnmetered(): Boolean = networkPath().second
 
     override fun libraryAccess(): LibraryAccess = when (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)) {
         PHAuthorizationStatusAuthorized -> LibraryAccess.Full

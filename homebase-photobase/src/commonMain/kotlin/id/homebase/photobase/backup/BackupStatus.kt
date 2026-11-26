@@ -115,7 +115,13 @@ interface BackupDeviceProbe {
 
     /** True when the OS won't launch the app in the background for backup. */
     suspend fun isBackgroundRefreshOff(): Boolean = false
+
+    /** [DeviceState.isUnmetered] alone, for callers that poll it often. */
+    suspend fun isUnmetered(): Boolean = state().isUnmetered
 }
+
+/** Wi-Fi only holds bulk sends off a metered network; it asks the network alone, as it runs inside chat's send loop. */
+suspend fun BackupDeviceProbe.holdsBulkSends(settings: BackupSettings): Boolean = settings.wifiOnly && !isUnmetered()
 
 /**
  * [interactive]: the user has the app open, which lifts the battery conditions but not Wi-Fi only.
