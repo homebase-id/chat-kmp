@@ -31,6 +31,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.InsertDriveFile
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -85,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
+import id.homebase.api.video.VideoCompressionService
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
@@ -116,6 +118,7 @@ import id.homebase.resources.feed_compose_remove_attachment
 import id.homebase.resources.feed_compose_title
 import id.homebase.resources.menu_back
 import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -456,7 +459,14 @@ private fun AttachmentThumbnailRow(
                     color = MaterialTheme.colorScheme.surfaceContainerHighest,
                     modifier = Modifier.align(Alignment.BottomStart).size(120.dp),
                 ) {
-                    AsyncImage(
+                    if (attachment is AttachmentPendingFile.File) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.InsertDriveFile,
+                                contentDescription = attachment.file.name,
+                            )
+                        }
+                    } else AsyncImage(
                         imageLoader = imageLoader,
                         model = when (attachment) {
                             is AttachmentPendingFile.FileImage -> attachment.file
@@ -704,8 +714,13 @@ private fun CirclesDialog(
     )
 }
 
-internal fun PlatformFile.toPendingMedia(): AttachmentPendingFile {
+internal fun PlatformFile.toPendingMedia(
+    canReadVideo: (String) -> Boolean = VideoCompressionService::canRead,
+): AttachmentPendingFile {
     val type = contentType()
-    return if (type.startsWith("video/")) AttachmentPendingFile.FileVideo(Uuid.generateV7(), this)
-    else AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+    return when {
+        canReadVideo(type) -> AttachmentPendingFile.FileVideo(Uuid.generateV7(), this, sourceContentType = type)
+        type.startsWith("video/") -> AttachmentPendingFile.File(Uuid.generateV7(), this, sourceContentType = type)
+        else -> AttachmentPendingFile.FileImage(Uuid.generateV7(), this, sourceContentType = type)
+    }
 }

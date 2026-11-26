@@ -40,6 +40,9 @@ class PhotoBackupController(
 
     val settingsUnreadable: StateFlow<Boolean> get() = settingsStore.unreadable
 
+    /** Off for sure: stored as off, not a failed read showing the defaults. */
+    val isSurelyOff: Boolean get() = !settingsStore.settings.value.enabled && !settingsStore.unreadable.value
+
     fun retrySettings() {
         scope.launch { readSettingsAgain() }
     }

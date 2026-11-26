@@ -20,9 +20,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
     private val _profileCardEnabled = MutableStateFlow(readBoolean(PROFILE_CARD_KEY, default = false))
     val profileCardEnabled: StateFlow<Boolean> = _profileCardEnabled.asStateFlow()
 
-    private val _photobaseEnabled = MutableStateFlow(readBoolean(PHOTOBASE_KEY, default = false))
-    val photobaseEnabled: StateFlow<Boolean> = _photobaseEnabled.asStateFlow()
-
     private val _filesyncSyncSharedEnabled = MutableStateFlow(readBoolean(FILESYNC_SYNC_SHARED_KEY, default = false))
     val filesyncSyncSharedEnabled: StateFlow<Boolean> = _filesyncSyncSharedEnabled.asStateFlow()
 
@@ -30,12 +27,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         if (_filesyncSyncSharedEnabled.value == value) return
         keyValue.upsertValue(FILESYNC_SYNC_SHARED_KEY, encode(value))
         _filesyncSyncSharedEnabled.value = value
-    }
-
-    suspend fun setPhotobaseEnabled(value: Boolean) {
-        if (_photobaseEnabled.value == value) return
-        keyValue.upsertValue(PHOTOBASE_KEY, encode(value))
-        _photobaseEnabled.value = value
     }
 
     suspend fun setProfileCardEnabled(value: Boolean) {
@@ -46,7 +37,6 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
 
     fun reload() {
         _profileCardEnabled.value = readBoolean(PROFILE_CARD_KEY, default = false)
-        _photobaseEnabled.value = readBoolean(PHOTOBASE_KEY, default = false)
         _filesyncSyncSharedEnabled.value = readBoolean(FILESYNC_SYNC_SHARED_KEY, default = false)
     }
 
@@ -65,7 +55,7 @@ class DeveloperPreferences(private val databaseManager: DatabaseManager) {
         // 0a09xx — developer flags. Vault owns 0a01xx, Moments 0a02xx, Location 0a03xx,
         // 0a04xx and 0a07xx are taken, and DiceRollPreferences writes 0a0801-0a0803.
         val PROFILE_CARD_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0901")
-        val PHOTOBASE_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0902")
+        // 0a0902 was Photos' dark launch; installs may still hold it, so don't reuse it.
         val FILESYNC_SYNC_SHARED_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000a0903")
     }
 }

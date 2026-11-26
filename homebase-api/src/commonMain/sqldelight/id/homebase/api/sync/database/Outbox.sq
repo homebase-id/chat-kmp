@@ -138,6 +138,10 @@ FROM Outbox
 WHERE driveId = ? AND uploadType = ? AND checkOutStamp IS NULL AND checkOutCount = 0 AND nextRunTime = 0
 ORDER BY rowId;
 
+-- Any row for the drive at or above a priority, by the (driveId, uniqueId) index.
+existsByDriveFromPriority:
+SELECT EXISTS(SELECT 1 FROM Outbox WHERE driveId = ? AND priority >= ?);
+
 -- Does ANY outbox row still exist for this uniqueId (across drives)? Message
 -- Info uses it to tell whether a queued message is still waiting on an earlier
 -- message — its dependencyUniqueId row hasn't drained yet — which is the same

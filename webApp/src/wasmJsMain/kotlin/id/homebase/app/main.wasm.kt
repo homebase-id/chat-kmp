@@ -1,6 +1,5 @@
 package id.homebase.app
 
-import id.homebase.core.settings.DeveloperPreferences
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
@@ -121,10 +120,7 @@ fun main() {
 
         AppStartup.promoteToForeground()
         val notificationService = GlobalContext.get().get<NotificationService>()
-        val developerPreferences = GlobalContext.get().get<DeveloperPreferences>()
-        fun open(link: AppLink) {
-            if (link.isAvailable(developerPreferences.photobaseEnabled.value)) notificationService.navigateToApp(link.route)
-        }
+        fun open(link: AppLink) = notificationService.navigateToApp(link.route)
         WebAppLink.consumePending()?.let(::open)
         val pageTitle = document.title
         ComposeViewport("ComposeApp") {
