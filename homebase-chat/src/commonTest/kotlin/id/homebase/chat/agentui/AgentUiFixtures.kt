@@ -24,6 +24,22 @@ object AgentUiFixtures {
         ]}
     """.trimIndent()
 
+    /** The order-summary card in AGENT_UI_GUIDE.md. */
+    fun orderSummaryCardJson(): String = """
+        {"root":"card","nodes":[
+          {"id":"card","type":"card","children":["head","o1","o2","sum","actions"]},
+          {"id":"head","type":"text","style":"title","markdown":"Acme orders this week"},
+          {"id":"o1","type":"listItem","title":"Order #1042","subtitle":"2 items · $42.00","caption":"Delivered Tuesday","trailing":"o1s","fallback":"Order #1042: delivered"},
+          {"id":"o1s","type":"badge","label":"Delivered","tone":"success","fallback":"Delivered"},
+          {"id":"o2","type":"listItem","title":"Order #1043","subtitle":"1 item · $18.50","caption":"Payment failed","trailing":"o2s","fallback":"Order #1043: payment failed"},
+          {"id":"o2s","type":"badge","label":"Payment failed","tone":"error","fallback":"Payment failed"},
+          {"id":"sum","type":"facts","items":[{"label":"Orders","value":"2"},{"label":"Total","value":"$60.50"},{"label":"Next delivery","value":"Friday"}],"fallback":"2 orders, $60.50 in all"},
+          {"id":"actions","type":"row","children":["retry","track"]},
+          {"id":"retry","type":"button","label":"Retry payment","style":"filled","action":{"id":"retry_1043"}},
+          {"id":"track","type":"button","label":"View orders","style":"outlined","url":"https://acme.example/orders"}
+        ]}
+    """.trimIndent()
+
     fun draftPostCardBytes(): ByteArray = draftPostCardJson().encodeToByteArray()
 
     fun decodeDraftPostCard(): AgentUiTree = valid(draftPostCardBytes())

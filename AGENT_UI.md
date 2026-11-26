@@ -21,7 +21,8 @@ whole tree); data-model binding and JSON-pointer paths (inputs hold local state 
 an action fires); URL images (an image names one of this message's own payloads); Video, Audio,
 Modal, Tabs, Slider, DateTime; every style or size prop.
 
-Added: `chip`, `table`, `progress`. A carousel is `list` with `direction: "horizontal"`.
+Added: `chip`, `table`, `progress`, `listItem`, `facts`, `badge`, and `url` on `button`. A carousel is
+`list` with `direction: "horizontal"`. A callout is a nested `card` with a `tone`, not a node of its own.
 
 Re-check against A2UI when bumping `schemaVersion`.
 
@@ -96,11 +97,14 @@ which loads the full payload and pages through the card's images only, with no c
 | `text` | `markdown` (chat markdown subset, links open on tap), `style`: title, body, label, caption; `tone`: default, primary, secondary, error |
 | `image` | `payloadKey`, `alt` |
 | `chip` | `label`, `selected?` (display only) |
+| `badge` | `label`, `tone`: neutral, primary, success, warning, error (display only, takes no taps) |
+| `listItem` | `title`, `subtitle?`, `caption?`, `trailing?` (the id of one child node, usually a button or badge) |
+| `facts` | `items` `[{label,value}]`: label/value rows; an item with neither is dropped |
 | `divider` | |
 | `list` | `children`, `direction`: vertical, horizontal |
 | `table` | `header` (strings), `rows` (arrays of strings) |
 | `progress` | `value` 0..1 or null (indeterminate), `label?` |
-| `button` | `label` (required: a blank label refuses the tree), `style`: filled, tonal, outlined, text, destructive; `action`, or `copy` (a non-blank string of at most 2000 code points, copied to the clipboard on the device and never sent; `copy` with `action` refuses the tree) |
+| `button` | `label` (required: a blank label refuses the tree), `style`: filled, tonal, outlined, text, destructive; at most one of `action`, `copy` (a non-blank string of at most 2000 code points, copied to the clipboard on the device and never sent) and `url` (`https://` and a host, no spaces or userinfo, at most 2000 characters; opened on the device and never sent); two of them, or a bad `url`, refuse the tree |
 | `toggle` | `label`, `value`, `action?` (fires on change) |
 | `textInput` | `label`, `value`, `multiline`, `maxLength`, `action?` (single-line only: fires on the keyboard's send key) |
 | `select` | `label`, `options` `[{id,label}]`, `value?`, `action?` (fires on pick) |
@@ -111,7 +115,7 @@ which loads the full payload and pages through the card's images only, with no c
 nodes. Ids that are not inputs are ignored.
 
 Enums outside the list fall back to the first listed value (`body`, `default`, `small`, `filled`,
-`vertical`). Wrong JSON types read as absent.
+`vertical`, `neutral`). Wrong JSON types read as absent.
 
 ### 5. Limits
 
@@ -125,11 +129,12 @@ Enums outside the list fall back to the first listed value (`body`, `default`, `
 | children per node | 50 | tree invalid |
 | images | 10 | tree invalid |
 | each ref'd id used once (no cycle, no diamond), ids unique, root present | | tree invalid |
-| something visible: non-blank text, a labelled chip, a table, an image, an input, a button, or an unknown node with a fallback | | tree invalid |
-| button `label` non-blank; `copy` non-blank, at most 2000 code points, not with `action` | | tree invalid |
+| something visible: non-blank text, a labelled chip or badge, a list item, facts, a table, an image, an input, a button, or an unknown node with a fallback | | tree invalid |
+| button `label` non-blank; `copy` non-blank, at most 2000 code points; `url` https, at most 2000 characters; at most one of `action`, `copy`, `url` | | tree invalid |
 | text / fallback | 2000 code points | clamped |
 | labels, table cells, alt | 200 code points | clamped |
 | table | 20 rows x 8 columns | clamped |
+| facts | 12 items; label and value 200 code points each | clamped |
 | options | 50 | clamped |
 | multiSelect `min`/`max` | 0 to option count, `min` <= `max` | clamped |
 | `include` | 19 ids (the acting node makes 20) | clamped |
@@ -188,7 +193,7 @@ A card sits in the same message wrapper as a text bubble and takes no gesture of
 never highlights as a whole. Its text and tables are selectable on a pointer device; buttons, inputs
 and images keep their own taps, and right-click on an image opens that image's menu. The card takes
 the cluster corners, the group sender name and the timestamp footer ("edited" once `rev` is above 0).
-Copy in the menu copies the card's title, text and table rows (the `fallback` while a payload tree
+Copy in the menu copies the card's title, text, list items, facts and table rows (the `fallback` while a payload tree
 is not loaded).
 
 ### 8. Reference: draft-post card
@@ -216,7 +221,9 @@ See `AgentUiFixtures.draftPostCardJson()` in `homebase-chat/src/commonTest/.../a
 
 ## Security
 
-No webview, no scripts, no remote URLs (a remote image would leak the reader's IP). Markdown images
+No webview, no scripts, nothing remote is ever fetched (a remote image would leak the reader's IP). A
+`url` button only hands its `https` link to the system's link handler when the person taps it, like
+a markdown link. Markdown images
 render as link text. The tree is untrusted: validated, clamped, and a property test
 (`AgentUiTreePropertyTest`) feeds random and oversized trees. Agent text is content, never app copy;
 BiDi and zero-width characters are clamped by length only and render as content.

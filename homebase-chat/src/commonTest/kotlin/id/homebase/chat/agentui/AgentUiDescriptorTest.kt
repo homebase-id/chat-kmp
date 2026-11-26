@@ -194,4 +194,16 @@ class AgentUiDescriptorTest {
         )
         assertEquals("Totals\nNet\tPosts\nX\t3\nLinkedIn\t1", table.plainText())
     }
+
+    @Test fun a_card_copies_its_list_items_and_facts() {
+        val t = AgentUiFixtures.valid(
+            AgentUiFixtures.tree(
+                """{"id":"root","type":"column","children":["li","f"]}""",
+                """{"id":"li","type":"listItem","title":"Order #1042","subtitle":"2 items","trailing":"b"}""",
+                """{"id":"b","type":"badge","label":"Shipped"}""",
+                """{"id":"f","type":"facts","items":[{"label":"Total","value":"$42.00"}]}""",
+            ),
+        )
+        assertEquals("Order #1042\n2 items\nTotal\t$42.00", t.plainText())
+    }
 }

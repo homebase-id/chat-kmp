@@ -10,6 +10,8 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.NativeClipboard
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
@@ -35,6 +37,7 @@ class AgentUiRendererTest {
         pending: Set<String> = emptySet(),
         answered: Set<String> = emptySet(),
         clipboard: Clipboard? = null,
+        uriHandler: UriHandler? = null,
         onAction: (AgentUiActionRequest) -> Unit = {},
     ) = setContent {
         MaterialTheme {
@@ -50,7 +53,10 @@ class AgentUiRendererTest {
                     answeredActionIds = answered,
                 )
             }
-            if (clipboard == null) view() else CompositionLocalProvider(LocalClipboard provides clipboard) { view() }
+            val withUri = @androidx.compose.runtime.Composable {
+                if (uriHandler == null) view() else CompositionLocalProvider(LocalUriHandler provides uriHandler) { view() }
+            }
+            if (clipboard == null) withUri() else CompositionLocalProvider(LocalClipboard provides clipboard) { withUri() }
         }
     }
 
@@ -292,5 +298,35 @@ class AgentUiRendererTest {
         show(AgentUiFixtures.decodeDraftPostCard(), pending = setOf("approve"))
         onNodeWithText("Approve").assertIsNotEnabled()
         onNodeWithTag(ChosenIconTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun url_button_opens_the_link_and_never_sends_an_action() = runComposeUiTest {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Track order","style":"outlined","url":"https://acme.example/orders/1042"}"""))
+        val opened = mutableListOf<String>()
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, uriHandler = object : UriHandler { override fun openUri(uri: String) { opened += uri } }, onAction = { seen += it })
+        onNodeWithTag(LinkIconTag, useUnmergedTree = true).assertExists()
+        onNodeWithText("Track order").assertIsEnabled().performClick()
+        assertEquals(listOf("https://acme.example/orders/1042"), opened)
+        assertEquals(emptyList(), seen)
+    }
+
+    @Test fun list_item_facts_and_badge_render_their_text() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"root","type":"column","children":["a","b","f"]}""",
+                """{"id":"a","type":"listItem","title":"Order #1042","subtitle":"2 items","trailing":"st"}""",
+                """{"id":"st","type":"badge","label":"Shipped","tone":"success"}""",
+                """{"id":"b","type":"listItem","title":"Order #1043","caption":"Due Friday","trailing":"pay"}""",
+                """{"id":"pay","type":"button","label":"Pay","style":"tonal","action":{"id":"pay"}}""",
+                """{"id":"f","type":"facts","items":[{"label":"Total","value":"$42.00"}]}""",
+            ),
+        )
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, onAction = { seen += it })
+        listOf("Order #1042", "2 items", "Shipped", "Order #1043", "Due Friday", "Total", "$42.00").forEach { onNodeWithText(it).assertExists() }
+        onNodeWithText("Shipped").assertHasNoClickAction()
+        onNodeWithText("Pay").performClick()
+        assertEquals("pay", seen.single().actionId)
     }
 }

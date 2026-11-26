@@ -30,17 +30,36 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 | `image` | A picture the person should look at. Always 16:9, cropped to fill. Tapping it opens the app's full-screen viewer, which pages through every image on the card. | Text baked into an image (unreadable cropped, invisible to screen readers). Portrait images (cropped hard). |
 | `list` | `vertical`: repeated items. `horizontal`: a carousel of 260 dp items, usually images. | A horizontal list of text; it scrolls sideways and hides content. |
 | `chip` | Display-only tags ("X", "LinkedIn"); `selected` marks the ones that apply. | Chips as buttons. They take no taps; use `select` for a choice. |
+| `badge` | A short status on a pill: "Shipped" (`success`), "Late" (`warning`), "Failed" (`error`), "New" (`primary`), "Draft" (`neutral`, the default). Display only. | Sentences in a badge; tones as decoration. |
+| `listItem` | One row of a list: `title`, a muted `subtitle`, a smaller `caption`, and one `trailing` node (a button, badge or chip) at the end. Consecutive list items in a `column`, `list` or card are split by dividers. | Markdown bullet lists of things the person acts on or scans; a whole layout as `trailing`. |
+| `facts` | Label/value pairs: totals, dates, status, an address (at most 12). | A two-column `table` for the same; bold-label markdown lines. |
 | `divider` | Splitting two sections that spacing alone does not separate. | A divider between every block. |
 | `table` | Small tabular data. A column whose cells all look numeric is right-aligned and narrower. | Wide tables: 8 columns is the cap, but 3 or 4 is what fits on a phone. |
 | `progress` | A running job. `value` 0..1, or null while you cannot say. | Progress you never update. Edit the card (bump `rev`) as the job moves. |
-| `button` | Actions. One `filled` primary action, `tonal` or `outlined` secondaries, `destructive` for discard or delete, `text` for minor ones. A `label` is required. With `copy` instead of `action` it copies text on the device (see below). | Two `filled` buttons. More than three buttons in a row. |
+| `button` | Actions. One `filled` primary action, `tonal` or `outlined` secondaries, `destructive` for discard or delete, `text` for minor ones. A `label` is required. With `copy` instead of `action` it copies text on the device, with `url` it opens a link (see below). | Two `filled` buttons. More than three buttons in a row. An action button that only opens a link. |
 | `toggle` | An on/off setting, sent with a button (`include`) or on its own (`action`). | A toggle with an `action` for something the person will flip twice: it can be sent once per `rev`. |
 | `textInput` | Short free text (`multiline` for a few lines). Set `maxLength` to what you will accept. | Long documents. A single-line input with an `action` sends on the keyboard's send key. |
 | `select` | One choice out of a few options, shown as chips. With an `action` the pick is sent at once; picking the current option again sends nothing. | Dozens of options (50 is the cap; ten is already a lot of chips). |
 | `multiSelect` | Several choices out of a few options ("Post to: X, LinkedIn"), shown as chips that toggle. `value` is the preselected ids; `min`/`max` bound the count, and a button that `include`s it stays disabled outside that range. Sent only through a button's `include`, as the picked ids joined by `,` in option order. | An `action` on it (ignored: taps never send). Commas in option ids (the option is dropped). |
 
-Unknown node types render their `fallback` (or nothing). Give every node you add from a newer
-schema a `fallback`.
+Unknown node types render their `fallback` (or nothing), so older apps show the `fallback` of a
+node they do not know. Give every `listItem`, `facts` and `badge` a `fallback` that says the same in
+one line ("Order #1042: shipped"), and do the same for any node added after them.
+
+A callout (a highlighted note, a warning, an error) is a nested `card` with a `tone` and a `text` in
+it, not a node of its own: `primary` for a highlight, `secondary` for a quiet note, `error` for a
+failure.
+
+## Designing a card
+
+- **Structure over prose.** Use `listItem` for things in a list and `facts` for label/value data;
+  keep `text` for a sentence or two. A card that is one long markdown block reads like a wall of text.
+- **Keep text body-size.** One `title` at the top; everything else `body`, `label` or `caption`.
+  Markdown headings and bold lines are not section titles.
+- **Two or three actions at most**, in one `row` at the bottom: one `filled` primary, the others
+  `tonal`, `outlined` or `text`. Never one button per line.
+- **Links are links.** Use a `url` button or an inline markdown link, never an action button that
+  makes you send the link back.
 
 ## Actions
 
@@ -89,6 +108,21 @@ elsewhere.
 `action`, never both; anything else refuses the tree (copied text is never silently cut).
 Older apps that do not know `copy` show the button disabled.
 
+### Link buttons
+
+A button with `url` opens that link in the reader's browser and shows an open-in-new icon after its
+label, so it never looks like an action. It sends nothing to you, and like a copy button it stays
+usable after other actions are sent.
+
+```json
+{"id":"track","type":"button","label":"Track order","style":"outlined","url":"https://acme.example/orders/1042"}
+```
+
+`url` must start with `https://` (lowercase), have a host, and hold no spaces or `user@`; at most
+2000 characters. A button has at most one of `action`, `copy` and `url`; a bad `url` or two of them
+refuses the tree. Older apps that do not know `url` show the button disabled, so put a link the
+person must have in the text too.
+
 ## Limits
 
 | What | Limit | Over it |
@@ -105,10 +139,12 @@ Older apps that do not know `copy` show the button disabled.
 | Text, node `fallback` | 2000 code points | clamped |
 | Labels, alt, table cells | 200 code points | clamped |
 | Table | 20 rows x 8 columns | clamped |
+| Facts | 12 items, label and value 200 code points each | clamped |
 | Select and multiSelect options | 50 | clamped |
 | multiSelect `min`/`max` | 0 to the option count, `min` at most `max` | clamped |
 | Input value, `maxLength` | 1000 code points | clamped |
 | Button `copy` | 2000 code points, non-blank, no `action` | tree invalid |
+| Button `url` | `https://`, 2000 characters, no `action` or `copy` | tree invalid |
 
 ## When a tree is refused
 
@@ -159,6 +195,26 @@ networks, and one clear primary action.
 
 Fallback: `"Draft post for X and LinkedIn, waiting for your approval"`.
 
+An order summary: list items with a status badge or an action at the end, the totals as facts, a
+link out, and the primary action last.
+
+```json
+{"root":"card","nodes":[
+  {"id":"card","type":"card","children":["head","o1","o2","sum","actions"]},
+  {"id":"head","type":"text","style":"title","markdown":"Acme orders this week"},
+  {"id":"o1","type":"listItem","title":"Order #1042","subtitle":"2 items · $42.00","caption":"Delivered Tuesday","trailing":"o1s","fallback":"Order #1042: delivered"},
+  {"id":"o1s","type":"badge","label":"Delivered","tone":"success","fallback":"Delivered"},
+  {"id":"o2","type":"listItem","title":"Order #1043","subtitle":"1 item · $18.50","caption":"Payment failed","trailing":"o2s","fallback":"Order #1043: payment failed"},
+  {"id":"o2s","type":"badge","label":"Payment failed","tone":"error","fallback":"Payment failed"},
+  {"id":"sum","type":"facts","items":[{"label":"Orders","value":"2"},{"label":"Total","value":"$60.50"},{"label":"Next delivery","value":"Friday"}],"fallback":"2 orders, $60.50 in all"},
+  {"id":"actions","type":"row","children":["retry","track"]},
+  {"id":"retry","type":"button","label":"Retry payment","style":"filled","action":{"id":"retry_1043"}},
+  {"id":"track","type":"button","label":"View orders","style":"outlined","url":"https://acme.example/orders"}
+]}
+```
+
+Fallback: `"Two Acme orders this week: #1042 delivered, #1043 payment failed"`.
+
 ## A bad card
 
 ```json
@@ -187,3 +243,7 @@ What is wrong with it:
 - Four buttons stacked one per line, two of them `filled`. "Edit" has no `action`, so it is
   disabled. "Discard" is a chip, which takes no taps.
 - No `fallback` worth reading if the tree fails.
+
+The same order summary as one markdown block ("**Order #1042** — 2 items — $42.00 — Delivered…")
+with "Retry", "Open orders" and "Contact" as action buttons one per line is also bad: the reader
+scans a wall of text, and "Open orders" makes the agent send back a link a `url` button opens at once.

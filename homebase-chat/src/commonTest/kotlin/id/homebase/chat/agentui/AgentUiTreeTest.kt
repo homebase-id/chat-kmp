@@ -457,4 +457,83 @@ class AgentUiTreeTest {
         assertReason("button 'root' copy must be a non-blank string", tree("""{"id":"root","type":"button","label":"Copy","copy":5}"""))
         assertReason("button 'root' has both copy and action", tree("""{"id":"root","type":"button","label":"Copy","copy":"x","action":{"id":"go"}}"""))
     }
+
+    @Test fun url_button_decodes_without_an_action() {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Track order","style":"outlined","url":"https://acme.example/orders/1042?ref=card"}"""))
+        val b = assertIs<AgentUiNode.Button>(t.root)
+        assertEquals("https://acme.example/orders/1042?ref=card", b.url)
+        assertNull(b.action)
+        assertNull(b.copy)
+        assertEquals(emptyList(), t.overBudgetActions())
+    }
+
+    @Test fun url_must_be_a_lone_https_link() {
+        fun button(url: String, extra: String = "") = tree("""{"id":"root","type":"button","label":"Open","url":$url$extra}""")
+        val notHttps = "button 'root' url must be an https:// link"
+        assertReason(notHttps, button("\"http://acme.example\""))
+        assertReason(notHttps, button("\"javascript:alert(1)\""))
+        assertReason(notHttps, button("\"HTTPS://acme.example\""))
+        assertReason(notHttps, button("\"https://\""))
+        assertReason(notHttps, button("\"https://acme.example/a b\""))
+        assertReason(notHttps, button("\"https://user@evil.example\""))
+        assertReason("button 'root' url must be a string", button("5"))
+        assertReason("button 'root' url is 2001 characters, limit 2000", button("\"https://a.example/${"x".repeat(1983)}\""))
+        assertReason("button 'root' has both url and action", button("\"https://acme.example\"", ""","action":{"id":"go"}"""))
+        assertReason("button 'root' has both url and copy", button("\"https://acme.example\"", ""","copy":"x""""))
+        assertNull(assertIs<AgentUiNode.Button>(valid(button("null", ""","action":{"id":"go"}""")).root).url)
+    }
+
+    @Test fun list_item_decodes_with_a_trailing_node() {
+        val t = valid(
+            tree(
+                col("root", "li"),
+                """{"id":"li","type":"listItem","title":"Order #1042","subtitle":"2 items","caption":"Shipped today","trailing":"st"}""",
+                """{"id":"st","type":"badge","label":"Shipped","tone":"success"}""",
+            ),
+        )
+        val li = assertIs<AgentUiNode.ListItem>(assertIs<AgentUiNode.Column>(t.root).children.single())
+        assertEquals("Order #1042", li.title)
+        assertEquals("2 items", li.subtitle)
+        assertEquals("Shipped today", li.caption)
+        assertEquals(AgentUiNode.Badge("st", "Shipped", BadgeTone.Success), li.trailing)
+    }
+
+    @Test fun list_item_trailing_follows_the_tree_rules() {
+        assertReason("listItem 'li' has no title (it has \"label\"; put it in \"title\")", tree("""{"id":"li","type":"listItem","label":"Order"}""", root = "li"))
+        assertReason("child 'ghost' of 'li' is not in nodes", tree("""{"id":"li","type":"listItem","trailing":"ghost"}""", root = "li"))
+        assertReason("node 'li' is referenced twice", tree("""{"id":"li","type":"listItem","title":"x","trailing":"li"}""", root = "li"))
+        val t = valid(
+            tree(
+                """{"id":"li","type":"listItem","title":"Invoice","trailing":"pay"}""",
+                """{"id":"pay","type":"button","label":"Pay","action":{"id":"pay","include":["pay"]}}""",
+                root = "li",
+            ),
+        )
+        assertEquals("pay", assertIs<AgentUiNode.Button>(assertIs<AgentUiNode.ListItem>(t.root).trailing).action?.id)
+        assertTrue(t.overBudgetActions().isEmpty())
+    }
+
+    @Test fun facts_are_clamped_and_drop_empty_items() {
+        val items = (1..20).joinToString(",") { """{"label":"L$it","value":"V$it"}""" }
+        val f = assertIs<AgentUiNode.Facts>(valid(tree("""{"id":"root","type":"facts","items":[{"label":" ","value":""},5,$items]}""")).root)
+        assertEquals(AgentUiLimits.MAX_FACTS, f.items.size)
+        assertEquals(Fact("L1", "V1"), f.items.first())
+        val long = assertIs<AgentUiNode.Facts>(valid(tree("""{"id":"root","type":"facts","items":[{"label":"Note","value":"${"v".repeat(300)}"}]}""")).root)
+        assertEquals(AgentUiLimits.MAX_LABEL_CP, long.items.single().value.length)
+        assertReason("facts 'root' has no items with a label or value", tree("""{"id":"root","type":"facts","items":[]}"""))
+    }
+
+    @Test fun badge_tone_defaults_to_neutral() {
+        assertEquals(BadgeTone.Neutral, assertIs<AgentUiNode.Badge>(valid(tree("""{"id":"root","type":"badge","label":"Draft","tone":"neon"}""")).root).tone)
+        assertEquals(BadgeTone.Warning, assertIs<AgentUiNode.Badge>(valid(tree("""{"id":"root","type":"badge","label":"Late","tone":"warning"}""")).root).tone)
+        assertReason("badge 'root' has no label", tree("""{"id":"root","type":"badge","tone":"error"}"""))
+    }
+
+    @Test fun guide_order_summary_card_decodes() {
+        val card = assertIs<AgentUiNode.Card>(valid(AgentUiFixtures.orderSummaryCardJson().encodeToByteArray()).root)
+        assertEquals(listOf("head", "o1", "o2", "sum", "actions"), card.children.map { it.id })
+        val buttons = assertIs<AgentUiNode.Row>(card.children.last()).children.map { assertIs<AgentUiNode.Button>(it) }
+        assertEquals("retry_1043", buttons[0].action?.id)
+        assertEquals("https://acme.example/orders", buttons[1].url)
+    }
 }
