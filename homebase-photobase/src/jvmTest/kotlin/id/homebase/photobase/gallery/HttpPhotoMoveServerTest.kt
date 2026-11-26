@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.FileVersionTagBatch
 import id.homebase.api.client.drives.files.LocalTagsBatch
 import id.homebase.api.client.drives.files.LocalTagsFile
+import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -45,7 +46,8 @@ class HttpPhotoMoveServerTest {
             sent += request.url.encodedPath.substringAfterLast('/') to body
             respond("""{"results":[]}""", headers = headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        return HttpPhotoMoveServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, OkioFileOperationsProvider(FileSystem.SYSTEM, cacheDir.toString()))))
+        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cacheDir.toString())
+        return HttpPhotoMoveServer(DriveFileHttpProvider(http, credentials), DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, fileOps)), DriveUploadProvider(http, credentials, fileOps))
     }
 
     @Test

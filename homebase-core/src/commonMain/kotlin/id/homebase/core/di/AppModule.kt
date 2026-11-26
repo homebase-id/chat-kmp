@@ -223,6 +223,7 @@ import id.homebase.photobase.social.PhotoCommentsService
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
 import id.homebase.photobase.gallery.photosTagged
+import id.homebase.photobase.gallery.photosWithTagsApart
 import id.homebase.photobase.gallery.OpenGallery
 import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
@@ -1568,7 +1569,7 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get()) }
+    single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
     single {
         val store = get<PhotoGalleryStore>()
         PhotoMover(
@@ -1592,7 +1593,7 @@ val appModule = module {
             },
         )
     }
-    single<PhotoAlbumSource> {
+    single {
         PhotoAlbums(
             store = get(),
             record = get(),
@@ -1601,8 +1602,10 @@ val appModule = module {
             changes = get<EventBus>().events.newPhotoRecords(),
             scope = get(),
             sync = { syncPhotos() },
+            tagsApart = { get<DriveQueryProvider>().photosWithTagsApart(it) },
         )
     }
+    single<PhotoAlbumSource> { get<PhotoAlbums>() }
     single { PhotoCommentsService(get(), get(), get(), get(), get(), get()) }
     single { PhotoActionService(get(), get(), get(), get(), get(), get()) }
     // The tab's own gallery has no parameter.

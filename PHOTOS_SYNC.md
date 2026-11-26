@@ -256,6 +256,13 @@ backup outbox, because it would duplicate `OutboxSync`'s retry, storage-full and
 - **Live and motion photos:** the viewer plays the clip once when the photo opens, then cross-fades
   to the still; on the web, where a clip can't play, it shows the largest thumbnail (THUMBNAILS.md,
   "Live and motion photos").
+- **Albums:** an album is a record (`AlbumFileType`) whose unique id tags its photos twice: as a
+  local tag, which the gallery reads, and as an app tag in the photo's header, which a guest's peer
+  query can see. `PhotoMover.setTag` writes both; an app tag is written by rewriting the header
+  (`headerUpdate`), keeping its ACL and payloads. Albums made before sharing have the local tag
+  alone, and a photo a member adds has the app tag alone: `PhotoAlbums.bringTagsTogether` fixes
+  both, when an album is shared and at each sharing upkeep. A shared album's record is meant to be
+  read: its share lifts its ACL to Connected, and a rename keeps it.
 
 ---
 

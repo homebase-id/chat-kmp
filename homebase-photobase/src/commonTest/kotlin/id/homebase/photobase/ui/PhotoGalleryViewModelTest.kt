@@ -538,6 +538,8 @@ class PhotoGalleryViewModelTest {
             return fileIds.map { PerFileResult(it) }
         }
 
+        override suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> = fileIds.map { PerFileResult(it) }
+
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
     }
 

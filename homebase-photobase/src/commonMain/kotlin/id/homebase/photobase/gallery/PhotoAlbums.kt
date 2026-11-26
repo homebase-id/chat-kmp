@@ -63,6 +63,8 @@ class PhotoAlbums(
     changes: Flow<PhotoChange>,
     scope: CoroutineScope,
     private val sync: () -> Unit,
+    /** Photos on the server with one tag of the album's but not the other: (local only, app only). */
+    private val tagsApart: suspend (tag: Uuid) -> Pair<List<Uuid>, List<Uuid>> = { emptyList<Uuid>() to emptyList() },
 ) : PhotoAlbumSource {
     private val forgotten = MutableStateFlow(0)
     // Read on the one collector stateIn runs.
@@ -117,6 +119,17 @@ class PhotoAlbums(
         }
     }
 
+    /**
+     * Brings album [id]'s two tags together on every photo: an album made before albums could be shared has its local
+     * tag alone, and a photo a member added has its app tag alone. The number of photos changed.
+     */
+    suspend fun bringTagsTogether(id: Uuid): Int {
+        val (localOnly, appOnly) = tagsApart(id)
+        if (localOnly.isNotEmpty()) mover.mirrorAppTag(id, on = true, localOnly)
+        if (appOnly.isNotEmpty()) mover.setTag(id, on = true, appOnly)
+        return localOnly.size + appOnly.size
+    }
+
     private suspend fun write(id: Uuid, name: String, create: Boolean) {
         val content = OdinSystemSerializer.serialize(AlbumContent(name.trim().truncateToCodePoints(MAX_NAME)))
         try {
@@ -155,19 +168,32 @@ private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
 }
 
 /** Every file on the Photos drive carrying [tag], as the server has them. */
-suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> = buildList {
+suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> =
+    photosWhere(FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted))).map { it.fileId }
+
+/** The live photos with album [tag] as a local tag and not an app tag, then the ones with it as an app tag alone. */
+suspend fun DriveQueryProvider.photosWithTagsApart(tag: Uuid): Pair<List<Uuid>, List<Uuid>> {
+    val photos = listOf(PhotobaseProtocol.PhotoFileType)
+    val localOnly = photosWhere(FileQueryParams(fileType = photos, localTagsMatchAtLeastOne = listOf(tag)))
+        .filter { tag !in it.fileMetadata.appData.tags.orEmpty() }.map { it.fileId }
+    val appOnly = photosWhere(FileQueryParams(fileType = photos, tagsMatchAtLeastOne = listOf(tag)))
+        .filter { tag !in it.fileMetadata.localAppData?.tags.orEmpty() }.map { it.fileId }
+    return localOnly to appOnly
+}
+
+private suspend fun DriveQueryProvider.photosWhere(params: FileQueryParams): List<HomebaseFile> = buildList {
     var cursor: String? = null
     do {
         val page = queryBatch(
             PhotobaseProtocol.DriveAlias,
             QueryBatchRequest(
-                queryParams = FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted)),
+                queryParams = params,
                 resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = DriveFileHttpProvider.FILE_BATCH),
             ),
             // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
             skipUnreadable = true,
         )
-        page.searchResults.mapTo(this) { it.fileId }
+        addAll(page.searchResults)
         cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor }
     } while (cursor != null)
 }

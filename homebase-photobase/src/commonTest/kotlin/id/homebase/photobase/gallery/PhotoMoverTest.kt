@@ -50,6 +50,13 @@ class PhotoMoverTest {
             return files[fileId]
         }
 
+        val appTagged = mutableListOf<Triple<Uuid, Boolean, List<Uuid>>>()
+
+        override suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+            appTagged += Triple(tag, on, fileIds)
+            return fileIds.map { PerFileResult(it, if (it in files) null else OdinClientErrorCode.FileNotFound) }
+        }
+
         private fun write(tags: List<FileVersionTag>, change: (HomebaseFile) -> HomebaseFile): List<PerFileResult> {
             if (sent.size >= throwFromRequest) throw IllegalStateException("offline")
             sent += tags.map { it.fileId }
@@ -330,6 +337,27 @@ class PhotoMoverTest {
         assertEquals(PhotoMoveResult(done = 0, changedElsewhere = 1), mover.move(listOf(photo.fileId), PhotoShelf.Archive, PhotoShelf.Bin).counts())
         assertEquals(ArchivalStatus.None, statusOnServer(photo))
     }
+
+    @Test
+    fun anAlbumsTagGoesOnTheHeadersOfThePhotosItWasPutOn() = runTest {
+        val photo = photo()
+        val album = Uuid.random()
+
+        mover.setTag(album, on = true, listOf(photo.fileId, Uuid.random()))
+        mover.setTag(album, on = false, listOf(photo.fileId))
+
+        assertEquals(listOf(Triple(album, true, listOf(photo.fileId)), Triple(album, false, listOf(photo.fileId))), server.appTagged)
+    }
+
+    @Test
+    fun aHeartStaysOffTheHeader() = runTest {
+        val photo = photo()
+
+        mover.setTag(PhotobaseProtocol.FavoriteTag, on = true, listOf(photo.fileId))
+
+        assertEquals(emptyList(), server.appTagged)
+    }
+
 }
 
 private fun PhotoMoveResult.counts() = copy(written = emptySet())
