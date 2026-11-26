@@ -108,6 +108,7 @@ data class GroupEdit(val joined: List<OdinId>, val pending: List<OdinId>, val re
  * grant odin-core holds until their identity next calls this one, and the [refused] ones, which a group's share left out.
  */
 data class AlbumShared(
+    val albumId: Uuid,
     val circleId: Uuid,
     val albumName: String,
     val waiting: List<OdinId>,
@@ -213,37 +214,41 @@ class PhotoAlbumSharing(
     private suspend fun shareTo(albumId: Uuid, audience: AlbumAudience, access: PhotoAlbumAccess, expiresAt: Long?, onWriting: () -> Unit): AlbumShared {
         circles.requireSignedIn()
         val members = audience.members
-        // A group's members were checked as they joined; one who has lapsed since mustn't stop the rest.
-        if (audience is AlbumAudience.Person) assertMayJoin(members)
-        val keys = circles.keysOf(members)
-        keys.unsupported().takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.RecipientNotAdded(it) }
+        val group = audience as? AlbumAudience.Group
+        // A group's members were checked as they joined, and its own circle reaches them: one who has lapsed since, or
+        // whose server can't be read now, mustn't stop the rest (their key is sealed by the upkeep once it can be).
+        if (group == null) assertMayJoin(members)
+        val keys = circles.keysOf(members, lenient = group != null)
+        val unsupported = keys.unsupported()
+        if (group == null && unsupported.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(unsupported)
         val points = keys.points()
 
         val recipients = recipientsCircle()
-        assertGrantsAShare(listOfNotNull(recipients, (audience as? AlbumAudience.Group)?.circleId))
-        // Their individual shares then don't depend on a group they might leave. A group's member refused here is left
-        // out and named; the rest still get it.
-        val toRecipients = enrollAll(recipients, members)
-        if (audience is AlbumAudience.Person && toRecipients.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(toRecipients.refused.toList())
-        val pending = toRecipients.pending.toMutableSet()
-        val circleId = when (audience) {
-            is AlbumAudience.Group -> audience.circleId
-            is AlbumAudience.Person -> circles.asApp.createCircle(
+        assertGrantsAShare(listOfNotNull(recipients, group?.circleId))
+        // Their individual shares then don't depend on a group they might leave.
+        val toRecipients = enrollAll(recipients, members - unsupported.toSet())
+        val circleId = if (group != null) {
+            group.circleId
+        } else {
+            if (toRecipients.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(toRecipients.refused.toList())
+            val individual = circles.asApp.createCircle(
                 CreateAppCircleRequest(
-                    name = audience.odinId.domainName,
-                    slug = SelectiveShareCircles.individualSlug(audience.odinId),
+                    name = audience.members.single().domainName,
+                    slug = SelectiveShareCircles.individualSlug(audience.members.single()),
                     designation = CircleDesignation.Individual,
                 )
-            ).also { pending += enrollOrRefuse(it, members) }
+            )
+            // Before anything is written to a photo: the share would be refused.
+            val pending = toRecipients.pending + enrollOrRefuse(individual, members)
+            if (pending.isNotEmpty()) throw PhotoSharingException.Pending(pending.toList())
+            individual
         }
-        // Before anything is written to a photo: the share would be refused.
-        if (audience is AlbumAudience.Person && pending.isNotEmpty()) throw PhotoSharingException.Pending(pending.toList())
-        onWriting()
         circles.sealCircleKey(circleId, points)
 
         albums.bringTagsTogether(albumId)
         val recordFile = albumRecord(albumId) ?: error("album $albumId isn't on the drive")
         val files = listOf(recordFile) + albumPhotos(albumId, includeBinned = false)
+        onWriting()
         files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
             circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk.map { circles.shareRequest(it.fileId, it.keyHeader, circleId, ROW_PERMISSIONS, expiresAt) })
         }
@@ -252,10 +257,9 @@ class PhotoAlbumSharing(
         if (access == PhotoAlbumAccess.Add) editing.withLock { circles.enroll(editorsCircle(), members) }
         else editorsMayHaveChanged(removalsOnly = true)
         return AlbumShared(
-            circleId, recordFile.albumName().orEmpty(),
-            waiting = members.filter { keys[it] == RecipientKey.NoDrive && it !in pending && it !in toRecipients.refused },
-            pending = members.filter { it in pending },
-            refused = members.filter { it in toRecipients.refused },
+            albumId, circleId, recordFile.albumName().orEmpty(),
+            waiting = members.filter { keys[it] == RecipientKey.NoDrive },
+            refused = unsupported,
         )
     }
 
@@ -295,15 +299,16 @@ class PhotoAlbumSharing(
     }
 
     /** Makes a group called [name] of [members]: a circle of the app's granting the drive what the recipients' circle grants. */
-    // The group, and its members whose grant odin-core deposited.
+    // The group and its members whose grant odin-core deposited; a group that can't be filled goes again.
     private suspend fun createGroup(name: String, members: List<OdinId>): Pair<AlbumAudience.Group, List<OdinId>> {
         circles.requireSignedIn()
         assertMayJoin(members)
         val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
-        val enrolment = enrollAll(circleId, members)
-        if (enrolment.refused.isNotEmpty()) {
-            circles.asApp.deleteCircle(circleId, removeMembers = true)
-            throw PhotoSharingException.RecipientNotAdded(enrolment.refused.toList())
+        val enrolment = try {
+            enrollAll(circleId, members).also { if (it.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(it.refused.toList()) }
+        } catch (e: Throwable) {
+            withContext(NonCancellable) { runCatching { circles.asApp.deleteCircle(circleId, removeMembers = true) } }
+            throw e
         }
         val pending = members.filter { it in enrolment.pending }
         return AlbumAudience.Group(circleId, name, (members - pending.toSet()).sortedBy { it.domainName }, pending = pending) to pending
@@ -312,9 +317,9 @@ class PhotoAlbumSharing(
     /** The albums shared with [group], and with what access: what someone added to it is told about. */
     suspend fun albumsSharedWith(group: AlbumAudience.Group): List<Pair<AlbumShared, PhotoAlbumAccess>> {
         circles.requireSignedIn()
-        return albumRecords().filter { record -> record.shares.orEmpty().any { it.circleId == group.circleId } }.map { record ->
+        return albumRecords().filter { record -> record.shares.orEmpty().any { it.circleId == group.circleId } }.mapNotNull { record ->
             val access = if (group.circleId in addingCircles(record)) PhotoAlbumAccess.Add else PhotoAlbumAccess.View
-            AlbumShared(group.circleId, record.albumName().orEmpty(), waiting = emptyList()) to access
+            AlbumShared(record.fileMetadata.appData.uniqueId ?: return@mapNotNull null, group.circleId, record.albumName().orEmpty(), waiting = emptyList()) to access
         }
     }
 
@@ -727,7 +732,6 @@ class PhotoAlbumSharing(
         internal fun sharerOf(content: String): OdinId? =
             contentObject(content)[ODIN_ID]?.let { runCatching { OdinId(it.jsonPrimitive.content) }.getOrNull() }
 
-        /** What [circle] grants on the Photos drive. */
         internal fun grantedOnPhotos(circle: RedactedCircleDefinition): List<DrivePermission> =
             circle.driveGrants.orEmpty()
                 .filter { compareStringUuId(it.permissionedDrive?.drive?.alias, PhotobaseProtocol.DriveAlias.toHexString()) }

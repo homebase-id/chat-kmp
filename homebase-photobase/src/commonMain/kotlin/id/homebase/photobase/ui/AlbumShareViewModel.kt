@@ -32,11 +32,14 @@ data class AlbumShareUiState(
     val signedIn: Boolean = false,
     /** Null until read. */
     val recipients: List<AlbumShareRecipient>? = null,
-    val busy: Boolean = false,
+    /** What's running, which only its own button shows; null when nothing is. */
+    val running: AlbumShareStep? = null,
     val access: PhotoAlbumAccess = PhotoAlbumAccess.View,
     /** The groups made for sharing albums, to share this one with too. */
     val groups: List<AlbumAudience.Group> = emptyList(),
-)
+) {
+    val busy: Boolean get() = running != null
+}
 
 sealed interface AlbumShareEvent {
     data class OpenUrl(val url: String) : AlbumShareEvent
@@ -136,7 +139,15 @@ class AlbumShareViewModel(
                 if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
                 if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(edit.pending.joinToString { it.domainName }, action.group.name))
                 if (edit.joined.isEmpty()) return@busy
-                val untold = sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(edit.joined, shared, access) }.distinct()
+                // The edit is saved: a failure telling them is theirs not being told, not the edit failing.
+                val untold = try {
+                    sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(edit.joined, shared, access) }.distinct()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(tag = TAG, throwable = e) { "group ${action.group.circleId}: new members not told" }
+                    edit.joined
+                }
                 if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             }
         }
@@ -191,7 +202,8 @@ class AlbumShareViewModel(
                 is AudienceChoice.NewGroup -> sharing.shareWithNewGroup(albumId, choice.name, choice.members, state.access, expiresAt = null)
             }
             _events.send(AlbumShareEvent.Shared(audience.label))
-            if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(shared.pending.joinToString { it.domainName }))
+            // Only a new group has pending members here: they join on their own, nothing to try again.
+            if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(shared.pending.joinToString { it.domainName }, audience.label))
             if (shared.refused.isNotEmpty()) _events.send(AlbumShareEvent.LeftOut(shared.refused.joinToString { it.domainName }))
             val untold = tell(audience.members - shared.pending.toSet() - shared.refused.toSet(), shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
@@ -201,7 +213,7 @@ class AlbumShareViewModel(
 
     private fun busy(step: AlbumShareStep, block: suspend () -> Unit) {
         if (_uiState.value.busy) return
-        _uiState.update { it.copy(busy = true) }
+        _uiState.update { it.copy(running = step) }
         viewModelScope.launch {
             try {
                 block()
@@ -227,7 +239,7 @@ class AlbumShareViewModel(
                 if (sharing.signOutIfRefused(e)) _uiState.update { it.copy(signedIn = false) }
                 _events.send(AlbumShareEvent.Failed(step, ShareFailure.of(e)))
             } finally {
-                _uiState.update { it.copy(busy = false) }
+                _uiState.update { it.copy(running = null) }
                 load()
             }
         }

@@ -1595,7 +1595,7 @@ val appModule = module {
             missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
             // An invite without the album's name would show every recipient "update the app": they aren't told.
             tell = { people, shared, access ->
-                if (shared.albumName.isBlank()) people else get<ShareMessages>().send(people, albumShareInvite(albumId, shared.albumName, access))
+                if (shared.albumName.isBlank()) people else get<ShareMessages>().send(people, albumShareInvite(shared.albumId, shared.albumName, access))
             },
         )
     }

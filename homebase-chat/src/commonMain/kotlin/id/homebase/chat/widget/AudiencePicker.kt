@@ -109,7 +109,7 @@ class AudiencePickerState internal constructor(group: String?, people: List<Stri
     // Picking the people of a group already made shares with it, unless a new one is asked for.
     internal fun sameGroup(groups: List<AudienceGroup>): AudienceGroup? =
         chosenPeople.toSet().takeIf { it.size > 1 }?.let { picked ->
-            groups.firstOrNull { g -> g.unavailable == null && g.members.map { it.domainName }.toSet() == picked }
+            groups.firstOrNull { g -> g.unavailable == null && (g.members + g.pending).map { it.domainName }.toSet() == picked }
         }
 
     internal fun makesGroup(groups: List<AudienceGroup>): Boolean =
@@ -237,7 +237,9 @@ private fun GroupRow(group: AudienceGroup, selected: Boolean, enabled: Boolean, 
     ListItem(
         supportingContent = {
             if (available) {
-                Text(pluralStringResource(MR.plurals.audience_group_people, group.members.size, group.members.size))
+                // Without the members button, the names are the only way to see who a group reaches.
+                val people = onMembers?.let { pluralStringResource(MR.plurals.audience_group_people, group.members.size, group.members.size) }
+                Text(people ?: group.members.joinToString { it.domainName }, maxLines = 1, overflow = TextOverflow.Ellipsis)
             } else {
                 Text(group.unavailable.orEmpty(), color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }

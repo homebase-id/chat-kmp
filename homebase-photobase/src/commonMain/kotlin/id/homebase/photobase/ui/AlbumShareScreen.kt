@@ -200,7 +200,7 @@ fun AlbumShareScreen(
                 shown,
                 onDismiss = { sheetGroup = null },
                 onSave = { members -> viewModel.onAction(AlbumShareUiAction.EditGroup(group, members)) },
-                saving = uiState.busy,
+                saving = uiState.running == AlbumShareStep.EditGroup,
             )
         }
     }
@@ -288,7 +288,7 @@ fun AlbumShareScreen(
                     Button(
                         onClick = { choice?.let { viewModel.onAction(AlbumShareUiAction.Share(it)) } },
                         enabled = !uiState.busy && choice != null,
-                    ) { ButtonProgressContent(uiState.busy, stringResource(MR.string.photobase_share_sharing), stringResource(MR.string.photobase_share_send)) }
+                    ) { ButtonProgressContent(uiState.running == AlbumShareStep.Share, stringResource(MR.string.photobase_share_sharing), stringResource(MR.string.photobase_share_send)) }
                 }
             }
             item(key = "header") { SettingsSectionHeader(stringResource(MR.string.photobase_share_shared_with), Modifier.padding(start = 16.dp, top = 8.dp)) }

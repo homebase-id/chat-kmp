@@ -120,7 +120,12 @@ class SelectiveShareCircles(
     suspend fun enrollOutcomes(circleId: Uuid, members: Collection<OdinId>): List<EnrollmentOutcome> =
         members.chunked(ADD_MANY_LIMIT).flatMap { chunk ->
             asApp.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes
-                .also { outcomes -> Logger.i(tag = TAG) { "circle $circleId enrolment: ${outcomes.groupBy({ it.kind }, { it.odinId.domainName })}" } }
+                .also { outcomes ->
+                    Logger.i(tag = TAG) {
+                        val notEnrolled = outcomes.filter { it.kind != EnrollmentOutcomeKind.Enrolled }.groupBy({ it.kind }, { it.odinId.domainName })
+                        "circle $circleId enrolment: ${outcomes.count { it.kind == EnrollmentOutcomeKind.Enrolled }} enrolled, others $notEnrolled"
+                    }
+                }
         }
 
     /** [fileId]'s key, under [keyHeader], locked for [circleId]. */
