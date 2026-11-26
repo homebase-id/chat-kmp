@@ -39,8 +39,7 @@ class FeedPermissionService(
         val channelDriveAlias =
             post.channelId.toUuidOrNull() ?: FeedProtocol.PublicChannelDriveAlias
 
-        val context =
-            contextFor(author, self)
+        val context = contextFor(author, self)
 
         evaluateCanReact(
             securityContext = context,
