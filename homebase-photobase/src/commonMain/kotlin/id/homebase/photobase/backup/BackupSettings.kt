@@ -49,7 +49,7 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
 
     private val _unreadable = MutableStateFlow(false)
 
-    /** The stored settings couldn't be read or decoded: [settings] holds the defaults, and [update] refuses. */
+    /** The stored settings couldn't be read: [settings] holds the defaults, and [update] refuses. */
     val unreadable: StateFlow<Boolean> = _unreadable.asStateFlow()
 
     // A retry started before a reset() reads the identity that was signed in then.
@@ -86,10 +86,18 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
         _settings.value = next
     }
 
-    private fun decode(read: Result<ByteArray?>): BackupSettings? = read
-        .mapCatching { bytes -> if (bytes == null || bytes.isEmpty()) BackupSettings() else OdinSystemSerializer.deserialize<BackupSettings>(bytes.decodeToString()) }
-        .onFailure { Logger.w(tag = "BackupSettingsStore", throwable = it) { "couldn't read the backup settings" } }
-        .getOrNull()
+    // A read that failed may work next time; bytes that don't decode won't, so they give way to the defaults.
+    private fun decode(read: Result<ByteArray?>): BackupSettings? {
+        read.exceptionOrNull()?.let {
+            Logger.w(tag = TAG, throwable = it) { "couldn't read the backup settings" }
+            return null
+        }
+        val bytes = read.getOrNull()
+        if (bytes == null || bytes.isEmpty()) return BackupSettings()
+        return runCatching { OdinSystemSerializer.deserialize<BackupSettings>(bytes.decodeToString()) }
+            .onFailure { Logger.e(tag = TAG, throwable = it) { "stored backup settings don't decode; using the defaults" } }
+            .getOrDefault(BackupSettings())
+    }
 
     // The settings first: nothing may see them readable while they still hold the defaults.
     private fun apply(stored: BackupSettings?) {
@@ -98,6 +106,7 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     }
 
     private companion object {
+        const val TAG = "BackupSettingsStore"
         val SETTINGS_KEY: Uuid = Uuid.parse("00000000-0000-0000-0000-0000000b0a01")
     }
 }

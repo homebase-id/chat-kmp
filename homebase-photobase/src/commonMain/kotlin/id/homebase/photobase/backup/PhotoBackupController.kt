@@ -3,6 +3,7 @@ package id.homebase.photobase.backup
 import co.touchlab.kermit.Logger
 import id.homebase.photobase.PhotobaseConfigFile
 import kotlinx.coroutines.CancellationException
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -26,6 +27,7 @@ class PhotoBackupController(
 ) {
     private var foregroundJob: Job? = null
 
+    @Volatile
     private var inForeground = false
 
     init {
@@ -46,12 +48,18 @@ class PhotoBackupController(
 
     // The triggers armed for the defaults while the settings were unreadable; arm them for the real ones.
     private suspend fun readSettingsAgain() {
-        if (settingsStore.retryIfUnreadable()) triggers?.rearm(settingsStore.settings.value)
+        if (!settingsStore.retryIfUnreadable()) return
+        triggers?.rearm(settingsStore.settings.value)
+        if (inForeground) startForegroundRun()
     }
 
     fun onAppForeground() {
         inForeground = true
         if (settingsStore.unreadable.value) return retrySettings()
+        startForegroundRun()
+    }
+
+    private fun startForegroundRun() {
         val run = run ?: return
         if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
@@ -60,6 +68,8 @@ class PhotoBackupController(
             return
         }
         foregroundJob = scope.launch {
+            // Started from a retry, the app may have left the screen since.
+            if (!inForeground) return@launch
             launch { pushSchedule.ensure(adoptSharedInterval()) }
             val fullScan = triggers?.rescansAfterBackgroundWake == true && run.takeWokenInBackground()
             run.run(BackupRunRequest(BackupTrigger.Foreground, BackupBudget(null), forceFullScan = fullScan))
@@ -89,6 +99,8 @@ class PhotoBackupController(
 
     suspend fun runFromBackground(request: BackupRunRequest) {
         readSettingsAgain()
+        // The defaults say off: a run on them would disarm the triggers.
+        if (settingsStore.unreadable.value) return
         if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
@@ -210,7 +222,7 @@ class PhotoBackupController(
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
-        readSettingsAgain()
+        settingsStore.retryIfUnreadable()
         foregroundJob?.cancel()
         run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))
