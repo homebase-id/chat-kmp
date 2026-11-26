@@ -51,7 +51,10 @@ sealed class CallSignal {
         val iceBatch: Boolean = false,
     ) : CallSignal()
 
-    /** [candidates], when present, is every candidate sent so far and starts with the one in [candidate], which an older build reads alone. */
+    /**
+     * [candidates], when present, is every candidate sent so far and starts with the one in [candidate], which an older build reads alone.
+     * [signal] is the sender's last [Answer], [Restart] or [RestartAnswer], since the relay keeps only this blob.
+     */
     @Serializable @SerialName("ice")
     data class Ice(
         override val callId: String,
@@ -60,12 +63,13 @@ sealed class CallSignal {
         val sdpMLineIndex: Int? = null,
         override val device: String? = null,
         val candidates: List<LocalCandidate>? = null,
+        val signal: CallSignal? = null,
     ) : CallSignal() {
         val all: List<LocalCandidate> get() = candidates ?: listOf(LocalCandidate(candidate, sdpMid, sdpMLineIndex))
 
         companion object {
-            fun of(callId: String, candidates: List<LocalCandidate>): Ice = candidates.first().let {
-                Ice(callId, it.candidate, it.sdpMid, it.sdpMLineIndex, candidates = candidates)
+            fun of(callId: String, candidates: List<LocalCandidate>, signal: CallSignal? = null): Ice = candidates.first().let {
+                Ice(callId, it.candidate, it.sdpMid, it.sdpMLineIndex, candidates = candidates, signal = signal)
             }
         }
     }
@@ -83,8 +87,14 @@ sealed class CallSignal {
     @Serializable @SerialName("restart")
     data class Restart(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
 
+    /** [offerUfrag] is the ICE ufrag of the [Restart] answered; null from an older build. */
     @Serializable @SerialName("restart_answer")
-    data class RestartAnswer(override val callId: String, val sdp: String, override val device: String? = null) : CallSignal()
+    data class RestartAnswer(
+        override val callId: String,
+        val sdp: String,
+        override val device: String? = null,
+        val offerUfrag: String? = null,
+    ) : CallSignal()
 
     /** Callee's ask for a [Restart]: only the caller offers, so the callee cannot restart ICE itself. */
     @Serializable @SerialName("restart_request")
@@ -95,7 +105,7 @@ fun CallSignal.fromDevice(device: String): CallSignal = when (this) {
     is CallSignal.Offer -> copy(device = device)
     is CallSignal.Ringing -> copy(device = device)
     is CallSignal.Answer -> copy(device = device)
-    is CallSignal.Ice -> copy(device = device)
+    is CallSignal.Ice -> copy(device = device, signal = signal?.fromDevice(device))
     is CallSignal.Hangup -> copy(device = device)
     is CallSignal.Restart -> copy(device = device)
     is CallSignal.RestartAnswer -> copy(device = device)

@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +123,7 @@ internal class FileSaver(
     private val fallback: RefusedSaveFallback = ReportRefusal,
     private val scope: CoroutineScope = saveScope,
 ) {
+    @OptIn(DelicateCoroutinesApi::class)
     fun save(file: Path, suggestedName: String, deleteAfter: Boolean, onSuccess: (String) -> Unit, onError: (Throwable) -> Unit) {
         // ATOMIC: once launched, the body (and so the delete in its finally) runs even if the scope is cancelled first.
         scope.launch(start = CoroutineStart.ATOMIC) {
@@ -153,6 +155,7 @@ internal class FileSaver(
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun offerRefused(refused: AlbumSaveResult.Refused, onError: (Throwable) -> Unit) {
         scope.launch(start = CoroutineStart.ATOMIC) {
             try {

@@ -33,7 +33,8 @@ sealed interface CallEffect {
     /** [offerSeq] is the offer the callee answered; null for a restart answer or an older callee. */
     data class ApplyRemoteAnswer(val sdp: String, val offerSeq: Int? = null) : CallEffect
     data object RestartIce : CallEffect
-    data class AnswerRestart(val offerSdp: String) : CallEffect
+    /** [carried]: the restart came inside an [CallSignal.Ice], so one already answered is not answered again. */
+    data class AnswerRestart(val offerSdp: String, val carried: Boolean = false) : CallEffect
     data class AddIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
     /** Caller-side candidate gathered before any device answered: folded into the retained offer, not trickled. */
     data class HoldIce(val candidate: String, val sdpMid: String?, val sdpMLineIndex: Int?) : CallEffect
@@ -204,7 +205,16 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
                 } else {
                     CallTransition(s)
                 }
-            is CallSignal.Ice -> CallTransition(s, sig.all.map { CallEffect.AddIce(it.candidate, it.sdpMid, it.sdpMLineIndex) })
+            is CallSignal.Ice -> {
+                // A peer whose socket reconnected sees only this blob, so the signal it carries comes before its candidates.
+                val carried = when (val c = sig.signal?.takeIf { it.callId == sig.callId }) {
+                    is CallSignal.Answer, is CallSignal.RestartAnswer -> signal(s, inbound.copy(signal = c), nowMs)
+                    is CallSignal.Restart ->
+                        if (s.phase.isInCall) CallTransition(s, listOf(CallEffect.AnswerRestart(c.sdp, carried = true))) else CallTransition(s)
+                    else -> CallTransition(s)
+                }
+                carried.copy(effects = carried.effects + sig.all.map { CallEffect.AddIce(it.candidate, it.sdpMid, it.sdpMLineIndex) })
+            }
             is CallSignal.Hangup -> when (s.phase) {
                 CallPhase.Outgoing -> end(
                     s,

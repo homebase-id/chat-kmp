@@ -47,6 +47,8 @@ import okio.Path.Companion.toPath
 import okio.buffer
 import okio.use
 
+internal const val THUMBNAIL_FETCH_CONCURRENCY = 30
+
 /** A drive whose thumbnails get their own disk cache, so a large library can't push out everything else. */
 data class DedicatedThumbCache(
     val driveId: Uuid,
@@ -116,7 +118,7 @@ class DriveFileProviderCached(
     private val directory = fileOperationsProvider.getCacheDirectory()
 
     private val payloadSemaphore = Semaphore(1)
-    private val thumbnailSemaphore = Semaphore(30)
+    private val thumbnailSemaphore = Semaphore(THUMBNAIL_FETCH_CONCURRENCY)
 
     private val fetchScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private class InFlight(val fetch: Deferred<ByteApiResponse>, val cancelWhenUnwatched: Boolean) {

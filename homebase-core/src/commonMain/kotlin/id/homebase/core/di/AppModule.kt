@@ -798,7 +798,7 @@ val appModule = module {
                 // in-stream via SessionEnded, so no clear is needed on this path.
                 get<LiveLocationReceiveStore>()
                 // Arm the last-known-good server-IP capture bridge (its init sets the global
-                // registry the Android OkHttp EventListener forwards validated connects to).
+                // registry the Android and desktop OkHttp EventListener forwards validated connects to).
                 get<ServerIpCapture>()
                 // Emergency-retrieved peer location history is memory-only and per-identity —
                 // clear any prior identity's retrievals (same in-stream SessionEnded backstop).

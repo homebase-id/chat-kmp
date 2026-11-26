@@ -34,14 +34,14 @@ actual suspend fun recognizeCardText(jpeg: ByteArray): String? = withContext(Dis
             recognizer.process(InputImage.fromBitmap(bitmap, 0))
                 .addOnSuccessListener { if (cont.isActive) cont.resume(it.text.takeIf(String::isNotBlank)) }
                 .addOnFailureListener { e ->
-                    Logger.w(TAG) { "text recognition failed: ${e::class.simpleName}" }
+                    Logger.w(tag = TAG) { "text recognition failed: ${e::class.simpleName}" }
                     if (cont.isActive) cont.resume(null)
                 }
         }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Logger.w(TAG) { "text recognition unavailable: ${e::class.simpleName}" }
+        Logger.w(tag = TAG) { "text recognition unavailable: ${e::class.simpleName}" }
         null
     } finally {
         recognizer.close()
