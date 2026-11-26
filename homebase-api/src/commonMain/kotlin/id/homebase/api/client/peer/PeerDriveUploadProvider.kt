@@ -20,6 +20,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asQuery
 import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
@@ -120,7 +121,7 @@ class PeerDriveUploadProvider(
         // body is the same V1 transit bundle (TransitInstructionSet with remoteTargetDrive +
         // recipients, then metadata, then payload/thumbnail parts).
         val owner = recipients.first()
-        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + (request.fileSystemType?.let { "?xfst=$it" } ?: ""))
+        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + request.fileSystemType.asQuery())
         Logger.i(tag = TAG) {
             "uploadFileOverPeer: POST $url recipients=${recipients.map { it.domainName }} " +
                 "remoteDrive=$remoteTargetDrive"

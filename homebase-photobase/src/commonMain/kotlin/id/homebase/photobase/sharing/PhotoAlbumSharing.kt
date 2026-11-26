@@ -100,13 +100,7 @@ sealed class PhotoSharingException(message: String) : Exception(message) {
     class NotSealedYet(val owner: OdinId) : PhotoSharingException("$owner hasn't sealed its key here yet")
 }
 
-/**
- * Sharing albums, the way Filesync shares folders (FilesyncSharing): everything stays on the owner's Photos drive, and a
- * person or group reads the album's record and its photos through share rows, each locking the file's key with the
- * circle's. Every row grants Read, React and Comment; Add is membership in the editors circle, whose drive Write lets a
- * member deposit photos and nothing more (odin-core `AssertMemberMayWriteAsync`). Which circles may add is kept in the
- * album record's content, which the owner's devices and the album's members read.
- */
+/** Sharing albums as Filesync shares folders: share rows on the owner's drive; Add is membership in the editors circle. */
 class PhotoAlbumSharing(
     httpClient: HttpClient,
     private val appCredentials: CredentialsManager,
@@ -131,8 +125,6 @@ class PhotoAlbumSharing(
         notSealedYet = { PhotoSharingException.NotSealedYet(it) },
         notReviewedByOwner = { PhotoSharingException.NotReviewedByOwner(it) },
     )
-    private val asApp = circles.asApp
-    private val appShares = circles.appShares
     private val appQuery = DriveQueryProvider(httpClient, PhotobaseSession.credentials)
     private val editing = Mutex()
 
@@ -152,7 +144,7 @@ class PhotoAlbumSharing(
         circles.enroll(recipientsCircle(), members)
         val circleId = when (audience) {
             is AlbumAudience.Group -> audience.circleId
-            is AlbumAudience.Person -> asApp.createCircle(
+            is AlbumAudience.Person -> circles.asApp.createCircle(
                 CreateAppCircleRequest(
                     name = audience.odinId.domainName,
                     slug = SelectiveShareCircles.individualSlug(audience.odinId),
@@ -166,7 +158,7 @@ class PhotoAlbumSharing(
         val recordFile = albumRecord(albumId) ?: error("album $albumId isn't on the drive")
         val files = listOf(recordFile) + albumPhotos(albumId)
         files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
-            appShares.share(PhotobaseProtocol.DriveAlias, chunk.map { circles.shareRequest(it.fileId, it.keyHeader, circleId, ROW_PERMISSIONS, expiresAt) })
+            circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk.map { circles.shareRequest(it.fileId, it.keyHeader, circleId, ROW_PERMISSIONS, expiresAt) })
         }
         setAdding(albumId, circleId, access == PhotoAlbumAccess.Add)
         // After the rows and the record, so a concurrent syncEditors that read them before can't take the members out again.
@@ -218,10 +210,10 @@ class PhotoAlbumSharing(
     /** Makes a group called [name] of [members]: a circle of the app's granting the drive what the recipients' circle grants. */
     suspend fun createGroup(name: String, members: List<OdinId>): AlbumAudience.Group {
         circles.requireSignedIn()
-        val circleId = asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
+        val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
         val refused = circles.enroll(circleId, members)
         if (refused.isNotEmpty()) {
-            asApp.deleteCircle(circleId, removeMembers = true)
+            circles.asApp.deleteCircle(circleId, removeMembers = true)
             throw PhotoSharingException.RecipientNotAdded(refused.toList())
         }
         return AlbumAudience.Group(circleId, name, members.sortedBy { it.domainName })
@@ -236,7 +228,7 @@ class PhotoAlbumSharing(
         val refused = circles.enroll(group.circleId, added) + keys.unsupported()
         val joined = added.filter { it !in refused }
         circles.sealCircleKey(group.circleId, keys.points().filterKeys { it in joined })
-        group.members.filter { it !in members }.forEach { asApp.removeFromCircle(group.circleId, it) }
+        group.members.filter { it !in members }.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
         editorsMayHaveChanged()
         if (refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(refused.toList())
         return joined
@@ -255,18 +247,13 @@ class PhotoAlbumSharing(
         if (on) {
             val requests = photos.flatMap { photo -> rows.map { circles.shareRequest(photo.fileId, photo.keyHeader, it) } }
             requests.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
-                withRetryResult(RETRY, TAG) { appShares.share(PhotobaseProtocol.DriveAlias, chunk) }.getOrThrow()
+                withRetryResult(RETRY, TAG) { circles.appShares.share(PhotobaseProtocol.DriveAlias, chunk) }.getOrThrow()
             }
             return
         }
         val circleIds = rows.mapTo(HashSet()) { it.circleId }
         val otherRows = HashMap<Uuid, Set<Uuid>>()
-        withdrawRows(photos.flatMap { photo ->
-            val kept = photo.otherAlbums(albumId).flatMapTo(HashSet()) { other ->
-                otherRows.getOrPut(other) { albumRecord(other)?.shares.orEmpty().mapTo(HashSet()) { it.circleId } }
-            }
-            (circleIds - kept).map { photo.fileId to it }
-        })
+        withdrawRows(photos.flatMap { photo -> (circleIds - keptBy(photo, albumId, otherRows)).map { photo.fileId to it } })
     }
 
     /** Seals each circle's key to the members who have set up Photos since they were shared with. */
@@ -293,7 +280,7 @@ class PhotoAlbumSharing(
         if (add.isEmpty() && remove.isEmpty()) return@withLock
         val circleId = listed?.circle?.id?.let(Uuid::parse) ?: editorsCircle()
         circles.enroll(circleId, add)
-        remove.forEach { asApp.removeFromCircle(circleId, it) }
+        remove.forEach { circles.asApp.removeFromCircle(circleId, it) }
     }
 
     /** Brings the tags of every shared album's photos together, so an added photo of a member's shows here too. */
@@ -326,12 +313,18 @@ class PhotoAlbumSharing(
     }
 
     /** The albums [owner] shares with this identity, opened with the keys their shares unlock. */
-    suspend fun sharedAlbums(owner: OdinId): List<SharedAlbum> {
+    suspend fun sharedAlbums(owner: OdinId): List<SharedAlbum> = sharedAlbumsWhere(owner, FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType)))
+
+    /** [owner]'s album [albumId], when they share it with this identity. */
+    suspend fun sharedAlbum(owner: OdinId, albumId: Uuid): SharedAlbum? =
+        sharedAlbumsWhere(owner, FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType), clientUniqueIdAtLeastOne = listOf(albumId))).firstOrNull()
+
+    private suspend fun sharedAlbumsWhere(owner: OdinId, params: FileQueryParams): List<SharedAlbum> {
         val refused = HashMap<Uuid, Exception>()
         val found = mutableListOf<SharedAlbum>()
         query.forEachPage(
             PhotobaseProtocol.DriveAlias,
-            FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType)),
+            params,
             QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true),
             ownerOdinId = owner,
             externalFileKey = circles.memberFileKeys(owner, refused),
@@ -340,7 +333,7 @@ class PhotoAlbumSharing(
             true
         }
         // Nothing opened: say why rather than show nothing.
-        if (found.isEmpty() && refused.isNotEmpty()) throw whyUnopened(owner, refused.values)
+        if (found.isEmpty() && refused.isNotEmpty()) throw circles.whyUnopened(owner, refused.values)
         return found
     }
 
@@ -389,13 +382,17 @@ class PhotoAlbumSharing(
         val otherRows = HashMap<Uuid, Set<Uuid>>()
         val rows = listOfNotNull(recordFile).flatMap { file -> file.shares.orEmpty().filter { it.circleId in circleIds }.map { file.fileId to it.circleId } } +
             photos.flatMap { photo ->
-                val kept = photo.otherAlbums(albumId).flatMapTo(HashSet()) { other ->
-                    otherRows.getOrPut(other) { albumRecord(other)?.shares.orEmpty().mapTo(HashSet()) { it.circleId } }
-                }
+                val kept = keptBy(photo, albumId, otherRows)
                 photo.shares.orEmpty().filter { it.circleId in circleIds && it.circleId !in kept }.map { photo.fileId to it.circleId }
             }
         withdrawRows(rows)
     }
+
+    /** The circles [photo] stays shared with through its albums other than [albumId], each album's read once into [cache]. */
+    private suspend fun keptBy(photo: HomebaseFile, albumId: Uuid, cache: HashMap<Uuid, Set<Uuid>>): Set<Uuid> =
+        photo.otherAlbums(albumId).flatMapTo(HashSet()) { other ->
+            cache.getOrPut(other) { albumRecord(other)?.shares.orEmpty().mapTo(HashSet()) { it.circleId } }
+        }
 
     // One DELETE per row, a few at a time; a row gone already is what was asked.
     private suspend fun withdrawRows(rows: List<Pair<Uuid, Uuid>>) = rows.chunked(SelectiveShareCircles.PARALLEL).forEach { chunk ->
@@ -403,7 +400,7 @@ class PhotoAlbumSharing(
             chunk.map { (fileId, circleId) ->
                 async {
                     try {
-                        withRetryResult(RETRY, TAG) { appShares.withdraw(PhotobaseProtocol.DriveAlias, fileId, circleId) }.getOrThrow()
+                        withRetryResult(RETRY, TAG) { circles.appShares.withdraw(PhotobaseProtocol.DriveAlias, fileId, circleId) }.getOrThrow()
                     } catch (e: NotFoundException) {
                         Logger.i(tag = TAG) { "photo $fileId wasn't shared with $circleId" }
                     }
@@ -442,22 +439,17 @@ class PhotoAlbumSharing(
             ),
         ).searchResults.firstOrNull { it.fileState == FileState.Active }
 
-    private suspend fun albumRecords(): List<HomebaseFile> = buildList {
-        appQuery.forEachPage(
-            PhotobaseProtocol.DriveAlias,
-            FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType)),
-            QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = true, includeShares = true),
-        ) { page ->
-            addAll(page.searchResults.filter { it.fileState == FileState.Active })
-            true
-        }
-    }
+    private suspend fun albumRecords(): List<HomebaseFile> =
+        allActive(FileQueryParams(fileType = listOf(PhotobaseProtocol.AlbumFileType)), withHeaders = true)
 
-    private suspend fun albumPhotos(albumId: Uuid): List<HomebaseFile> = buildList {
+    private suspend fun albumPhotos(albumId: Uuid): List<HomebaseFile> =
+        allActive(FileQueryParams(fileType = listOf(PhotobaseProtocol.PhotoFileType), tagsMatchAtLeastOne = listOf(albumId)), withHeaders = false)
+
+    private suspend fun allActive(params: FileQueryParams, withHeaders: Boolean): List<HomebaseFile> = buildList {
         appQuery.forEachPage(
             PhotobaseProtocol.DriveAlias,
-            FileQueryParams(fileType = listOf(PhotobaseProtocol.PhotoFileType), tagsMatchAtLeastOne = listOf(albumId)),
-            QueryBatchResultOptionsRequest(maxRecords = PAGE, includeShares = true),
+            params,
+            QueryBatchResultOptionsRequest(maxRecords = PAGE, includeMetadataHeader = withHeaders, includeShares = true),
         ) { page ->
             addAll(page.searchResults.filter { it.fileState == FileState.Active })
             true
@@ -475,9 +467,7 @@ class PhotoAlbumSharing(
         }
     }
 
-    private fun whyUnopened(owner: OdinId, failures: Collection<Exception>): Exception = circles.whyUnopened(owner, failures)
-
-    private suspend fun recipientsCircle(): Uuid = asApp.createCircle(
+    private suspend fun recipientsCircle(): Uuid = circles.asApp.createCircle(
         CreateAppCircleRequest(
             name = recipientsDeclared.name,
             slug = recipientsDeclared.slug,
@@ -487,7 +477,7 @@ class PhotoAlbumSharing(
         )
     )
 
-    private suspend fun editorsCircle(): Uuid = asApp.createCircle(
+    private suspend fun editorsCircle(): Uuid = circles.asApp.createCircle(
         CreateAppCircleRequest(
             name = "Photos editors",
             slug = PhotobaseProtocol.EditorsCircleSlug,
@@ -563,6 +553,10 @@ class PhotoAlbumSharing(
         }
     }
 }
+
+/** An identity a person typed, or null when it can't be one. */
+fun typedIdentityOrNull(text: String): OdinId? =
+    text.trim().lowercase().takeIf { it.contains('.') }?.let { runCatching { OdinId(it) }.getOrNull() }
 
 val AlbumAudience.label: String
     get() = when (this) {

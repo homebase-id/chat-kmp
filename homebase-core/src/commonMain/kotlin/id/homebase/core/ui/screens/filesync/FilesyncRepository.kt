@@ -279,4 +279,4 @@ internal suspend fun DriveQueryProvider.forEachFilesyncPage(
     ownerOdinId: OdinId? = null,
     externalFileKey: ExternalFileKey? = null,
     onPage: suspend (QueryBatchResponse) -> Boolean,
-) = forEachPage(FilesyncProtocol.DriveAlias, params, options, ownerOdinId, externalFileKey, onPage)
+) = forEachPage(FilesyncProtocol.DriveAlias, params, options, ownerOdinId, externalFileKey, onPage = onPage)

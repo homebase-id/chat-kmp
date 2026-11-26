@@ -117,8 +117,7 @@ class PhotoCommentsService(
     }
 
     suspend fun post(photo: PhotoTarget, body: String, commentId: Uuid = Uuid.random()) {
-        // A copy: the upload may clear its key header, and this one's key is the photo's.
-        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), photo.keyHeader.aesKey.toByteArray().toSecureByteArray())
+        val keyHeader = photo.commentKeyHeader()
         val guest = photo.owner != null
         val metadata = commentMetadata(commentId, photo.globalTransitId, body, Clock.System.now().toEpochMilliseconds(), sentToOwner = guest)
         uploads.uploadFile(
@@ -138,8 +137,7 @@ class PhotoCommentsService(
 
     /** Rewrites one of this identity's comments, on its own photo or, over peer, on the photo's owner's drive. */
     suspend fun edit(photo: PhotoTarget, comment: PhotoComment, body: String) {
-        // The photo's key under a new IV: the server keeps a comment on its file's key (EncryptionType.FileKey).
-        val keyHeader = KeyHeader(ByteArrayUtil.getRndByteArray(16), photo.keyHeader.aesKey.toByteArray().toSecureByteArray())
+        val keyHeader = photo.commentKeyHeader()
         val owner = photo.owner
         val metadata = commentMetadata(comment.id, photo.globalTransitId, body, comment.userDateMs, sentToOwner = owner != null)
             .copy(versionTag = comment.versionTag)
@@ -184,6 +182,9 @@ class PhotoCommentsService(
         }
         written.emit(photo.globalTransitId)
     }
+
+    // The photo's key under a new IV, copied because an upload may clear the key header it's given.
+    private fun PhotoTarget.commentKeyHeader() = KeyHeader(ByteArrayUtil.getRndByteArray(16), keyHeader.aesKey.toByteArray().toSecureByteArray())
 
     private companion object {
         const val MAX_COMMENTS = 1000

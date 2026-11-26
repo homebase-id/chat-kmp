@@ -59,15 +59,15 @@ fun PhotoLibraryScreen(
     viewModel: PhotoLibraryViewModel,
     onOpen: (PhotoGallery) -> Unit,
     onBack: () -> Unit,
-    sharedWithMe: SharedWithMeViewModel? = null,
-    onOpenShared: (owner: OdinId, albumId: Uuid) -> Unit = { _, _ -> },
+    sharedWithMe: SharedWithMeViewModel,
+    onOpenShared: (owner: OdinId, albumId: Uuid) -> Unit,
 ) {
     val counts by viewModel.counts.collectAsStateWithLifecycle()
     val albums by viewModel.albums.collectAsStateWithLifecycle()
-    val shared = sharedWithMe?.uiState?.collectAsStateWithLifecycle()?.value
+    val shared by sharedWithMe.uiState.collectAsStateWithLifecycle()
     var naming by remember { mutableStateOf(false) }
     var addingSharer by remember { mutableStateOf(false) }
-    if (addingSharer && sharedWithMe != null) {
+    if (addingSharer) {
         NameDialog(
             title = stringResource(MR.string.photobase_shared_with_me_add),
             label = stringResource(MR.string.photobase_share_identity),
@@ -116,7 +116,7 @@ fun PhotoLibraryScreen(
             items(albums.orEmpty(), key = { it.id.toString() }) { album ->
                 AlbumCard(album, onOpen = { onOpen(PhotoGallery.Album(album.id)) }, modifier = Modifier.padding(8.dp))
             }
-            if (shared != null) sharedWithMeSection(shared, onAdd = { addingSharer = true }, onOpenShared)
+            sharedWithMeSection(shared, onAdd = { addingSharer = true }, onOpenShared)
         }
     }
 }

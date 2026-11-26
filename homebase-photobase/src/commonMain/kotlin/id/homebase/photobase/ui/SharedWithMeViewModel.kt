@@ -16,6 +16,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import id.homebase.api.client.drives.shares.SelectiveShareCircles
+import id.homebase.photobase.sharing.typedIdentityOrNull
 import kotlin.uuid.Uuid
 
 /** Why a sharer's albums didn't open. */
@@ -48,13 +52,15 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
         viewModelScope.launch {
             val sharers = guarded { sharing.sharers() } ?: return@launch
             _uiState.update { it.copy(sharers = sharers.map { owner -> SharerAlbums(owner) }) }
+            // Every read goes through this identity's server to another's: a few at a time.
+            val reads = Semaphore(SelectiveShareCircles.PARALLEL)
             sharers.map { owner ->
                 async {
-                    val read = read(owner)
+                    val read = reads.withPermit { read(owner) }
                     show(read)
                     // The names first: a cover is one more read over peer per album.
                     val albums = read.albums ?: return@async
-                    val covers = albums.map { album -> async { coverOf(album)?.let { album.id to it } } }.awaitAll().filterNotNull().toMap()
+                    val covers = albums.map { album -> async { reads.withPermit { coverOf(album) }?.let { album.id to it } } }.awaitAll().filterNotNull().toMap()
                     show(read.copy(covers = covers))
                 }
             }.awaitAll()
@@ -63,16 +69,13 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
 
     /** Keeps someone who shares with this identity, typed in, and reads their albums. */
     fun addSharer(text: String) {
-        val owner = text.trim().lowercase().takeIf { it.contains('.') }?.let { runCatching { OdinId(it) }.getOrNull() }
-            ?: return _uiState.update { it.copy(identityInvalid = true) }
+        val owner = typedIdentityOrNull(text) ?: return _uiState.update { it.copy(identityInvalid = true) }
         _uiState.update { it.copy(identityInvalid = false) }
         viewModelScope.launch {
             guarded { sharing.keepSharer(owner) } ?: return@launch
             refresh()
         }
     }
-
-    fun clearInvalid() = _uiState.update { it.copy(identityInvalid = false) }
 
     private fun show(sharer: SharerAlbums) =
         _uiState.update { state -> state.copy(sharers = state.sharers?.map { if (it.owner == sharer.owner) sharer else it }) }

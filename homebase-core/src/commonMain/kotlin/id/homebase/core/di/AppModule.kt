@@ -190,7 +190,6 @@ import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
 import id.homebase.core.ui.screens.filesync.FilesyncSharing
-import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
@@ -230,7 +229,8 @@ import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.photobase.sharing.PhotoMemberWrites
 import id.homebase.photobase.sharing.PhotobaseSession
 import id.homebase.photobase.ui.AlbumShareViewModel
-import id.homebase.photobase.sharing.AlbumShareMessages
+import id.homebase.chat.services.ShareMessages
+import id.homebase.photobase.sharing.albumShareInvite
 import id.homebase.photobase.ui.SharedAlbumViewModel
 import id.homebase.photobase.ui.SharedWithMeViewModel
 import id.homebase.photobase.sharing.PhotoShareUpkeep
@@ -1177,7 +1177,7 @@ val appModule = module {
     single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
-    single { FilesyncShareMessages(get(), get()) }
+    single { ShareMessages(get(), get()) }
     single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
@@ -1592,10 +1592,9 @@ val appModule = module {
             restore = { PhotobaseSession.restoreFor(credentials) },
             signInUrl = { onDone -> PhotobaseSession.signInUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, onDone) },
             missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
-            tell = { people, shared, access -> get<AlbumShareMessages>().send(people, albumId, shared.albumName, access) },
+            tell = { people, shared, access -> get<ShareMessages>().send(people, albumShareInvite(albumId, shared.albumName, access)) },
         )
     }
-    single { AlbumShareMessages(get(), get()) }
     single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
     single {
         val store = get<PhotoGalleryStore>()

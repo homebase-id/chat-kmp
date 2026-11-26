@@ -14,6 +14,7 @@ suspend fun DriveQueryProvider.forEachPage(
     options: QueryBatchResultOptionsRequest,
     ownerOdinId: OdinId? = null,
     externalFileKey: ExternalFileKey? = null,
+    skipUnreadable: Boolean = false,
     onPage: suspend (QueryBatchResponse) -> Boolean,
 ) {
     var cursor: String? = null
@@ -23,6 +24,7 @@ suspend fun DriveQueryProvider.forEachPage(
             QueryBatchRequest(queryParams = params, resultOptionsRequest = options.copy(cursorState = cursor)),
             ownerOdinId = ownerOdinId,
             externalFileKey = externalFileKey,
+            skipUnreadable = skipUnreadable,
         )
         val more = onPage(page)
         cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }

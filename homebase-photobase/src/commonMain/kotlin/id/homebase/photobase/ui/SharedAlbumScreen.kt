@@ -42,7 +42,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.api.common.OdinId
 import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.photobase.sharing.PhotoAddOutcome
 import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
@@ -61,12 +63,12 @@ import id.homebase.resources.photobase_shared_with_me_failed
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.stringResource
 
-/** [photo]'s image as its owner's drive holds it, read over peer by its global transit id. */
-internal fun SharedPhoto.imageData(owner: id.homebase.api.common.OdinId): HomebaseImageData? =
+/** The photo as its owner's drive holds it, read over peer by its global transit id. */
+internal fun SharedPhoto.imageData(owner: OdinId): HomebaseImageData? =
     item.tileImageData()?.copy(remoteOdinId = owner, globalTransitId = file.fileMetadata.globalTransitId ?: return null)
 
 /** [photo]'s video, played from its owner's drive over peer; null for a photo. */
-internal fun SharedPhoto.player(owner: id.homebase.api.common.OdinId): FullScreenOverlay.VideoPlayerData? {
+internal fun SharedPhoto.player(owner: OdinId): FullScreenOverlay.VideoPlayerData? {
     val globalTransitId = file.fileMetadata.globalTransitId ?: return null
     return (item.toViewer() as? FullScreenOverlay.VideoPlayerData)?.copy(remoteOdinId = owner, globalTransitId = globalTransitId)
 }
@@ -76,8 +78,6 @@ internal fun SharedPhoto.player(owner: id.homebase.api.common.OdinId): FullScree
 fun SharedAlbumScreen(
     viewModel: SharedAlbumViewModel,
     onBack: () -> Unit,
-    /** The viewer's extra actions for the photo shown: comments and reactions. */
-    photoActions: @Composable (SharedPhoto) -> Unit = {},
     /** The album's own action, when this identity may add to it. */
     addAction: @Composable () -> Unit = {},
 ) {
@@ -89,15 +89,18 @@ fun SharedAlbumScreen(
             snackbar.showSnackbar(
                 when (event) {
                     SharedAlbumEvent.Failed -> getString(MR.string.photobase_shared_with_me_failed, owner)
-                    SharedAlbumEvent.Added -> getString(MR.string.photobase_shared_album_added)
                     SharedAlbumEvent.AddFailed -> getString(MR.string.photobase_shared_album_add_failed)
-                    SharedAlbumEvent.AddRetrying -> getString(MR.string.photobase_shared_album_add_retrying, owner)
-                    SharedAlbumEvent.AddNotConfirmed -> getString(MR.string.photobase_shared_album_add_not_confirmed, owner)
+                    is SharedAlbumEvent.Add -> when (event.outcome) {
+                        is PhotoAddOutcome.Delivered -> getString(MR.string.photobase_shared_album_added)
+                        is PhotoAddOutcome.Refused -> getString(MR.string.photobase_shared_album_add_failed)
+                        is PhotoAddOutcome.Retrying -> getString(MR.string.photobase_shared_album_add_retrying, owner)
+                        is PhotoAddOutcome.NotConfirmed -> getString(MR.string.photobase_shared_album_add_not_confirmed, owner)
+                    }
                 },
             )
         }
     }
-    val opened = uiState.opened
+    val opened = uiState.openedIndex
     if (opened != null && uiState.photos.isNotEmpty()) {
         var commentsOn by remember { mutableStateOf<Uuid?>(null) }
         commentsOn?.let { photoId ->
@@ -111,9 +114,8 @@ fun SharedAlbumScreen(
             )
         }
         SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, onClose = { viewModel.open(null) }) { photo ->
-            photoActions(photo)
             val photoId = photo.file.fileMetadata.globalTransitId
-            if (viewModel.canComment && photoId != null) CommentsButton { commentsOn = photoId }
+            if (photoId != null) CommentsButton { commentsOn = photoId }
         }
         return
     }
@@ -165,7 +167,7 @@ fun SharedAlbumScreen(
 private fun SharedPhotoViewer(
     photos: List<SharedPhoto>,
     start: Int,
-    owner: id.homebase.api.common.OdinId,
+    owner: OdinId,
     onClose: () -> Unit,
     photoActions: @Composable (SharedPhoto) -> Unit,
 ) {

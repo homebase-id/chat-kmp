@@ -7,6 +7,7 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asQuery
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerFile
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
@@ -509,7 +510,7 @@ public class DriveFileProvider(
         val creds = requireCreds()
 
         val endpoint = "/drives/${driveId}/files/delete-batch/by-file-id" +
-            (fileSystemType?.let { "?xfst=$it" } ?: "")
+            fileSystemType.asQuery()
         val request =
             DeleteFilesBatchRequest(
                 requests =

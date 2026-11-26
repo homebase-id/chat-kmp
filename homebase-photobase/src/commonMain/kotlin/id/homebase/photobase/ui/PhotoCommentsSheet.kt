@@ -80,17 +80,14 @@ internal fun PhotoCommentsSheet(
     onDismiss: () -> Unit,
 ) {
     val shown by comments.collectAsStateWithLifecycle(null)
-    var reacting by remember { mutableStateOf(false) }
-    // The comment whose emoji menu is open; null with [reacting] is the photo's.
-    var reactingTo by remember { mutableStateOf<PhotoComment?>(null) }
+    // The reaction the open emoji menu makes: on the photo or on one comment.
+    var reactWith by remember { mutableStateOf<((String) -> PhotoGalleryUiAction)?>(null) }
     var pickingAll by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<PhotoComment?>(null) }
     var draft by remember { mutableStateOf("") }
     val react = { emoji: String ->
-        val comment = reactingTo
-        onAction(if (comment != null) PhotoGalleryUiAction.ToggleCommentReaction(photoId, comment, emoji) else PhotoGalleryUiAction.ToggleReaction(photoId, emoji))
-        reacting = false
-        reactingTo = null
+        reactWith?.let { onAction(it(emoji)) }
+        reactWith = null
         pickingAll = false
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), sheetMaxWidth = 640.dp) {
@@ -100,8 +97,8 @@ internal fun PhotoCommentsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Reactions(remember(photoId) { reactionsOf(photoId) }, onReact = { reacting = true; reactingTo = null }, modifier = Modifier.padding(horizontal = 12.dp))
-            if (reacting) {
+            Reactions(remember(photoId) { reactionsOf(photoId) }, onReact = { reactWith = { PhotoGalleryUiAction.ToggleReaction(photoId, it) } }, modifier = Modifier.padding(horizontal = 12.dp))
+            if (reactWith != null) {
                 if (pickingAll) {
                     Box(Modifier.heightIn(max = 320.dp)) { EmojiSelection(onEmojiSelected = { react(it) }) }
                 } else {
@@ -123,7 +120,7 @@ internal fun PhotoCommentsSheet(
                         CommentRow(
                             comment,
                             reactions = remember(comment.id, comment.versionTag) { commentReactionsOf(comment) },
-                            onReact = { reacting = true; reactingTo = comment; pickingAll = false },
+                            onReact = { reactWith = { PhotoGalleryUiAction.ToggleCommentReaction(photoId, comment, it) }; pickingAll = false },
                             onEdit = { editing = comment; draft = comment.body }.takeIf { own },
                             onDelete = { onAction(PhotoGalleryUiAction.DeleteComment(photoId, comment)) }.takeIf { own },
                         )

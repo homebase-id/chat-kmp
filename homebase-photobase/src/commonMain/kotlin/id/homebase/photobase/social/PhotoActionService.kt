@@ -7,7 +7,9 @@ import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvi
 import id.homebase.api.client.drives.files.reactions.GetGroupReactionCountsResponse
 import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.chat.services.decodeReactionCode
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 data class PhotoReactions(
@@ -33,19 +37,17 @@ class PhotoActionService(
 ) {
     private val drive = PhotobaseProtocol.DriveAlias
     private val toggled = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
+    // The last read of each target's reactions: a toggle needs only to know whether the emoji is ours.
+    private val lastRead = HashMap<Uuid, PhotoReactions>()
+    private val lastReadLock = Mutex()
 
     /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
     suspend fun toggleReaction(photo: PhotoTarget, emoji: String) {
         if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        val mine = emoji in read(photo).own
-        val owner = photo.owner
-        when {
-            owner == null && mine -> reactionProvider.deleteReaction(drive, photo.fileId, reaction, recipients = emptyList(), photo.fileSystemType)
-            owner == null -> reactionProvider.addReaction(drive, photo.fileId, reaction, recipients = emptyList(), photo.fileSystemType)
-            mine -> peerReactions.deleteReaction(owner, drive, photo.globalTransitId, reaction)
-            else -> peerReactions.addReaction(owner, drive, photo.globalTransitId, reaction)
-        }
+        val known = lastReadLock.withLock { lastRead[photo.globalTransitId] } ?: read(photo)
+        val on = on(photo)
+        if (emoji in known.own) on.delete(reaction) else on.add(reaction)
         toggled.emit(photo.globalTransitId)
     }
 
@@ -57,15 +59,40 @@ class PhotoActionService(
 
     private suspend fun read(photo: PhotoTarget): PhotoReactions = coroutineScope {
         val self = credentialsManager.getActiveCredentials()?.domain ?: return@coroutineScope PhotoReactions()
+        val on = on(photo)
+        val summary = async { on.summary() }
+        val own = async { on.own(self) }
+        PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct())
+            .also { read -> lastReadLock.withLock { lastRead[photo.globalTransitId] = read } }
+    }
+
+    // Where the target's reactions are: here by file id, or on its owner's drive over peer by global transit id.
+    private fun on(photo: PhotoTarget): ReactionsOn {
         val owner = photo.owner
-        val summary = async {
-            if (owner == null) reactionProvider.getReactionSummary(drive, photo.fileId, photo.fileSystemType) else peerReactions.getReactionSummary(owner, drive, photo.globalTransitId)
+        return if (owner == null) {
+            val fileSystem = photo.fileSystemType
+            object : ReactionsOn {
+                override suspend fun add(reaction: String) = reactionProvider.addReaction(drive, photo.fileId, reaction, recipients = emptyList(), fileSystem)
+                override suspend fun delete(reaction: String) = reactionProvider.deleteReaction(drive, photo.fileId, reaction, recipients = emptyList(), fileSystem)
+                override suspend fun summary() = reactionProvider.getReactionSummary(drive, photo.fileId, fileSystem)
+                override suspend fun own(self: OdinId) = reactionProvider.listReactionsByIdentity(drive, photo.fileId, self, fileSystem)
+            }
+        } else {
+            val gtid = photo.globalTransitId
+            object : ReactionsOn {
+                override suspend fun add(reaction: String) = peerReactions.addReaction(owner, drive, gtid, reaction)
+                override suspend fun delete(reaction: String) = peerReactions.deleteReaction(owner, drive, gtid, reaction)
+                override suspend fun summary() = peerReactions.getReactionSummary(owner, drive, gtid)
+                override suspend fun own(self: OdinId) = peerReactions.listReactionsByIdentity(owner, drive, gtid, self)
+            }
         }
-        val own = async {
-            if (owner == null) reactionProvider.listReactionsByIdentity(drive, photo.fileId, self, photo.fileSystemType)
-            else peerReactions.listReactionsByIdentity(owner, drive, photo.globalTransitId, self)
-        }
-        PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::emojiOf).distinct())
+    }
+
+    private interface ReactionsOn {
+        suspend fun add(reaction: String)
+        suspend fun delete(reaction: String)
+        suspend fun summary(): GetGroupReactionCountsResponse
+        suspend fun own(self: OdinId): List<String>
     }
 
     private companion object {
@@ -76,6 +103,3 @@ class PhotoActionService(
 internal fun GetGroupReactionCountsResponse.toSummary(): ReactionSummary? =
     reactions.filter { it.count > 0 }.takeIf { it.isNotEmpty() }
         ?.let { counts -> ReactionSummary(reactions = counts.associate { it.reactionContent to ReactionEntry(it.reactionContent, it.count, it.reactionContent) }) }
-
-internal fun emojiOf(reactionContent: String): String? =
-    runCatching { OdinSystemSerializer.deserialize<ReactionContent>(reactionContent).emoji }.getOrNull()

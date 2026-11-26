@@ -6,23 +6,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
-class AlbumShareMessagesTest {
+class AlbumShareInviteTest {
     @Test
     fun theInviteNamesTheAlbumAndWhatTheyMayDo() {
         val albumId = Uuid.random()
 
-        val invite = albumShareDescriptor(albumId, "Hiking trip", PhotoAlbumAccess.Add)
+        val invite = albumShareInvite(albumId, "Hiking trip", PhotoAlbumAccess.Add).descriptor!!
 
         assertEquals(albumId, invite.album())
         assertEquals("Hiking trip", invite.title)
         assertTrue(invite.canAdd)
-        assertEquals(AlbumShareDescriptor.ACCESS_VIEW, albumShareDescriptor(albumId, "Hiking trip", PhotoAlbumAccess.View).access)
+        assertEquals(AlbumShareDescriptor.ACCESS_VIEW, albumShareInvite(albumId, "Hiking trip", PhotoAlbumAccess.View).descriptor!!.access)
         assertTrue(invite.isValid())
     }
 
     @Test
     fun aLongNameIsCutToFitWithoutSplittingAnEmoji() {
-        val invite = albumShareDescriptor(Uuid.random(), "🏔".repeat(AlbumShareDescriptor.MAX_TITLE_CODEPOINTS + 5), PhotoAlbumAccess.View)
+        val invite = albumShareInvite(Uuid.random(), "🏔".repeat(AlbumShareDescriptor.MAX_TITLE_CODEPOINTS + 5), PhotoAlbumAccess.View).descriptor!!
 
         assertTrue(invite.isValid())
         assertEquals("🏔".repeat(AlbumShareDescriptor.MAX_TITLE_CODEPOINTS), invite.title)

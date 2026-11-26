@@ -18,6 +18,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.OdinErrorResponse
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asQuery
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -357,7 +358,7 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}" +
-            (request.fileSystemType?.let { "?xfst=$it" } ?: "")
+            request.fileSystemType.asQuery()
 
         val result = pureUpdate(data, path, onProgress, onVersionConflict)
 
@@ -399,7 +400,7 @@ class DriveUploadProvider(
         val data = buildUpdateFormData(instructions, descriptor, payloads, fileOperationsProvider = fileOperationsProvider)
         val total = calculateUploadSize(payloads, emptyList(), descriptor, fileOperationsProvider)
         val progress = onProgress?.let { report -> suspend { sent: Long, _: Long? -> report(sent, total) } }
-        val result = requireNotNull(pureUpdate(data, "/peer/$owner/drives/$driveId/files/by-gtid/$globalTransitId" + (fileSystemType?.let { "?xfst=$it" } ?: ""), progress))
+        val result = requireNotNull(pureUpdate(data, "/peer/$owner/drives/$driveId/files/by-gtid/$globalTransitId" + fileSystemType.asQuery(), progress))
         cleanupPayloadTempFiles(payloads)
         return result
     }
@@ -531,8 +532,7 @@ class DriveUploadProvider(
 
 
     private fun uploadUrl(domain: id.homebase.api.common.OdinId, driveId: Uuid, fileSystemType: FileSystemType?): String {
-        val query = if (fileSystemType != null) "?xfst=$fileSystemType" else ""
-        return apiUrl(domain, "/drives/$driveId/files$query")
+        return apiUrl(domain, "/drives/$driveId/files" + fileSystemType.asQuery())
     }
 
     /** Performs a raw update to an existing file on the drive. */

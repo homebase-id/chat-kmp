@@ -1,25 +1,23 @@
-package id.homebase.core.ui.screens.filesync
+package id.homebase.chat.services
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
-import id.homebase.chat.fileshare.FileShareDescriptor
-import id.homebase.chat.services.ChatMessageSenderService
 import id.homebase.chat.services.content.MessageContent
 import id.homebase.chat.services.convo.ConversationService
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.uuid.Uuid
 
-/** Tells each person a share reaches about it, in their one-to-one chat: opening the message is how they find the files. */
-class FilesyncShareMessages(
+/** Tells each person a share reaches about it, in their one-to-one chat: opening the message is how they find what's shared. */
+class ShareMessages(
     private val conversations: ConversationService,
     private val sender: ChatMessageSenderService,
 ) {
     /** The ones it couldn't tell. */
-    suspend fun send(members: List<OdinId>, share: FileShareDescriptor): List<OdinId> =
+    suspend fun send(members: List<OdinId>, share: MessageContent): List<OdinId> =
         members.filter { member ->
             try {
                 val conversationId = conversations.oneOnOneConversationId(member)
-                sender.sendNewTypedMessage(Uuid.random(), conversationId, MessageContent.FileShare(share), previousMessageUniqueId = null)
+                sender.sendNewTypedMessage(Uuid.random(), conversationId, share, previousMessageUniqueId = null)
                 false
             } catch (e: CancellationException) {
                 throw e
@@ -30,6 +28,6 @@ class FilesyncShareMessages(
         }
 
     private companion object {
-        const val TAG = "FilesyncShareMessages"
+        const val TAG = "ShareMessages"
     }
 }

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.filesync
 
+import id.homebase.chat.services.ShareMessages
+import id.homebase.chat.services.content.MessageContent
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.runtime.snapshotFlow
@@ -57,7 +59,7 @@ class FilesyncViewModel(
     private val discussions: FilesyncDiscussions,
     filesyncSharing: FilesyncSharing,
     sharingSetup: FilesyncSharingSetup,
-    shareMessages: FilesyncShareMessages,
+    shareMessages: ShareMessages,
     peerSends: FilesyncPeerSends,
     developerPreferences: DeveloperPreferences,
 ) : ViewModel() {
@@ -101,7 +103,7 @@ class FilesyncViewModel(
         // A folder's sharing reaches what's in Recently deleted too, so a restore brings it back as it was.
         listFolders = { repository.listFolders(it, includeRemoved = true) },
         returnUrl = extendPermissionViewModel::callbackUrl,
-        tell = shareMessages::send,
+        tell = { members, share -> shareMessages.send(members, MessageContent.FileShare(share)) },
         state = { _uiState.value.sharing },
         update = { change -> _uiState.update { it.copy(sharing = change(it.sharing)) } },
         send = _events::send,

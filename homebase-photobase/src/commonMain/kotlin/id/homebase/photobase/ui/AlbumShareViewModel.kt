@@ -10,6 +10,7 @@ import id.homebase.photobase.sharing.AlbumShared
 import id.homebase.photobase.sharing.PhotoAlbumAccess
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotoSharingException
+import id.homebase.photobase.sharing.typedIdentityOrNull
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -108,8 +109,7 @@ class AlbumShareViewModel(
 
     private fun share() {
         val state = _uiState.value
-        val person = state.identity.trim().takeIf { it.contains('.') }?.let { runCatching { OdinId(it.lowercase()) }.getOrNull() }
-            ?: return _uiState.update { it.copy(identityInvalid = true) }
+        val person = typedIdentityOrNull(state.identity) ?: return _uiState.update { it.copy(identityInvalid = true) }
         busy {
             val shared = sharing.share(albumId, AlbumAudience.Person(person), state.access, expiresAt = null)
             _uiState.update { it.copy(identity = "") }

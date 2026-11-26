@@ -90,13 +90,11 @@ class PhotoCommentTest {
     }
 
     @Test
-    fun aReactionSummaryCountsEachEmojiAndOwnReactionsAreTheirEmoji() {
+    fun aReactionSummaryCountsEachEmoji() {
         val heart = OdinSystemSerializer.serialize(id.homebase.api.client.drives.files.reactions.ReactionContent(emoji = "❤️"))
         val summary = GetGroupReactionCountsResponse(listOf(GroupReactionCount(heart, 2), GroupReactionCount("{}", 0)), total = 2).toSummary()
 
         assertEquals(mapOf(heart to 2), summary?.reactions?.mapValues { it.value.count })
         assertNull(GetGroupReactionCountsResponse(emptyList(), total = 0).toSummary())
-        assertEquals("❤️", emojiOf(heart))
-        assertNull(emojiOf("not json"))
     }
 }

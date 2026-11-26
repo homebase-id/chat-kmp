@@ -52,13 +52,7 @@ sealed interface PhotoAddOutcome {
     data class NotConfirmed(override val add: PhotoAdd) : PhotoAddOutcome
 }
 
-/**
- * A member adding photos to an album someone shares with them, the way FilesyncMemberWrites.add adds a file to a shared
- * folder (odin-core SelectiveShareTests.MemberWrites): the photo is built as the member's own backup would build it,
- * sealed to the owner's Photos drive key, given a global transit id picked here, the album's app tag and the album's
- * share rows, so everyone the album reaches sees it at once. It goes through the outbox, and is confirmed by reading it
- * back from the owner's drive.
- */
+/** A member adding photos to an album shared with them: a deposit sealed to the owner's drive, carrying the album's shares. */
 class PhotoMemberWrites internal constructor(
     private val build: suspend (path: String, contentType: String, name: String, createdAtMs: Long, send: suspend (Uuid, MediaUploadSpec) -> HandOffResult) -> HandOffResult,
     private val sharesOfNewPhoto: suspend (SharedAlbum, KeyHeader, Uuid) -> List<ShareRequest>,
@@ -89,7 +83,6 @@ class PhotoMemberWrites internal constructor(
     init {
         scope.launch {
             outboxEvents.collect { event ->
-                if (event !is BackendEvent.OutboxEvent) return@collect
                 when (event) {
                     is BackendEvent.OutboxEvent.ItemCompleted -> settled(event.driveId, event.uniqueId)?.let { scope.launch { confirm(it.first, it.second) } }
                     is BackendEvent.OutboxEvent.OutboxItemDropped -> settled(event.driveId, event.uniqueId)?.let { _outcomes.emit(PhotoAddOutcome.Refused(it.first)) }

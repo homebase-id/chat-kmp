@@ -3,7 +3,7 @@ package id.homebase.photobase.gallery
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.query.forEachPage
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -185,18 +185,14 @@ suspend fun DriveQueryProvider.photosWithTagsApart(tag: Uuid): Pair<List<Uuid>, 
 }
 
 private suspend fun DriveQueryProvider.photosWhere(params: FileQueryParams): List<HomebaseFile> = buildList {
-    var cursor: String? = null
-    do {
-        val page = queryBatch(
-            PhotobaseProtocol.DriveAlias,
-            QueryBatchRequest(
-                queryParams = params,
-                resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = DriveFileHttpProvider.FILE_BATCH),
-            ),
-            // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
-            skipUnreadable = true,
-        )
+    forEachPage(
+        PhotobaseProtocol.DriveAlias,
+        params,
+        QueryBatchResultOptionsRequest(maxRecords = DriveFileHttpProvider.FILE_BATCH),
+        // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
+        skipUnreadable = true,
+    ) { page ->
         addAll(page.searchResults)
-        cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor }
-    } while (cursor != null)
+        true
+    }
 }

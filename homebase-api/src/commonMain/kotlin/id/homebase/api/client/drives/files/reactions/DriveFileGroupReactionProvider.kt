@@ -4,6 +4,7 @@ package id.homebase.api.client.drives.files.reactions
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asHeader
 import id.homebase.api.client.drives.files.ValidationUtil
 import id.homebase.api.client.websockets.InternalDriveFileId
 import id.homebase.api.common.OdinId
@@ -257,6 +258,3 @@ class DriveFileGroupReactionProvider(
         return deserialize(response.body)
     }
 }
-
-// The server's group reaction routes read the file system from this header, Standard without it.
-private fun FileSystemType?.asHeader(): Map<String, String> = this?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }.orEmpty()
