@@ -59,6 +59,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ShortNavigationBar
@@ -242,6 +246,9 @@ import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.ui.PhotoLibraryScreen
 import id.homebase.photobase.ui.AlbumShareScreen
 import id.homebase.photobase.ui.SharedAlbumScreen
+import id.homebase.photobase.ui.SharedAlbumViewModel
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import id.homebase.resources.photobase_shared_album_add
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -2502,9 +2509,18 @@ fun AppNavHost(
                                     val route = backStackEntry.toRoute<Route.PhotoSharedAlbum>()
                                     val owner = OdinId(route.owner)
                                     val albumId = Uuid.parse(route.albumId)
+                                    val sharedAlbum: SharedAlbumViewModel = koinViewModel(key = "shared-album-${route.owner}-$albumId", parameters = { parametersOf(owner, albumId) })
+                                    val picker = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo, mode = FileKitMode.Multiple()) { files ->
+                                        if (!files.isNullOrEmpty()) sharedAlbum.addPhotos(files)
+                                    }
                                     SharedAlbumScreen(
-                                        viewModel = koinViewModel(key = "shared-album-${route.owner}-$albumId", parameters = { parametersOf(owner, albumId) }),
+                                        viewModel = sharedAlbum,
                                         onBack = { navController.popBackStack() },
+                                        addAction = {
+                                            IconButton(onClick = { picker.launch() }) {
+                                                Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = stringResource(MR.string.photobase_shared_album_add))
+                                            }
+                                        },
                                     )
                                 }
                             }

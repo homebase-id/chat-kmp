@@ -44,6 +44,10 @@ import id.homebase.core.widget.ScreenBackHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.photobase_photo_added_by
+import id.homebase.resources.photobase_shared_album_add_failed
+import id.homebase.resources.photobase_shared_album_add_not_confirmed
+import id.homebase.resources.photobase_shared_album_add_retrying
+import id.homebase.resources.photobase_shared_album_added
 import id.homebase.resources.photobase_shared_album_empty
 import id.homebase.resources.photobase_shared_with_me_failed
 import org.jetbrains.compose.resources.getString
@@ -66,7 +70,18 @@ fun SharedAlbumScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(viewModel) {
-        viewModel.events.collect { snackbar.showSnackbar(getString(MR.string.photobase_shared_with_me_failed, viewModel.owner.domainName)) }
+        viewModel.events.collect { event ->
+            val owner = viewModel.owner.domainName
+            snackbar.showSnackbar(
+                when (event) {
+                    SharedAlbumEvent.Failed -> getString(MR.string.photobase_shared_with_me_failed, owner)
+                    SharedAlbumEvent.Added -> getString(MR.string.photobase_shared_album_added)
+                    SharedAlbumEvent.AddFailed -> getString(MR.string.photobase_shared_album_add_failed)
+                    SharedAlbumEvent.AddRetrying -> getString(MR.string.photobase_shared_album_add_retrying, owner)
+                    SharedAlbumEvent.AddNotConfirmed -> getString(MR.string.photobase_shared_album_add_not_confirmed, owner)
+                },
+            )
+        }
     }
     val opened = uiState.opened
     if (opened != null && uiState.photos.isNotEmpty()) {

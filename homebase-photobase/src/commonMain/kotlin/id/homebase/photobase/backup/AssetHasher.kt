@@ -21,10 +21,14 @@ class HashedAsset(val contentDigests: List<ByteArray>, val sizeBytes: Long = 0) 
 
 /** Plaintext BLAKE3 of the original bytes, before anything is encrypted or written. */
 class AssetHasher(
-    private val exports: HashedExports,
+    /** Null for one that only hashes files it's given, as a pick to add to someone's album is: no device library. */
+    private val exports: HashedExports?,
     private val fileOps: FileOperationsProvider,
 ) {
+    private val library get() = checkNotNull(exports) { "no device library to export from" }
+
     suspend fun hash(assetId: String, mediaType: BackupMediaType): HashedAsset {
+        val exports = library
         val exported = exports.export(assetId, mediaType)
         try {
             val hashed = timed(BackupStage.Hash) {
@@ -39,11 +43,11 @@ class AssetHasher(
         }
     }
 
-    suspend fun awaitExportRoom(limit: Duration): Boolean = exports.awaitRoom(limit)
+    suspend fun awaitExportRoom(limit: Duration): Boolean = library.awaitRoom(limit)
 
-    suspend fun forget(assetId: String) = exports.forget(assetId)
+    suspend fun forget(assetId: String) = library.forget(assetId)
 
-    suspend fun forgetAll() = exports.forgetAll()
+    suspend fun forgetAll() = library.forgetAll()
 
     /** Whether [part] still holds the bytes hashed as [expected]; a hashed copy is those very files. */
     suspend fun matches(exported: ExportedAsset, part: ExportedPart, expected: ByteArray): Boolean =

@@ -54,6 +54,7 @@ class KoinGraphTest {
                 definition<id.homebase.photobase.sharing.PhotoShareUpkeep>(kotlinx.coroutines.flow.StateFlow::class),
                 definition<id.homebase.photobase.ui.AlbumShareViewModel>(kotlin.uuid.Uuid::class, kotlinx.coroutines.flow.StateFlow::class, kotlin.Function1::class, kotlin.Function2::class),
                 definition<id.homebase.photobase.sharing.PhotoAlbumSharing>(kotlin.Function2::class),
+                definition<id.homebase.photobase.sharing.PhotoMemberWrites>(id.homebase.photobase.backup.BackupRequestBuilder::class),
                 definition<id.homebase.photobase.ui.SharedAlbumViewModel>(id.homebase.api.common.OdinId::class, kotlin.uuid.Uuid::class),
                 definition<id.homebase.core.ui.screens.filesync.FilesyncUploadQueue>(kotlin.Function4::class),
                 definition<id.homebase.chat.calling.CallViewModel>(id.homebase.chat.services.calling.CallSession::class),

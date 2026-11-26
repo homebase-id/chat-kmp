@@ -364,6 +364,18 @@ class PhotoAlbumSharing(
         return page.searchResults.filter { it.fileState == FileState.Active } to page.cursorState?.takeIf { page.hasMoreRows && it != cursor }
     }
 
+    /** [album]'s owner's photo with [globalTransitId], when this identity can read it through the album. */
+    suspend fun sharedPhoto(album: SharedAlbum, globalTransitId: Uuid): HomebaseFile? =
+        query.queryBatch(
+            PhotobaseProtocol.DriveAlias,
+            QueryBatchRequest(
+                queryParams = FileQueryParams(globalTransitId = listOf(globalTransitId)),
+                resultOptionsRequest = QueryBatchResultOptionsRequest(maxRecords = 1, includeMetadataHeader = true),
+            ),
+            ownerOdinId = album.owner,
+            externalFileKey = circles.memberFileKeys(album.owner, HashMap()),
+        ).searchResults.firstOrNull { it.fileState == FileState.Active }
+
     /** One locked key per row [album] reaches this identity through: a photo added to it is shared as the album is with them. */
     internal suspend fun sharesOfNewPhoto(album: SharedAlbum, fileKey: KeyHeader, globalTransitId: Uuid): List<ShareRequest> =
         album.shares.filter { it.permissions.values.isNotEmpty() }.map { circles.memberShareOfNewFile(album.owner, it, fileKey, globalTransitId) }

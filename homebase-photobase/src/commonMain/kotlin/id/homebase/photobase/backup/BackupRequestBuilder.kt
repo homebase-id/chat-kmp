@@ -13,6 +13,7 @@ import id.homebase.api.file.FileOperationsProvider
 import co.touchlab.kermit.Logger
 import id.homebase.api.media.MediaMetadataReader
 import id.homebase.api.media.MotionPhoto
+import id.homebase.api.crypto.PhotoUniqueId
 import id.homebase.api.video.VideoCompressionFailedException
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -60,8 +61,34 @@ class BackupRequestBuilder(
         exported: ExportedAsset,
         transcoding: TranscodeGuard,
         send: suspend (MediaUploadSpec) -> HandOffResult,
+    ): HandOffResult = build(digestsOf(row), row.createdAt, row.attempts, uniqueId, exported, transcoding, send)
+
+    /**
+     * A file picked to add to someone's album, built as its backup would be: hashed here, so its unique id is the one
+     * a backup of the same bytes gets. [send] gets the unique id with the upload.
+     */
+    suspend fun buildPicked(
+        path: String,
+        contentType: String,
+        fileName: String,
+        createdAtMs: Long,
+        send: suspend (uniqueId: Uuid, spec: MediaUploadSpec) -> HandOffResult,
     ): HandOffResult {
-        val digests = digestsOf(row)
+        val digest = hasher.digest(path)
+        val uniqueId = PhotoUniqueId.fromContentDigests(listOf(digest))
+        val picked = ExportedAsset(listOf(ExportedPart(ExportedPartRole.Primary, path, contentType, isTemporary = false)), fileName, isHashedCopy = true)
+        return build(listOf(digest), createdAtMs, attempts = 0L, uniqueId, picked, Unguarded) { send(uniqueId, it) }
+    }
+
+    private suspend fun build(
+        digests: List<ByteArray>,
+        createdAt: Long,
+        attempts: Long,
+        uniqueId: Uuid,
+        exported: ExportedAsset,
+        transcoding: TranscodeGuard,
+        send: suspend (MediaUploadSpec) -> HandOffResult,
+    ): HandOffResult {
         require(exported.parts.size == digests.size) { "${exported.parts.size} parts against ${digests.size} digests" }
         val primaryIndex = exported.parts.indexOfFirst { it.role == ExportedPartRole.Primary }.also { require(it >= 0) { "no primary part" } }
         val primary = exported.parts[primaryIndex]
@@ -108,7 +135,7 @@ class BackupRequestBuilder(
                 photoMetadata(
                     uniqueId,
                     dataType,
-                    captureTimeMs(exif, row.createdAt),
+                    captureTimeMs(exif, createdAt),
                     PhotoContent(latitude = exif?.latitude, longitude = exif?.longitude, altitude = exif?.altitudeMeters),
                     payloads.previewThumbs.firstOrNull(),
                 ),
@@ -124,8 +151,8 @@ class BackupRequestBuilder(
                 transcoding { send(spec(bundle, PhotobaseProtocol.LivePhotoDataType)) } ?: withNoClipToPlay()
             } catch (e: VideoCompressionFailedException) {
                 // Retried like any failure, so only a clip that never transcodes costs the motion; the still is kept.
-                if (!clip.keepsPairedVideo(quality) && row.attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
-                Logger.w(tag = TAG, throwable = e) { "no clip to play for $uniqueId after ${row.attempts + 1} attempts" }
+                if (!clip.keepsPairedVideo(quality) && attempts + 1 < BackupLedger.MAX_ATTEMPTS) throw e
+                Logger.w(tag = TAG, throwable = e) { "no clip to play for $uniqueId after ${attempts + 1} attempts" }
                 withNoClipToPlay()
             }
         }

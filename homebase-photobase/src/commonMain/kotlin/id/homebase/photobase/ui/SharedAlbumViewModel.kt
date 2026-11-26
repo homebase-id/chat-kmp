@@ -8,6 +8,18 @@ import id.homebase.api.common.OdinId
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.gallery.toGalleryItem
 import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.photobase.sharing.PhotoAddOutcome
+import id.homebase.photobase.sharing.PhotoMemberWrites
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.contentType
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.modifiedAtMs
+import id.homebase.core.files.toUploadPath
+import id.homebase.core.util.isDesktop
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import kotlin.time.Clock
+import kotlinx.coroutines.flow.filter
 import id.homebase.photobase.sharing.SharedAlbum
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -35,6 +47,10 @@ data class SharedAlbumUiState(
 
 sealed interface SharedAlbumEvent {
     data object Failed : SharedAlbumEvent
+    data object Added : SharedAlbumEvent
+    data object AddFailed : SharedAlbumEvent
+    data object AddRetrying : SharedAlbumEvent
+    data object AddNotConfirmed : SharedAlbumEvent
 }
 
 /**
@@ -45,6 +61,8 @@ class SharedAlbumViewModel(
     val owner: OdinId,
     val albumId: Uuid,
     private val sharing: PhotoAlbumSharing,
+    private val memberWrites: PhotoMemberWrites? = null,
+    private val fileOps: FileOperationsProvider? = null,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SharedAlbumUiState())
     val uiState: StateFlow<SharedAlbumUiState> = _uiState.asStateFlow()
@@ -57,6 +75,39 @@ class SharedAlbumViewModel(
 
     init {
         reload()
+        memberWrites?.let { writes ->
+            viewModelScope.launch {
+                writes.outcomes.filter { it.add.owner == owner && it.add.albumId == albumId }.collect { outcome ->
+                    when (outcome) {
+                        is PhotoAddOutcome.Delivered -> _events.send(SharedAlbumEvent.Added).also { reload() }
+                        is PhotoAddOutcome.Retrying -> _events.send(SharedAlbumEvent.AddRetrying)
+                        is PhotoAddOutcome.Refused -> _events.send(SharedAlbumEvent.AddFailed)
+                        is PhotoAddOutcome.NotConfirmed -> _events.send(SharedAlbumEvent.AddNotConfirmed)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Adds [files], picked on this device, to the album; each one's outcome comes as an event. */
+    fun addPhotos(files: List<PlatformFile>) {
+        val album = _uiState.value.album?.takeIf { it.canAdd } ?: return
+        val writes = memberWrites ?: return
+        val ops = fileOps ?: return
+        viewModelScope.launch {
+            for (file in files) {
+                try {
+                    // Copied while the picker's grant is live: Android and iOS revoke it later.
+                    val path = (if (isDesktop()) file else file.materializeForUpload(ops)).toUploadPath(ops)
+                    writes.add(album, path, file.contentType(), file.name, file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds())
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Logger.w(tag = TAG, throwable = e) { "a photo for $owner's album $albumId wasn't queued" }
+                    _events.send(SharedAlbumEvent.AddFailed)
+                }
+            }
+        }
     }
 
     fun reload() {

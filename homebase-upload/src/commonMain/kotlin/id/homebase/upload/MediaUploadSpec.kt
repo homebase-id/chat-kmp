@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.drives.shares.ShareRequest
 import kotlin.uuid.Uuid
 
 /**
@@ -57,4 +58,9 @@ data class MediaUploadSpec(
     val sealDescriptorContent: Boolean = false,
     /** Encrypted uploads only. */
     val contentHashes: ContentHashes? = null,
+    /** A deposit on another identity's drive: its key header sealed to that drive's write-only point (`0x04 ‖ x ‖ y`). */
+    val sealedTo: ByteArray? = null,
+    /** A new file's shares on that Selective Share drive, locked for [globalTransitId] before the file exists. */
+    val shares: List<ShareRequest>? = null,
+    val globalTransitId: Uuid? = null,
 )
