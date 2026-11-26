@@ -40,6 +40,11 @@ letting them add or edit. The person is **pending**: added, but not reachable ye
 
 This applies to every operation that names a recipient, not just sharing.
 
+- **Decide before building.** Before building an operation that names a recipient, decide whether a
+  pending recipient is queued and retried, or told to try again later. Write the decision down next
+  to the operation: queued or not, and if queued, where the entry is stored and which upkeep step
+  retries it. If the decision isn't clear from the request or the code, stop and ask; don't pick
+  one. Until it's written down, the feature uses the "Try again later" wording.
 - **Detect it before writing.** A recipient is pending when `SelectiveShareCircles.enroll` reports
   them as deposited, or they're in the circle's pending list (`getPendingCircleMembers`) and not its
   members (`getCircleMembers`). Check before the operation's write. Don't find out by catching the
@@ -66,8 +71,5 @@ This applies to every operation that names a recipient, not just sharing.
 - **When queued work completes**, the upkeep finishes it with no action from the user. The label
   changes to their normal status the next time the list is shown, with no notification. After 7 days
   still pending, the label reads "Still waiting for Sam. Ask them to open Homebase."
-- **Each feature documents its own case** next to the operation: whether a pending recipient is
-  queued, where the entry is stored, and which upkeep step retries it. Until that's written, the
-  feature uses the "Try again later" wording.
 
 Today no feature queues a pending recipient, so every one uses "Try again later".
