@@ -13,6 +13,9 @@ object PhotobaseProtocol {
     const val DriveTypeSlug = "photos"
     const val CircleSlug = "photobase"
 
+    /** People with a live Add share on an album: the circle grants Write on the drive, which lets them add photos. */
+    const val EditorsCircleSlug = "photobase-edit"
+
     const val PhotoFileType = 7201
 
     /** The identity's one Photobase configuration file, shared by all its devices. */

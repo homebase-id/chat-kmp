@@ -4,8 +4,6 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.NotFoundException
-import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.RetryConfig
 import id.homebase.api.client.RetryResult
@@ -20,12 +18,8 @@ import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.CreateAppCircleRequest
 import id.homebase.api.client.connections.DriveGrantRequest
-import id.homebase.api.client.connections.EnrollmentOutcomeKind
 import id.homebase.api.client.connections.PermissionedDrive
-import id.homebase.api.client.connections.SealedMemberShareKey
-import id.homebase.api.client.connections.SealedMemberShareKeys
 import id.homebase.api.client.drives.AccessControlList
-import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -40,6 +34,11 @@ import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.client.drives.shares.DriveShareProvider
 import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.client.drives.shares.ShareRow
+import id.homebase.api.client.drives.shares.RecipientKey
+import id.homebase.api.client.drives.shares.SelectiveShareCircles
+import id.homebase.api.client.drives.shares.SelectiveShareDrive
+import id.homebase.api.client.drives.shares.points
+import id.homebase.api.client.drives.shares.unsupported
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -48,15 +47,12 @@ import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.withRetryResult
 import id.homebase.api.common.OdinId
-import id.homebase.api.common.toSecureByteArray
 import id.homebase.api.crypto.HashUtil
-import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.serialization.UuidSerializer
 import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionSet
-import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.config.filesyncAppRegistration
 import id.homebase.core.config.filesyncLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
@@ -170,48 +166,28 @@ class FilesyncSharing(
     private val query: DriveQueryProvider,
     private val uploads: DriveUploadProvider,
 ) {
-    private val asFilesync = ConnectionNetworkProvider(httpClient, FilesyncSession.credentials)
-    private val filesyncKeys = CircleShareKeyProvider(httpClient, FilesyncSession.credentials)
-    private val filesyncShares = DriveShareProvider(httpClient, FilesyncSession.credentials)
+    private val circles = SelectiveShareCircles(
+        httpClient,
+        FilesyncSession,
+        SelectiveShareDrive(FilesyncProtocol.DriveAlias, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug),
+        circleShareKeys,
+        peer,
+        appCredentials,
+        notSignedIn = { FilesyncSharingException.NotSignedIn() },
+        notSealedYet = { FilesyncSharingException.NotSealedYet(it) },
+    )
+    private val asFilesync = circles.asApp
+    private val filesyncKeys = circles.appKeys
+    private val filesyncShares = circles.appShares
     private val filesyncQuery = DriveQueryProvider(httpClient, FilesyncSession.credentials)
     private val ownFiles = DriveFileHttpProvider(httpClient, appCredentials)
-
-    private class OwnCircleKey(val locked: ByteArray, val key: ByteArray)
-
-    private val ownKeys = mutableMapOf<Uuid, OwnCircleKey>()
-    private val memberKeys = mutableMapOf<Pair<OdinId, Uuid>, ByteArray>()
-    private val ownersDriveKeys = mutableMapOf<OdinId, ByteArray>()
-    private val keys = Mutex()
     private val editing = Mutex()
 
-    /**
-     * After [e]: signs Filesync out when it was a 401 and Filesync's own sign-in is what the server refuses, not the
-     * app's or a peer's. Whether it did.
-     */
-    suspend fun signOutIfRefused(e: Throwable?): Boolean {
-        if (e !is UnauthorizedException || !FilesyncSession.signedIn.value) return false
-        try {
-            asFilesync.getCirclesWithMembers()
-            return false
-        } catch (refused: UnauthorizedException) {
-            signOut()
-            return true
-        } catch (c: CancellationException) {
-            throw c
-        } catch (other: Exception) {
-            return false
-        }
-    }
+    /** After [e]: signs Filesync out when it was a 401 and Filesync's own sign-in is what the server refuses. Whether it did. */
+    suspend fun signOutIfRefused(e: Throwable?): Boolean = circles.signOutIfRefused(e)
 
     /** Signs this device out of Filesync and drops every circle key that sign-in unlocked: at logout, or once refused. */
-    suspend fun signOut() {
-        FilesyncSession.forget()
-        keys.withLock {
-            ownKeys.clear()
-            memberKeys.clear()
-            ownersDriveKeys.clear()
-        }
-    }
+    suspend fun signOut() = circles.signOut()
 
     /** What sharing may offer: whatever the circle every recipient joins grants on the drive, and Write from the editors circle. */
     suspend fun offeredAccess(): List<FilesyncAccess> {
@@ -254,21 +230,7 @@ class FilesyncSharing(
     /** Seals each circle's key to the members who have set up Filesync since they were shared with. */
     suspend fun sealPending() {
         requireSignedIn()
-        val pending = audienceCircles().keys.chunked(PARALLEL).flatMap { chunk ->
-            coroutineScope { chunk.map { async { it to unsealedMembersOrNone(it) } }.awaitAll() }
-        }.filter { it.second.isNotEmpty() }
-        if (pending.isEmpty()) return
-        // One unreachable server leaves only its person waiting.
-        val points = keysOf(pending.flatMap { it.second }.distinct(), lenient = true).points()
-        pending.forEach { (circleId, unsealed) ->
-            try {
-                sealCircleKey(circleId, points, unsealed)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "circle $circleId's key not sealed to $unsealed" }
-            }
-        }
+        circles.sealPending(audienceCircles().keys)
     }
 
     /**
@@ -658,37 +620,16 @@ class FilesyncSharing(
      * theirs from the owner's device.
      */
     internal suspend fun sharesOfNewFileIn(owner: OdinId, folder: FilesyncHandle, fileKey: KeyHeader, globalTransitId: Uuid): List<ShareRequest> {
-        val self = requireNotNull(appCredentials.getActiveCredentials()).domain
-        return folder.shares.filter { it.permissions.values.isNotEmpty() }.map { row ->
-            val circleKey = memberCircleKey(owner, row.circleId, self)
-            val locked = ShareKeys.lockFileKeyByGlobalTransitId(circleKey, fileKey.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, globalTransitId, row.circleId)
-            ShareRequest(Uuid.NIL, row.circleId, DrivePermission.combine(row.permissions.values), expiresAt = row.expiresAt, lockedFileKey = locked)
-        }
+        return folder.shares.filter { it.permissions.values.isNotEmpty() }.map { row -> circles.memberShareOfNewFile(owner, row, fileKey, globalTransitId) }
     }
 
     /** [owner]'s Filesync drive's write-only key: what this identity adds there is sealed to it. */
-    internal suspend fun ownersDriveKey(owner: OdinId): ByteArray = keys.withLock {
-        ownersDriveKeys.getOrPut(owner) { ShareKeys.pointOfJwk(peer.drivePublicKey(owner, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug).publicKeyJwk) }
-    }
+    internal suspend fun ownersDriveKey(owner: OdinId): ByteArray = circles.ownersDriveKey(owner)
 
     private suspend fun sharedBy(owner: OdinId, params: FileQueryParams): List<Pair<FilesyncNode, FilesyncHandle>> {
-        val self = requireNotNull(appCredentials.getActiveCredentials()).domain
         // A circle whose key won't open leaves its files out of the page; why is kept here, asked once per circle.
         val refused = HashMap<Uuid, Exception>()
-        val byShare = ExternalFileKey { fileId, globalTransitId, shares, locked ->
-            val circleId = shares.firstOrNull()?.circleId ?: error("file $fileId came with no share")
-            if (circleId in refused) return@ExternalFileKey null
-            val circleKey = try {
-                memberCircleKey(owner, circleId, self)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Logger.w(e, TAG) { "$owner's circle $circleId won't open here" }
-                refused[circleId] = e
-                return@ExternalFileKey null
-            }
-            ShareKeys.openFileKey(circleKey, locked, FilesyncProtocol.DriveAlias, fileId, globalTransitId, circleId).toSecureByteArray()
-        }
+        val byShare = circles.memberFileKeys(owner, refused)
         val found = mutableListOf<Pair<FilesyncNode, FilesyncHandle>>()
         query.forEachFilesyncPage(
             params,
@@ -704,108 +645,16 @@ class FilesyncSharing(
         return found
     }
 
-    /** Adds [members] to [circleId]; the ones it refused. One deposited joins at their next call, and a later share seals to them. */
-    private suspend fun enroll(circleId: Uuid, members: Collection<OdinId>): Set<OdinId> =
-        members.chunked(ADD_MANY_LIMIT).flatMapTo(HashSet()) { chunk ->
-            asFilesync.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes
-                .filter { it.kind != EnrollmentOutcomeKind.Enrolled && it.kind != EnrollmentOutcomeKind.Deposited }.map { it.odinId }
-        }
+    private suspend fun enroll(circleId: Uuid, members: Collection<OdinId>): Set<OdinId> = circles.enroll(circleId, members)
 
-    private suspend fun shareRequest(fileId: Uuid, keyHeader: KeyHeader, circleId: Uuid, permissions: Int, expiresAt: Long?): ShareRequest {
-        val locked = ShareKeys.lockFileKey(ownCircleKey(circleId).key, keyHeader.aesKey.toByteArray(), FilesyncProtocol.DriveAlias, fileId, circleId)
-        return ShareRequest(fileId, circleId, permissions, expiresAt = expiresAt, lockedFileKey = locked)
-    }
+    private suspend fun shareRequest(fileId: Uuid, keyHeader: KeyHeader, circleId: Uuid, permissions: Int, expiresAt: Long?): ShareRequest =
+        circles.shareRequest(fileId, keyHeader, circleId, permissions, expiresAt)
 
-    /** A share like [row], of another file. */
-    private suspend fun shareRequest(fileId: Uuid, keyHeader: KeyHeader, row: ShareRow): ShareRequest =
-        shareRequest(fileId, keyHeader, row.circleId, DrivePermission.combine(row.permissions.values), row.expiresAt)
+    private suspend fun shareRequest(fileId: Uuid, keyHeader: KeyHeader, row: ShareRow): ShareRequest = circles.shareRequest(fileId, keyHeader, row)
 
-    private suspend fun sealCircleKey(circleId: Uuid, points: Map<OdinId, ByteArray>, unsealedMembers: List<OdinId>? = null) {
-        val unsealed = (unsealedMembers ?: filesyncKeys.getUnsealedMembers(circleId)).filter { it in points }
-        if (unsealed.isEmpty()) return
-        val own = ownCircleKey(circleId)
-        val sealed = unsealed.map { SealedMemberShareKey(it.domainName, ShareKeys.sealCircleKey(own.key, points.getValue(it), circleId, it)) }
-        filesyncKeys.setMemberKeys(circleId, SealedMemberShareKeys(own.locked, sealed))
-    }
+    private suspend fun sealCircleKey(circleId: Uuid, points: Map<OdinId, ByteArray>) = circles.sealCircleKey(circleId, points)
 
-    /** The point to seal to of each of [recipients] who has a Filesync drive, each from their own server, a few at a time. */
-    private sealed interface RecipientKey {
-        class Ready(val point: ByteArray) : RecipientKey
-
-        /** No Filesync drive yet: sealed to once there is. */
-        data object NoDrive : RecipientKey
-
-        /** A drive whose key others hold too: never sealed to. */
-        data object Unsupported : RecipientKey
-    }
-
-    private fun Map<OdinId, RecipientKey>.points(): Map<OdinId, ByteArray> =
-        mapNotNull { (id, key) -> (key as? RecipientKey.Ready)?.let { id to it.point } }.toMap()
-
-    private fun Map<OdinId, RecipientKey>.unsupported(): List<OdinId> = filterValues { it == RecipientKey.Unsupported }.keys.toList()
-
-    /** Each of [recipients]' drive key, from their own server, a few at a time; [lenient] takes an unreachable one as no drive yet. */
-    private suspend fun keysOf(recipients: List<OdinId>, lenient: Boolean = false): Map<OdinId, RecipientKey> =
-        recipients.chunked(PARALLEL).flatMap { chunk ->
-            coroutineScope {
-                chunk.map { recipient ->
-                    async {
-                        recipient to try {
-                            recipientKey(recipient)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            if (!lenient) throw e
-                            Logger.w(e, TAG) { "$recipient's drive key not read" }
-                            RecipientKey.NoDrive
-                        }
-                    }
-                }.awaitAll()
-            }
-        }.toMap()
-
-    private suspend fun recipientKey(recipient: OdinId): RecipientKey {
-        val key = try {
-            peer.drivePublicKey(recipient, FilesyncProtocol.AppSlug, FilesyncProtocol.DriveSlug)
-        } catch (e: OdinApiException) {
-            // No Filesync drive there (404; 400 or 403 from an older server): sharing is off.
-            if (e !is NotFoundException && e !is ClientException && e !is ForbiddenException) throw e
-            return RecipientKey.NoDrive
-        }
-        // Its server and members hold a collaborative drive's key: sealing to it would share with them too.
-        if (!key.isZeroKnowledge || key.sharingModel == "collaborative") return RecipientKey.Unsupported
-        return RecipientKey.Ready(ShareKeys.pointOfJwk(key.publicKeyJwk))
-    }
-
-    private suspend fun unsealedMembersOrNone(circleId: Uuid): List<OdinId> =
-        try {
-            filesyncKeys.getUnsealedMembers(circleId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Logger.w(e, TAG) { "circle $circleId's unsealed members not read" }
-            emptyList()
-        }
-
-    private suspend fun ownCircleKey(circleId: Uuid): OwnCircleKey = keys.withLock {
-        ownKeys[circleId]?.let { return@withLock it }
-        val appKey = FilesyncSession.appKey ?: throw FilesyncSharingException.NotSignedIn()
-        val locked = filesyncKeys.getShareKey(circleId) ?: try {
-            ShareKeys.lockCircleKey(appKey, ShareKeys.newCircleKey(), circleId).also { filesyncKeys.setShareKey(circleId, it) }
-        } catch (e: ClientException) {
-            // Another device set it first: use theirs.
-            if (e.errorCode != OdinClientErrorCode.CircleShareKeyAlreadySet) throw e
-            checkNotNull(filesyncKeys.getShareKey(circleId))
-        }
-        OwnCircleKey(locked, ShareKeys.openCircleKey(appKey, locked, circleId)).also { ownKeys[circleId] = it }
-    }
-
-    private suspend fun memberCircleKey(owner: OdinId, circleId: Uuid, self: OdinId): ByteArray = keys.withLock {
-        memberKeys[owner to circleId]?.let { return@withLock it }
-        val sealed = circleShareKeys.getMySealedKey(owner, circleId) ?: throw FilesyncSharingException.NotSealedYet(owner)
-        val writeOnlyKey = ZkKeyStore.writeOnlyPrivateKey(FilesyncProtocol.DriveAlias) ?: error("no write-only key for the Filesync drive")
-        ShareKeys.unsealCircleKey(sealed, writeOnlyKey, circleId, self).also { memberKeys[owner to circleId] = it }
-    }
+    private suspend fun keysOf(recipients: List<OdinId>): Map<OdinId, RecipientKey> = circles.keysOf(recipients)
 
     private suspend fun recipientsCircle(): Uuid = asFilesync.createCircle(
         CreateAppCircleRequest(
@@ -861,9 +710,7 @@ class FilesyncSharing(
         is FilesyncAudience.Person -> audienceCircles().entries.firstOrNull { it.value == audience }?.key
     }
 
-    private fun requireSignedIn() {
-        if (!FilesyncSession.signedIn.value) throw FilesyncSharingException.NotSignedIn()
-    }
+    private fun requireSignedIn() = circles.requireSignedIn()
 
     private fun ShareRow.access(): FilesyncAccess? = when {
         DrivePermission.Read !in permissions.values -> null
@@ -876,8 +723,7 @@ class FilesyncSharing(
         private const val MARKER_ATTEMPTS = 3
         private const val SYNC_KEY = "sync"
         private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
-        private const val ADD_MANY_LIMIT = 500
-        private const val PARALLEL = 8
+        private const val PARALLEL = SelectiveShareCircles.PARALLEL
         private val recipientsDeclared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }
         // The recipients and editors circles' slugs never look like this; nothing else of Filesync's may.
         private val GROUP_SLUG = Regex("g[0-9a-f]{13}")

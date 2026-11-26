@@ -39,6 +39,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.headersOf
 import id.homebase.api.youauth.ZkKeyStore
+import id.homebase.api.youauth.AppSignIn
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.youauth.DrivePermissionSet
 import java.util.concurrent.CopyOnWriteArrayList
@@ -211,7 +212,7 @@ class FilesyncSharingTest {
 
     @BeforeTest
     fun keepTheSignInInMemory() {
-        FilesyncSession.store = object : FilesyncSession.Store {
+        FilesyncSession.store = object : AppSignIn.Store {
             override fun get(key: String) = stored[key]
             override fun put(key: String, value: String) { stored[key] = value }
             override fun remove(key: String) { stored.remove(key) }
