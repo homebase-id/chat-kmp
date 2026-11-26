@@ -165,7 +165,7 @@ fun HomebaseImage(
     @Composable
     fun StandInOrPreview(blur: Modifier) {
         if (showsStandIn) {
-            LocalFileImage(standIn!!, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
+            LocalFileImage(standIn, contentDescription, Modifier.fillMaxSize(), contentScale, alignment, colorFilter, onError = { standInFailed = true })
         } else {
             PreviewOrPlaceholder(Modifier.fillMaxSize().then(blur))
         }

@@ -100,7 +100,7 @@ internal class MpegTsWriter(private val video: Mp4Track.Avc, private val audio: 
         h[4] = (pesLength shr 8).toByte(); h[5] = pesLength.toByte()
         h[6] = 0x84.toByte(); h[7] = (if (withDts) 0xC0 else 0x80).toByte(); h[8] = headerData.toByte()
         timestamp(h, 9, if (withDts) 3 else 2, pts)
-        if (withDts) timestamp(h, 14, 1, dts!!)
+        if (withDts) timestamp(h, 14, 1, dts)
         packetize(pid, h, 9 + headerData, payload, pcr, randomAccess)
     }
 

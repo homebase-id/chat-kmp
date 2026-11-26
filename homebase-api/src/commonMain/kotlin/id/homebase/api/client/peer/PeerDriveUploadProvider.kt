@@ -3,7 +3,6 @@ package id.homebase.api.client.peer
 import id.homebase.api.client.drives.upload.sealedPayloads
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.common.SecureByteArray
-import id.homebase.api.client.KeyHeader
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.UploadProgress
@@ -67,7 +66,7 @@ class PeerDriveUploadProvider(
         val transferIv = ByteArrayUtil.getRndByteArray(16)
         // A peer's drive: this device's zero-knowledge keys are for its own drives, never a peer's.
         val sharedSecretEncryptedDescriptor = buildSharedSecretEncryptedUploadDescriptor(
-            EncryptedKeyHeader.encryptKeyHeaderAes(request.keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret)),
+            EncryptedKeyHeader.encryptKeyHeaderAes(request.keyHeader, transferIv, SecureByteArray(sharedSecret)),
             request.metadata,
             sharedSecret,
             transferIv = transferIv,

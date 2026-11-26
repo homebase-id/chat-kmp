@@ -68,7 +68,7 @@ actual fun PdfPageViewer(
             }
         },
         update = { frameLayout ->
-            val activity = context as? FragmentActivity ?: return@AndroidView
+            val activity = context
             val fm = activity.supportFragmentManager
             val container = frameLayout.getChildAt(0) as? FragmentContainerView ?: return@AndroidView
             val existing = fm.findFragmentByTag(fragmentTag) as? PdfViewerFragment

@@ -2143,7 +2143,7 @@ private fun CommentsSheet(
         }
     }
     val imeOffset = rememberImeOffsetState()
-    val topInsets = BottomSheetDefaults.windowInsets.only(WindowInsetsSides.Top)
+    val topInsets = BottomSheetDefaults.modalWindowInsets.only(WindowInsetsSides.Top)
     val imeVisible by remember(imeOffset) { derivedStateOf { imeOffset.isImeVisible } }
     val targetFraction = heightFraction?.let { commentsSheetHeightFraction(it, imeVisible) }
     val animatedFraction by animateFloatAsState(targetFraction ?: 0f)

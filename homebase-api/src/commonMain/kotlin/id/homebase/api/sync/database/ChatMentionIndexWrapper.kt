@@ -35,7 +35,7 @@ class ChatMentionIndexWrapper(
                 .selectUnscannedUnread(identityId, selfDomain)
                 .executeAsList()
         }.map {
-            UnscannedMessage(it.driveId, it.uniqueId!!, it.groupId!!, it.userDate, it.jsonHeader)
+            UnscannedMessage(it.driveId, it.uniqueId, it.groupId, it.userDate, it.jsonHeader)
         }
 
     suspend fun record(identityId: Uuid, rows: List<ScannedMessage>) {

@@ -1,6 +1,6 @@
 package id.homebase.core.util
 
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.window.core.layout.WindowSizeClass
 
@@ -8,7 +8,7 @@ import androidx.window.core.layout.WindowSizeClass
 // if they diverge a tablet gets a rail beside a stretched single column.
 @Composable
 fun isExpandedLayout(): Boolean =
-    currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(
+    currentWindowAdaptiveInfoV2().windowSizeClass.isWidthAtLeastBreakpoint(
         WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND
     )
 
