@@ -2335,7 +2335,7 @@ fun AppNavHost(
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
+                                            onOpenSettings = { navController.navigate(AppsPage.Photobase.route) },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
                                             onOpenLibrary = { navController.navigate(Route.PhotoLibrary) },
                                         )

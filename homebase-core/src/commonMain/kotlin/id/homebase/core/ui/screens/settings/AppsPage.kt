@@ -53,7 +53,6 @@ internal class AppsPageLinks(
     val onOpenEmailModeSwitch: () -> Unit,
     /** False while calls are unavailable: there's nothing to open. */
     val callsAvailable: Boolean,
-    /** False while Photobase is dark-launched off. */
     val photoBackup: PhotoBackupLinks?,
     // The app's own instance: a second one would run its own verify loop.
     val locationViewModel: LocationViewModel,

@@ -53,7 +53,7 @@ class TopLevelRoutesTest {
             locationVisible = true, contactBookVisible = true, emailVisible = true,
             filesyncVisible = true, photobaseVisible = true, feedVisible = true,
             everyApp = false,
-                emailAvailable = true,
+            emailAvailable = true,
         ).map { it.route }
         val settingsOrder = AppsPage.entries.map { it.appRoute }.distinct().filter { it in every }
         assertEquals(settingsOrder + Route.Home, every)
@@ -69,7 +69,7 @@ class TopLevelRoutesTest {
             emailVisible = false,
             feedVisible = false,
             everyApp = false,
-                emailAvailable = true,
+            emailAvailable = true,
         )
         assertEquals(listOf(Route.ChatList, Route.Home), routes.map { it.route })
     }
@@ -103,7 +103,7 @@ class TopLevelRoutesTest {
             filesyncVisible = true,
             photobaseVisible = true,
             everyApp = false,
-                emailAvailable = true,
+            emailAvailable = true,
         )
         all.forEach { topLevel ->
             runOnIdle { nav.navigate(topLevel.route) }
