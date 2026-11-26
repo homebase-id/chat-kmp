@@ -141,6 +141,25 @@ class PhotoDaysWrapperTest {
     }
 
     @Test
+    fun eachTagsCoverCountsItsPhotosOnItsShelvesAndShowsTheNewest() = runDbTest { db ->
+        val trip = Uuid.random()
+        val favorite = Uuid.random()
+        val untouched = Uuid.random()
+        val noon = local(2024, 3, 9, 12, 0)
+        db.add(noon, localTags = listOf(trip))
+        val newestTrip = db.add(noon + 60_000, archivalStatus = ARCHIVED, localTags = listOf(trip, favorite))
+        db.add(noon + 120_000, archivalStatus = BIN, localTags = listOf(trip))
+        db.add(noon + 180_000, state = "deleted", localTags = listOf(trip))
+        db.add(noon + 240_000, drive = Uuid.random(), localTags = listOf(trip))
+        db.add(noon - 60_000, localTags = listOf(favorite))
+
+        val covers = db.photoDays.taggedCovers(identity, photos, listOf(trip, favorite, untouched), listOf(LIBRARY, ARCHIVED))
+            .associate { it.tag to (it.photos to OdinSystemSerializer.deserialize<HomebaseFile>(it.newestHeader).fileId) }
+
+        assertEquals(mapOf(trip to (2 to newestTrip), favorite to (2 to newestTrip)), covers)
+    }
+
+    @Test
     fun headersAreFoundByFileIdOnAnyShelfAndTheBinListsOnlyItsOwn() = runDbTest { db ->
         val noon = local(2024, 3, 9, 12, 0)
         val kept = db.add(noon)

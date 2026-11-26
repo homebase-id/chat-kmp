@@ -1,5 +1,7 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.FileState
+import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.sync.DriveState
 import id.homebase.core.photobase.PhotobaseProtocol
@@ -35,6 +37,27 @@ class PhotoDriveEventsTest {
             events.newPhotoRecords().toList(),
             "a round is silent until it stops; a failed one may still have written some",
         )
+    }
+
+    @Test
+    fun aTaggedGalleryHearsOnlyArrivalsThatMayChangeATag() = runTest {
+        val backedUp = galleryTestFile(1)
+        val tagged = galleryTestFile(2).let { it.copy(fileMetadata = it.fileMetadata.copy(localAppData = LocalAppMetadata(versionTag = Uuid.random()))) }
+        val deleted = galleryTestFile(3).copy(fileState = FileState.Deleted)
+        val changes = flowOf(
+            PhotoChange.FilesArrived(listOf(backedUp)),
+            PhotoChange.FilesArrived(listOf(backedUp, tagged, deleted)),
+            PhotoChange.RoundFinished,
+        )
+
+        assertEquals(
+            listOf(PhotoChange.FilesArrived(listOf(tagged, deleted)), PhotoChange.RoundFinished),
+            changes.thatMayChangeTags().toList(),
+        )
+        assertEquals(changes.thatMayChangeTags().toList(), changes.heardBy(PhotoGallery.Favorites).toList())
+        assertEquals(changes.thatMayChangeTags().toList(), changes.heardBy(PhotoGallery.Album(Uuid.random())).toList())
+        assertEquals(changes.toList(), changes.heardBy(PhotoGallery.Library).toList(), "a shelf hears a backup's new photos")
+        assertEquals(changes.toList(), changes.heardBy(PhotoGallery.Archive).toList())
     }
 
     @Test
