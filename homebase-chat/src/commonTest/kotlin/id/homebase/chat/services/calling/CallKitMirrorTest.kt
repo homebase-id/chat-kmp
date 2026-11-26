@@ -50,6 +50,7 @@ class CallKitMirrorTest {
     }
 
     private class Rig(scope: TestScope, hosts: Boolean = true, disconnectsUnhosted: Boolean = false) {
+        val engines = mutableMapOf<String, FakeCallEngine>()
         val net = LoopbackSignaling(now = { scope.testScheduler.currentTime })
         val caller = controller(scope, "frodo.baggins.demo.rocks")
         val callee = controller(scope, "samwise.gamgee.demo.rocks")
@@ -58,7 +59,7 @@ class CallKitMirrorTest {
         val calleeActions = CallKitActionsAdapter(callee)
 
         private fun controller(scope: TestScope, id: String) = CallController(
-            id, net.endpoint(id), CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope) }, scope.backgroundScope,
+            id, net.endpoint(id), CallEngineFactory { _ -> FakeCallEngine(scope.backgroundScope).also { engines[id] = it } }, scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
         )
 
@@ -117,6 +118,31 @@ class CallKitMirrorTest {
 
             assertEquals(if (video) listOf("video:c-in-true:true") else emptyList(), rig.calleeKit.log)
         }
+    }
+
+    @Test
+    fun aVoiceCallIsUpgradedToVideoOnCallKitWhileEitherCameraIsOn_andBackWhenBothAreOff() = runTest {
+        val rig = Rig(this)
+        rig.caller.startCall(sam, video = false, callId = "c-up")
+        runCurrent()
+        rig.callee.accept()
+        advanceTimeBy(1_500)
+        assertEquals(listOf("outgoing:c-up", "connected:c-up"), rig.callerKit.log)
+
+        rig.caller.setVideo(true)
+        advanceTimeBy(1_500)
+        assertEquals("video:c-up:true", rig.callerKit.log.last())
+
+        rig.engines.getValue(frodo).simulateRemoteVideo(true)
+        advanceTimeBy(1_500)
+        rig.caller.setVideo(false)
+        advanceTimeBy(1_500)
+        assertEquals(1, rig.callerKit.log.count { it == "video:c-up:true" })
+        assertTrue(rig.callerKit.log.none { it == "video:c-up:false" })
+
+        rig.engines.getValue(frodo).simulateRemoteVideo(false)
+        advanceTimeBy(1_500)
+        assertEquals("video:c-up:false", rig.callerKit.log.last())
     }
 
     @Test
