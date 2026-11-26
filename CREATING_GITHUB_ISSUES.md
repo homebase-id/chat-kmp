@@ -30,7 +30,7 @@ that the real issue can be discovered.
   `help wanted`, `good first issue`, `duplicate`, `invalid`, `wontfix`, `post-merge`
 - **After a merge:** an issue about something a merged PR got wrong starts with
   "Found after #<PR>" and gets `post-merge`. A fix that didn't hold reopens its issue
-  ("Still broken on <platform>: …") instead of a new one (CLAUDE.md, "Filing issues").
+  ("Still broken on <platform>: …") instead of a new one (ISSUES.md, "Filing issues").
 
 ---
 
