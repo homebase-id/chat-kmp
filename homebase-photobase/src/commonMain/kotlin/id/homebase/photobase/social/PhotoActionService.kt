@@ -6,22 +6,23 @@ import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
-import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.widget.EmojiReaction
+import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flow
 import kotlin.uuid.Uuid
 
 data class PhotoReactions(
     val summary: ReactionSummary? = null,
-    val own: List<String> = emptyList(),
+    val own: ImmutableList<String> = persistentListOf(),
 )
 
 /**
@@ -54,31 +55,24 @@ class PhotoActionService(
     }
 
     /** The photo's or comment's reactions as held locally, again on every change to it. */
-    fun reactionsOf(targetId: Uuid): Flow<PhotoReactions> = flow {
-        emit(read(targetId))
-        eventBus.events
-            .filter { event ->
-                event is BackendEvent.DataEvent.BatchReceived && event.driveId == drive &&
-                    event.batchData.any { it.fileMetadata.appData.uniqueId == targetId }
-            }
-            .collect { emit(read(targetId)) }
-    }
+    fun reactionsOf(targetId: Uuid): Flow<PhotoReactions> =
+        eventBus.rereadOn(drive, { it.fileMetadata.appData.uniqueId == targetId }) { read(targetId) }
 
     private suspend fun read(targetId: Uuid): PhotoReactions {
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return PhotoReactions()
         val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(identityId, drive, targetId) ?: return PhotoReactions()
-        return PhotoReactions(file.fileMetadata.reactionPreview, file.fileMetadata.localAppData?.localReactions.orEmpty())
+        return PhotoReactions(file.fileMetadata.reactionPreview, file.fileMetadata.localAppData?.localReactions.orEmpty().toImmutableList())
     }
 
     /** Who reacted with what, from the server. */
     suspend fun listReactions(targetId: Uuid): List<EmojiReaction> {
         val target = driveFileProvider.getFileHeaderByUid(drive, targetId) ?: return emptyList()
-        return reactionProvider.listReactions(drive, target.fileId).reactions.map {
+        return reactionProvider.listReactions(drive, target.fileId).reactions.mapNotNull {
             EmojiReaction(
                 messageId = targetId,
                 odinId = it.odinId,
                 created = UnixTimeUtc(it.created),
-                emoji = OdinSystemSerializer.deserialize<ReactionContent>(it.reactionContent).emoji,
+                emoji = decodeReactionCode(it.reactionContent) ?: return@mapNotNull null,
             )
         }
     }

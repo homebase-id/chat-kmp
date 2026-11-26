@@ -20,6 +20,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.photobase.PhotobaseProtocol
+import id.homebase.photobase.parseRecord
 import id.homebase.upload.MediaUpdateSpec
 import id.homebase.upload.MediaUploadSpec
 import id.homebase.upload.UploadOutcome
@@ -73,15 +74,7 @@ class PhotoCommentsService(
     private val drive = PhotobaseProtocol.DriveAlias
 
     /** The photo's comments, oldest first, read again whenever one of them changes. */
-    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = flow {
-        emit(read(photoId))
-        eventBus.events
-            .filter { event ->
-                event is BackendEvent.DataEvent.BatchReceived && event.driveId == drive &&
-                    event.batchData.any { it.isCommentOn(photoId) }
-            }
-            .collect { emit(read(photoId)) }
-    }
+    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = eventBus.rereadOn(drive, { it.isCommentOn(photoId) }) { read(photoId) }
 
     private suspend fun read(photoId: Uuid): List<PhotoComment> {
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return emptyList()
@@ -164,15 +157,24 @@ class PhotoCommentsService(
     }
 }
 
+/** [read] at once, then again on every synced batch on [drive] holding a file that [matches]. */
+internal fun <T> EventBus.rereadOn(drive: Uuid, matches: (HomebaseFile) -> Boolean, read: suspend () -> T): Flow<T> = flow {
+    emit(read())
+    events
+        .filter { event -> event is BackendEvent.DataEvent.BatchReceived && event.driveId == drive && event.batchData.any(matches) }
+        .collect { emit(read()) }
+}
+
 internal fun HomebaseFile.isCommentOn(photoId: Uuid): Boolean =
     fileMetadata.appData.fileType == PhotobaseProtocol.CommentFileType && fileMetadata.appData.groupId == photoId
 
 internal fun HomebaseFile.toPhotoComment(): PhotoComment? {
     val appData = fileMetadata.appData
     if (appData.fileType != PhotobaseProtocol.CommentFileType) return null
-    val content = appData.content?.let { runCatching { OdinSystemSerializer.deserialize<PhotoCommentContent>(it) }.getOrNull() }
+    val id = appData.uniqueId ?: return null
+    val content = parseRecord<PhotoCommentContent>(appData.content, "comment $id")
     return PhotoComment(
-        id = appData.uniqueId ?: return null,
+        id = id,
         photoId = appData.groupId ?: return null,
         senderOdinId = fileMetadata.senderOdinId,
         body = content?.body.orEmpty(),

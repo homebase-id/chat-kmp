@@ -55,7 +55,6 @@ import id.homebase.resources.photobase_comments_title
 import id.homebase.resources.save
 import id.homebase.resources.send
 import id.homebase.resources.you
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
@@ -150,7 +149,7 @@ private fun Reactions(targetId: Uuid, reactionsOf: (Uuid) -> Flow<PhotoReactions
     val reactions by remember(targetId) { reactionsOf(targetId) }.collectAsStateWithLifecycle(PhotoReactions())
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         reactions.summary?.let { summary ->
-            ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own.toImmutableList())
+            ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own)
         }
         AddReactionChip(onClick = onReact)
     }
