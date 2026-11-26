@@ -60,10 +60,26 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import id.homebase.api.coroutines.ioDispatcher
 
+/** Where the mic and speaker pickers come from. */
+interface AudioDeviceList {
+    fun mics(): List<AudioDevice>
+    fun speakers(): List<AudioDevice>
+    fun defaultMic(): AudioDevice?
+    fun defaultSpeaker(): AudioDevice?
+}
+
+object HostAudioDevices : AudioDeviceList {
+    override fun mics(): List<AudioDevice> = MediaDevices.getAudioCaptureDevices()
+    override fun speakers(): List<AudioDevice> = MediaDevices.getAudioRenderDevices()
+    override fun defaultMic(): AudioDevice? = MediaDevices.getDefaultAudioCaptureDevice()
+    override fun defaultSpeaker(): AudioDevice? = MediaDevices.getDefaultAudioRenderDevice()
+}
+
 /**
- * Desktop engine over webrtc-java. A supplied [audioDevice] (e.g. a headless module) lists no mics or speakers, since
- * asking the host for them can block forever without sound hardware; with [renderVideo] false as well, no cameras are
- * listed and no hot-plug listener is registered. [cameraSource] replaces the camera as the video source.
+ * Desktop engine over webrtc-java. [audioDevices] lists the mics and speakers; by default a supplied [audioDevice]
+ * (e.g. a headless module) lists none, since asking the host for them can block forever without sound hardware. With
+ * no [audioDevices] and [renderVideo] false, no cameras are listed and no hot-plug listener is registered.
+ * [cameraSource] replaces the camera as the video source.
  */
 class WebRtcJavaCallEngine(
     iceServers: List<CallIceServer>,
@@ -74,8 +90,8 @@ class WebRtcJavaCallEngine(
     private val remoteAudioSink: AudioTrackSink? = null,
     private val renderVideo: Boolean = true,
     private val ownsAudioDevice: Boolean = audioDevice == null,
+    private val audioDevices: AudioDeviceList? = if (audioDevice == null) HostAudioDevices else null,
 ) : CallEngine {
-    private val hostAudio = audioDevice == null
     private val _events = Channel<MediaEvent>(Channel.UNLIMITED)
     override val events: Flow<MediaEvent> = _events.receiveAsFlow()
 
@@ -184,7 +200,7 @@ class WebRtcJavaCallEngine(
     init {
         timed("devices") { devices.refresh() }
         // Hot-plug needs the platform device monitor (PulseAudio on Linux, which webrtc-java reports as java.lang.Error); without it the call still runs on the devices enumerated above.
-        if (!closed && (hostAudio || renderVideo)) {
+        if (!closed && (audioDevices != null || renderVideo)) {
             timed("hot-plug") { runCatching { MediaDevices.addDeviceChangeListener(deviceListener) } }
                 .onSuccess { listenerRegistered.set(true) }
                 .onFailure { Logger.w(it, "WebRtcJava") { "device hot-plug unavailable, the pickers will not follow device changes" } }
@@ -219,12 +235,12 @@ class WebRtcJavaCallEngine(
             nativeDevices[kind to device.descriptor] = device
             found += MediaDevice(device.descriptor, device.name, kind, isDefault = device.descriptor == defaultId)
         }
-        if (hostAudio) {
+        audioDevices?.let { audio ->
             runCatching {
-                add(MediaDeviceKind.Mic, MediaDevices.getAudioCaptureDevices(), runCatching { MediaDevices.getDefaultAudioCaptureDevice()?.descriptor }.getOrNull())
+                add(MediaDeviceKind.Mic, audio.mics(), runCatching { audio.defaultMic()?.descriptor }.getOrNull())
             }
             runCatching {
-                add(MediaDeviceKind.Speaker, MediaDevices.getAudioRenderDevices(), runCatching { MediaDevices.getDefaultAudioRenderDevice()?.descriptor }.getOrNull())
+                add(MediaDeviceKind.Speaker, audio.speakers(), runCatching { audio.defaultSpeaker()?.descriptor }.getOrNull())
             }
         }
         if (renderVideo) runCatching { add(MediaDeviceKind.Camera, cameras(), null) }
@@ -251,10 +267,10 @@ class WebRtcJavaCallEngine(
         val native = nativeDevices[device.kind to device.id] ?: error("${device.name} is no longer present")
         // Before the first pick the call is still on the system default, so that is what a failed switch restores.
         when (device.kind) {
-            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: runCatching { MediaDevices.getDefaultAudioCaptureDevice() }.getOrNull(), { activeMic = it }) {
+            MediaDeviceKind.Mic -> switchAudio(native as AudioDevice, activeMic ?: runCatching { audioDevices?.defaultMic() }.getOrNull(), { activeMic = it }) {
                 adm.stopRecording(); adm.setRecordingDevice(it); adm.initRecording(); adm.startRecording()
             }
-            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker ?: runCatching { MediaDevices.getDefaultAudioRenderDevice() }.getOrNull(), { activeSpeaker = it }) {
+            MediaDeviceKind.Speaker -> switchAudio(native as AudioDevice, activeSpeaker ?: runCatching { audioDevices?.defaultSpeaker() }.getOrNull(), { activeSpeaker = it }) {
                 adm.stopPlayout(); adm.setPlayoutDevice(it); adm.initPlayout(); adm.startPlayout()
             }
             MediaDeviceKind.Camera -> switchCaptureDevice(native as VideoDevice)

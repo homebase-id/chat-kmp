@@ -4,6 +4,7 @@ import id.homebase.api.client.calling.CallIceServer
 import dev.onvoid.webrtc.RTCBundlePolicy
 import dev.onvoid.webrtc.RTCRtcpMuxPolicy
 import dev.onvoid.webrtc.media.MediaDevices
+import dev.onvoid.webrtc.media.audio.AudioDevice
 import dev.onvoid.webrtc.media.audio.HeadlessAudioDeviceModule
 import java.util.concurrent.CountDownLatch
 import kotlin.test.Test
@@ -44,6 +45,18 @@ class WebRtcJavaCallEngineTest {
     private fun nativeTest(body: suspend CoroutineScope.() -> Unit) = runWithin(180_000) { runBlocking(block = body) }
 
     private fun headless() = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule()) }
+
+    private class FakeAudio(id: String) : AudioDevice(id, id)
+
+    // Two of each, so a switch has somewhere to go without host sound hardware.
+    private val fakeAudio = object : AudioDeviceList {
+        val mics = listOf(FakeAudio("mic-a"), FakeAudio("mic-b"))
+        val speakers = listOf(FakeAudio("speaker-a"), FakeAudio("speaker-b"))
+        override fun mics() = mics
+        override fun speakers() = speakers
+        override fun defaultMic() = mics.first()
+        override fun defaultSpeaker() = speakers.first()
+    }
 
     @Test
     fun twoRealEnginesOverLoopbackSignalingReachConnectedAndFingerprintsMatch() = nativeTest {
@@ -161,8 +174,9 @@ class WebRtcJavaCallEngineTest {
 
     @Test
     fun deviceListIsReportedGracefullyAndCloseUnregistersTheListenerTwiceOver() = nativeTest {
-        val engine = WebRtcJavaCallEngine(emptyList())
+        val engine = WebRtcJavaCallEngine(emptyList(), HeadlessAudioDeviceModule(), audioDevices = fakeAudio)
         val devices = engine.mediaDevices.devices.value
+        assertEquals(listOf("mic-a", "mic-b", "speaker-a", "speaker-b"), devices.filter { it.kind != MediaDeviceKind.Camera }.map { it.id })
         val selected = engine.mediaDevices.selected.value
         MediaDeviceKind.entries.forEach { kind ->
             val ofKind = devices.filter { it.kind == kind }
@@ -208,7 +222,7 @@ class WebRtcJavaCallEngineTest {
     fun switchingMicAndSpeakerOnAConnectedCallKeepsItConnectedWithTheTrackEnabled() = nativeTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val engines = mutableListOf<WebRtcJavaCallEngine>()
-        val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun).also { engines += it } }
+        val factory = CallEngineFactory { stun -> WebRtcJavaCallEngine(stun, HeadlessAudioDeviceModule(), audioDevices = fakeAudio).also { engines += it } }
         try {
             val net = LoopbackSignaling()
             val caller = CallController(frodo, net.endpoint(frodo), factory, scope)
@@ -221,9 +235,9 @@ class WebRtcJavaCallEngineTest {
             val devices = withTimeout(5_000) { caller.mediaDevices.first { it != null } }!!
             val offersBefore = net.sent.count { it.signal is CallSignal.Offer }
             for (kind in listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker)) {
-                val other = devices.devices.value.firstOrNull { it.kind == kind && it.id != devices.selected.value[kind] } ?: continue
+                val other = devices.devices.value.first { it.kind == kind && it.id != devices.selected.value[kind] }
                 devices.select(kind, other.id)
-                // A host that refuses the switch keeps its selection; either way the call must carry on.
+                assertEquals(other.id, devices.selected.value[kind], "$kind switched")
                 assertEquals(CallPhase.Connected, caller.state.value.phase)
             }
             assertTrue(engines.single().isAudioEnabled())
