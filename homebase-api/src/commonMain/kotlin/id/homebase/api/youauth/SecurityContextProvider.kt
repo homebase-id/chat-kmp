@@ -6,6 +6,7 @@ import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -55,6 +56,8 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
 
             throwForFailure(response)
             parseSecurityContext(response.body)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Error fetching security context ($path): ${e.message}" }
             null

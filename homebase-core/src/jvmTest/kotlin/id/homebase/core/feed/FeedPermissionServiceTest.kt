@@ -239,4 +239,20 @@ class FeedPermissionServiceTest {
             f.service.canReact(post(author = peer, reactAccess = ReactAccess.None)),
         )
     }
+
+    @Test
+    fun selfAndPeer_useSeparateRoutes_andReset_dropsPeerEntries() = runTest {
+        val paths = mutableListOf<String>()
+        val engine = MockEngine { request ->
+            paths += request.url.encodedPath
+            respond(contextJson("react,comment"), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val f = fixture(engine)
+        f.service.canReact(post(author = null))
+        f.service.canReact(post(author = peer))
+        assertEquals(listOf("/api/v2/auth/context", "/api/v2/peer/$peer/auth/context"), paths)
+        f.service.reset()
+        f.service.canReact(post(author = peer))
+        assertEquals(3, f.requestCount)
+    }
 }
