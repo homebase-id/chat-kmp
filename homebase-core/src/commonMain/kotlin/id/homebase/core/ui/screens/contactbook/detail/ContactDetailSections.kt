@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.mohamedrejeb.richeditor.annotation.ExperimentalRichTextApi
 import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichText
 import id.homebase.api.client.drives.files.RichTextNode
@@ -561,6 +562,7 @@ fun BioSection(shortBio: String?) {
  * short title, the Plate/Slate.js `full_bio` rendered as real rich text, and a link. Renders
  * nothing when absent.
  */
+@OptIn(ExperimentalRichTextApi::class)
 @Composable
 fun ExperienceSection(experience: ContactExperience?, image: ByteArray?) {
     val exp = experience ?: return

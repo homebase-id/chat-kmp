@@ -138,7 +138,7 @@ private suspend fun renderPlanned(
         displayedSize = displayedSize ?: result.displayedSize,
         tiny = result.images.last().toEmbedded(),
         thumbnails = result.images.take(thumbnailCount).map { it.toThumbnailFile(payloadKey) },
-        finalImage = result.images[thumbnailCount].takeIf { plan!!.finalImage != null },
+        finalImage = result.images[thumbnailCount].takeIf { plan.finalImage != null },
     )
 }
 

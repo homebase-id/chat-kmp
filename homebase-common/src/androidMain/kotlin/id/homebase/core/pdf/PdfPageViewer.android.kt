@@ -68,8 +68,7 @@ actual fun PdfPageViewer(
             }
         },
         update = { frameLayout ->
-            val activity = context as? FragmentActivity ?: return@AndroidView
-            val fm = activity.supportFragmentManager
+            val fm = context.supportFragmentManager
             val container = frameLayout.getChildAt(0) as? FragmentContainerView ?: return@AndroidView
             val existing = fm.findFragmentByTag(fragmentTag) as? PdfViewerFragment
             // An Activity recreation (rotation, theme or locale change, split-screen resize)

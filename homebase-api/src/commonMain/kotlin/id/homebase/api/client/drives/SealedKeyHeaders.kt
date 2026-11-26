@@ -37,7 +37,7 @@ object SealedKeyHeaders {
             throw e
         } catch (e: Exception) {
             // Every read of the file would fail the same way.
-            if (fileId !in unconverted.getAndUpdate { it + fileId }) Logger.w(TAG) { "no drive-key header for $fileId on $driveId: ${e.message}" }
+            if (fileId !in unconverted.getAndUpdate { it + fileId }) Logger.w(tag = TAG) { "no drive-key header for $fileId on $driveId: ${e.message}" }
         }
     }
 
