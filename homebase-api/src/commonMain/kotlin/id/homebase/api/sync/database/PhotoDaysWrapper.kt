@@ -18,7 +18,7 @@ class PhotoDaysWrapper(
             val counted = { day: Long?, photos: Long -> DayCount(day!!.toInt(), photos.toInt()) }
             when (filter) {
                 is PhotoFilter.Shelf -> queries.dayCounts(identityId, driveId, filter.archivalStatus, counted)
-                is PhotoFilter.Tagged -> queries.taggedDayCounts(identityId, driveId, filter.tag, filter.archivalStatuses, counted)
+                is PhotoFilter.Tagged -> queries.taggedDayCounts(identityId = identityId, driveId = driveId, archivalStatuses = filter.archivalStatuses, tagId = filter.tag, mapper = counted)
             }.executeAsList()
         }
 
@@ -30,7 +30,7 @@ class PhotoDaysWrapper(
         databaseManager.readValue("photoDays.photosOnDay") {
             when (filter) {
                 is PhotoFilter.Shelf -> queries.photosOnDay(identityId, driveId, filter.archivalStatus, day.toLong())
-                is PhotoFilter.Tagged -> queries.taggedPhotosOnDay(identityId, driveId, filter.tag, filter.archivalStatuses, day.toLong())
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDay(identityId = identityId, driveId = driveId, archivalStatuses = filter.archivalStatuses, day = day.toLong(), tagId = filter.tag)
             }.executeAsOne()
         }.toInt()
 
@@ -40,7 +40,10 @@ class PhotoDaysWrapper(
             val row = { day: Long, jsonHeader: String -> DayHeader(day.toInt(), jsonHeader) }
             when (filter) {
                 is PhotoFilter.Shelf -> queries.photosOnDays(identityId, driveId, filter.archivalStatus, fromDay.toLong(), toDay.toLong(), row)
-                is PhotoFilter.Tagged -> queries.taggedPhotosOnDays(identityId, driveId, filter.tag, filter.archivalStatuses, fromDay.toLong(), toDay.toLong(), row)
+                is PhotoFilter.Tagged -> queries.taggedPhotosOnDays(
+                    identityId = identityId, driveId = driveId, archivalStatuses = filter.archivalStatuses,
+                    fromDay = fromDay.toLong(), toDay = toDay.toLong(), tagId = filter.tag, mapper = row,
+                )
             }.executeAsList()
         }
 
