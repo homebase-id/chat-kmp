@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
+import kotlin.concurrent.Volatile
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
@@ -41,6 +42,7 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     private val keyValue get() = databaseManager.keyValue
 
     /** The last read failed, so [settings] holds defaults rather than what's stored. Declared before the first read. */
+    @Volatile
     var readFailed = false
         private set
 
@@ -56,6 +58,7 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
             it.copy(pushIntervalMs = it.pushIntervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds))
         }
         keyValue.upsertValue(SETTINGS_KEY, OdinSystemSerializer.serialize(next).encodeToByteArray())
+        readFailed = false
         _settings.value = next
     }
 

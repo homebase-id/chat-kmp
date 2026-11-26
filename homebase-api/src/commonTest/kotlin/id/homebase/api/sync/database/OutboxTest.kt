@@ -22,13 +22,23 @@ class OutboxTest {
     }
 
     @Test
-    fun aDriveHasRowsOnlyWhileOneIsQueuedForIt() = runTest {
+    fun aDriveHasBulkRowsOnlyWhileOneIsQueuedForIt() = runTest {
         DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
             val photos = Uuid.random()
-            val chat = Uuid.random()
-            dbm.outbox.insert(driveId = chat, uniqueId = Uuid.random(), dependencyUniqueId = null, priority = 0L, uploadType = 0L, json = byteArrayOf(), filePaths = byteArrayOf())
-            assertFalse(dbm.outbox.existsByDrive(photos))
-            assertTrue(dbm.outbox.existsByDrive(chat))
+            suspend fun queue(drive: Uuid, priority: Long): Uuid {
+                val id = Uuid.random()
+                dbm.outbox.insert(driveId = drive, uniqueId = id, dependencyUniqueId = null, priority = priority, uploadType = 0L, json = byteArrayOf(), filePaths = byteArrayOf())
+                return id
+            }
+            queue(Uuid.random(), OUTBOX_BULK_PRIORITY)
+            queue(photos, priority = 0L)
+            assertFalse(dbm.outbox.existsBulkByDrive(photos))
+
+            val backup = queue(photos, OUTBOX_BULK_PRIORITY)
+            assertTrue(dbm.outbox.existsBulkByDrive(photos))
+
+            dbm.outbox.deleteBy(photos, backup)
+            assertFalse(dbm.outbox.existsBulkByDrive(photos))
         }
     }
 
