@@ -3,13 +3,19 @@ package id.homebase.photobase.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.OdinApiException
+import id.homebase.api.client.correlationId
+import id.homebase.api.client.errorCode
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.common.OdinId
+import id.homebase.api.youauth.DrivePermission
 import id.homebase.photobase.sharing.AlbumAudience
 import id.homebase.photobase.sharing.AlbumShareRecipient
 import id.homebase.photobase.sharing.AlbumShared
 import id.homebase.photobase.sharing.PhotoAlbumAccess
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotoSharingException
+import id.homebase.photobase.sharing.label
 import id.homebase.chat.widget.AudienceChoice
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -35,12 +41,43 @@ data class AlbumShareUiState(
 sealed interface AlbumShareEvent {
     data class OpenUrl(val url: String) : AlbumShareEvent
     data class OpenSignIn(val url: String) : AlbumShareEvent
-    data object Failed : AlbumShareEvent
-    data object Shared : AlbumShareEvent
+    /** [step] failed for [reason]: the server's, or none when Homebase wasn't reached ([unreachable]). */
+    data class Failed(val step: AlbumShareStep, val reason: ShareFailure) : AlbumShareEvent
+    /** The circle a share goes through grants [granted] on the Photos drive, short of [missing]; only the owner console changes it. */
+    data class CircleTooNarrow(val circleName: String, val circleId: Uuid, val granted: List<DrivePermission>, val missing: List<DrivePermission>) : AlbumShareEvent
+    data class Shared(val who: String) : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
+    data class NotConnected(val who: String) : AlbumShareEvent
+    data class NotReviewed(val who: String) : AlbumShareEvent
+    /** Not queued: they're named and the owner tries again later. */
+    data class Pending(val who: String) : AlbumShareEvent
     /** Shared, but the chat message telling them didn't go. */
     data class NotTold(val who: String) : AlbumShareEvent
+}
+
+enum class AlbumShareStep { SignIn, Read, Share, Withdraw }
+
+/** Why something failed, as the user is told it: [reason] quoted, [status], [code] and [correlationId] under Details. */
+data class ShareFailure(
+    val reason: String?,
+    val unreachable: Boolean = false,
+    val status: Int? = null,
+    val code: String? = null,
+    val correlationId: String? = null,
+) {
+    companion object {
+        fun of(e: Throwable): ShareFailure = when {
+            e is OdinApiException -> ShareFailure(
+                reason = e.problem?.title ?: e.message,
+                status = e.status,
+                code = e.problem?.errorCode(),
+                correlationId = e.correlationId ?: e.problem?.correlationId(),
+            )
+            e.isTransientNetworkFailure() -> ShareFailure(reason = null, unreachable = true)
+            else -> ShareFailure(reason = e.message ?: e::class.simpleName)
+        }
+    }
 }
 
 sealed interface AlbumShareUiAction {
@@ -70,7 +107,7 @@ class AlbumShareViewModel(
     init {
         viewModelScope.launch {
             // A stored sign-in may still lack what sharing needs: checked as after signing in.
-            if (guarded { restore() } == true) finishSigningIn(openOwnerPage = false)
+            if (guarded(AlbumShareStep.SignIn) { restore() } == true) finishSigningIn(openOwnerPage = false)
         }
     }
 
@@ -79,7 +116,7 @@ class AlbumShareViewModel(
             AlbumShareUiAction.SignIn -> signIn()
             is AlbumShareUiAction.Access -> _uiState.update { it.copy(access = action.access) }
             is AlbumShareUiAction.Share -> share(action.choice)
-            is AlbumShareUiAction.Withdraw -> busy { sharing.withdraw(albumId, action.recipient.audience) }
+            is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
         }
     }
 
@@ -92,7 +129,12 @@ class AlbumShareViewModel(
         if (_uiState.value.busy) return
         viewModelScope.launch {
             if (signedIn.value) return@launch finishSigningIn(openOwnerPage = true)
-            val url = guarded { signInUrl { ok -> if (ok) finishSigningIn(openOwnerPage = true) else _events.send(AlbumShareEvent.Failed) } } ?: return@launch
+            val url = guarded(AlbumShareStep.SignIn) {
+                signInUrl { ok ->
+                    if (ok) finishSigningIn(openOwnerPage = true)
+                    else _events.send(AlbumShareEvent.Failed(AlbumShareStep.SignIn, ShareFailure(reason = null)))
+                }
+            } ?: return@launch
             _events.send(AlbumShareEvent.OpenSignIn(url))
         }
     }
@@ -105,7 +147,7 @@ class AlbumShareViewModel(
             throw e
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "album $albumId: Photos' permissions not read" }
-            return _events.send(AlbumShareEvent.Failed)
+            return _events.send(AlbumShareEvent.Failed(AlbumShareStep.SignIn, ShareFailure.of(e)))
         }
         if (missing != null) {
             if (openOwnerPage) _events.send(AlbumShareEvent.OpenUrl(missing))
@@ -121,21 +163,22 @@ class AlbumShareViewModel(
 
     private fun share(choice: AudienceChoice) {
         val state = _uiState.value
-        busy {
+        busy(AlbumShareStep.Share) {
             val audience = when (choice) {
                 is AudienceChoice.Group -> state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy
                 is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId)
                 is AudienceChoice.NewGroup -> sharing.createGroup(choice.name, choice.members)
             }
             val shared = sharing.share(albumId, audience, state.access, expiresAt = null)
-            _events.send(AlbumShareEvent.Shared)
-            val untold = tell(audience.members, shared, state.access)
+            _events.send(AlbumShareEvent.Shared(audience.label))
+            if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(shared.pending.joinToString { it.domainName }))
+            val untold = tell(audience.members - shared.pending.toSet(), shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }
     }
 
-    private fun busy(block: suspend () -> Unit) {
+    private fun busy(step: AlbumShareStep, block: suspend () -> Unit) {
         if (_uiState.value.busy) return
         _uiState.update { it.copy(busy = true) }
         viewModelScope.launch {
@@ -145,10 +188,19 @@ class AlbumShareViewModel(
                 throw e
             } catch (e: PhotoSharingException.RecipientNotAdded) {
                 _events.send(AlbumShareEvent.NotAdded(e.recipients.joinToString { it.domainName }))
+            } catch (e: PhotoSharingException.NotConnected) {
+                _events.send(AlbumShareEvent.NotConnected(e.recipients.joinToString { it.domainName }))
+            } catch (e: PhotoSharingException.NotReviewed) {
+                _events.send(AlbumShareEvent.NotReviewed(e.recipients.joinToString { it.domainName }))
+            } catch (e: PhotoSharingException.Pending) {
+                _events.send(AlbumShareEvent.Pending(e.recipients.joinToString { it.domainName }))
+            } catch (e: PhotoSharingException.CircleTooNarrow) {
+                Logger.w(tag = TAG) { "album $albumId: ${e.message}" }
+                _events.send(AlbumShareEvent.CircleTooNarrow(e.circleName, e.circleId, e.granted, e.missing))
             } catch (e: Exception) {
-                Logger.w(tag = TAG, throwable = e) { "album $albumId: sharing failed" }
+                Logger.w(tag = TAG, throwable = e) { "album $albumId: $step failed" }
                 sharing.signOutIfRefused(e)
-                _events.send(AlbumShareEvent.Failed)
+                _events.send(AlbumShareEvent.Failed(step, ShareFailure.of(e)))
             } finally {
                 _uiState.update { it.copy(busy = false) }
                 load()
@@ -157,12 +209,12 @@ class AlbumShareViewModel(
     }
 
     private suspend fun load() {
-        guarded { sharing.sharedWith(albumId) to sharing.audiences().filterIsInstance<AlbumAudience.Group>() }?.let { (recipients, groups) ->
+        guarded(AlbumShareStep.Read) { sharing.sharedWith(albumId) to sharing.audiences().filterIsInstance<AlbumAudience.Group>() }?.let { (recipients, groups) ->
             _uiState.update { it.copy(recipients = recipients, groups = groups) }
         }
     }
 
-    private suspend fun <T> guarded(block: suspend () -> T): T? =
+    private suspend fun <T> guarded(step: AlbumShareStep, block: suspend () -> T): T? =
         try {
             block()
         } catch (e: CancellationException) {
@@ -170,7 +222,7 @@ class AlbumShareViewModel(
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "album $albumId: sharing not read" }
             if (sharing.signOutIfRefused(e)) _uiState.update { it.copy(signedIn = false) }
-            _events.send(AlbumShareEvent.Failed)
+            _events.send(AlbumShareEvent.Failed(step, ShareFailure.of(e)))
             null
         }
 

@@ -12,6 +12,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.errorCodeEnum
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
+import id.homebase.api.client.connections.EnrollmentOutcome
 import id.homebase.api.client.connections.EnrollmentOutcomeKind
 import id.homebase.api.client.connections.SealedMemberShareKey
 import id.homebase.api.client.connections.SealedMemberShareKeys
@@ -113,9 +114,13 @@ class SelectiveShareCircles(
 
     /** Adds [members] to [circleId]; the ones it refused. One deposited joins at their next call, and a later share seals to them. */
     suspend fun enroll(circleId: Uuid, members: Collection<OdinId>): Set<OdinId> =
-        members.chunked(ADD_MANY_LIMIT).flatMapTo(HashSet()) { chunk ->
+        enrollOutcomes(circleId, members).filter { it.kind != EnrollmentOutcomeKind.Enrolled && it.kind != EnrollmentOutcomeKind.Deposited }.mapTo(HashSet()) { it.odinId }
+
+    /** Adds [members] to [circleId]; what odin-core did with each. */
+    suspend fun enrollOutcomes(circleId: Uuid, members: Collection<OdinId>): List<EnrollmentOutcome> =
+        members.chunked(ADD_MANY_LIMIT).flatMap { chunk ->
             asApp.addManyToCircle(circleId.toString(), chunk.map(OdinId::domainName)).outcomes
-                .filter { it.kind != EnrollmentOutcomeKind.Enrolled && it.kind != EnrollmentOutcomeKind.Deposited }.map { it.odinId }
+                .also { outcomes -> Logger.i(tag = TAG) { "circle $circleId enrolment: ${outcomes.groupBy({ it.kind }, { it.odinId.domainName })}" } }
         }
 
     /** [fileId]'s key, under [keyHeader], locked for [circleId]. */

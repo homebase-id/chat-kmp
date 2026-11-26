@@ -9,8 +9,10 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.connections.CircleDesignation
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.api.client.connections.CircleWithMembers
+import id.homebase.api.client.connections.ConnectionStatus
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.CreateAppCircleRequest
+import id.homebase.api.client.connections.EnrollmentOutcomeKind
 import id.homebase.api.client.connections.DriveGrantRequest
 import id.homebase.api.client.connections.PermissionedDrive
 import id.homebase.api.client.drives.FileState
@@ -83,7 +85,8 @@ val AlbumAudience.key: String
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
 /** A share made: the circle it went to, and the members whose key waits for them to set up Photos. */
-data class AlbumShared(val circleId: Uuid, val albumName: String, val waiting: List<OdinId>)
+/** [pending]: a group's members odin-core holds the grant of until their identity next calls this one; they don't see it yet. */
+data class AlbumShared(val circleId: Uuid, val albumName: String, val waiting: List<OdinId>, val pending: List<OdinId> = emptyList())
 
 /** An album [owner] shares with this identity, as their drive holds it. */
 data class SharedAlbum(
@@ -100,6 +103,21 @@ sealed class PhotoSharingException(message: String) : Exception(message) {
     class NotSignedIn : PhotoSharingException("Not signed in to Photobase")
 
     class RecipientNotAdded(val recipients: List<OdinId>) : PhotoSharingException("$recipients couldn't be added")
+
+    class NotConnected(val recipients: List<OdinId>) : PhotoSharingException("$recipients aren't connected")
+
+    /** Photos' circles take only connections the owner has reviewed. */
+    class NotReviewed(val recipients: List<OdinId>) : PhotoSharingException("$recipients aren't reviewed")
+
+    /**
+     * Photos' recipients circle grants less than a share asks: odin-core returns an existing circle as it is, so one made
+     * before Photos declared React and Comment grants Read alone, and an app can't change it.
+     */
+    class CircleTooNarrow(val circleId: Uuid, val circleName: String, val granted: List<DrivePermission>, val missing: List<DrivePermission>) :
+        PhotoSharingException("circle $circleName ($circleId) grants $granted, lacks $missing")
+
+    /** odin-core holds their grant until their identity next calls this one, and refuses a share with them until then. */
+    class Pending(val recipients: List<OdinId>) : PhotoSharingException("$recipients are pending")
 
     /** [owner] hasn't reviewed this identity's connection, so it won't hand over the keys to what it shared. */
     class NotReviewedByOwner(val owner: OdinId) : PhotoSharingException("$owner hasn't reviewed this connection")
@@ -140,16 +158,23 @@ class PhotoAlbumSharing(
 
     suspend fun signOut() = circles.signOut()
 
-    /** Shares album [albumId] with [audience]: its record, and every photo in it. Telling its members is the caller's. */
+    /**
+     * Shares album [albumId] with [audience]: its record, and every photo in it. Telling its members is the caller's.
+     * A pending recipient isn't queued: one person pending stops the share, a group's pending members are named, and the
+     * owner tries again later (UI_BEHAVIORS.md section 2).
+     */
     suspend fun share(albumId: Uuid, audience: AlbumAudience, access: PhotoAlbumAccess, expiresAt: Long?): AlbumShared {
         circles.requireSignedIn()
         val members = audience.members
+        assertMayJoin(members)
         val keys = circles.keysOf(members)
         keys.unsupported().takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.RecipientNotAdded(it) }
         val points = keys.points()
 
+        val recipients = recipientsCircle()
+        assertGrantsAShare(recipients)
         // Their individual shares then don't depend on a group they might leave.
-        circles.enroll(recipientsCircle(), members)
+        val pending = enrollAll(recipients, members).toMutableSet()
         val circleId = when (audience) {
             is AlbumAudience.Group -> audience.circleId
             is AlbumAudience.Person -> circles.asApp.createCircle(
@@ -158,8 +183,10 @@ class PhotoAlbumSharing(
                     slug = SelectiveShareCircles.individualSlug(audience.odinId),
                     designation = CircleDesignation.Individual,
                 )
-            ).also { circles.enroll(it, members) }
+            ).also { pending += enrollAll(it, members) }
         }
+        // Before anything is written to a photo: the share would be refused.
+        if (audience is AlbumAudience.Person && pending.isNotEmpty()) throw PhotoSharingException.Pending(pending.toList())
         circles.sealCircleKey(circleId, points)
 
         albums.bringTagsTogether(albumId)
@@ -172,7 +199,11 @@ class PhotoAlbumSharing(
         // After the rows and the record, so a concurrent syncEditors that read them before can't take the members out again.
         if (access == PhotoAlbumAccess.Add) editing.withLock { circles.enroll(editorsCircle(), members) }
         else editorsMayHaveChanged(removalsOnly = true)
-        return AlbumShared(circleId, recordFile.albumName().orEmpty(), waiting = members.filter { keys[it] == RecipientKey.NoDrive })
+        return AlbumShared(
+            circleId, recordFile.albumName().orEmpty(),
+            waiting = members.filter { keys[it] == RecipientKey.NoDrive && it !in pending },
+            pending = members.filter { it in pending },
+        )
     }
 
     /** Stops sharing album [albumId] with [audience]; a photo that's also in another album shared with them stays. */
@@ -218,6 +249,7 @@ class PhotoAlbumSharing(
     /** Makes a group called [name] of [members]: a circle of the app's granting the drive what the recipients' circle grants. */
     suspend fun createGroup(name: String, members: List<OdinId>): AlbumAudience.Group {
         circles.requireSignedIn()
+        assertMayJoin(members)
         val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
         val refused = circles.enroll(circleId, members)
         if (refused.isNotEmpty()) {
@@ -457,6 +489,42 @@ class PhotoAlbumSharing(
     }
 
     // The editors circle is never shared with, nor the recipients' circle.
+    // Before anything is written: odin-core skips anyone not connected or not reviewed, and the share then fails late.
+    private suspend fun assertMayJoin(members: List<OdinId>) {
+        val statuses = coroutineScope { members.map { async { it to connections.getConnectionStatus(it) } }.awaitAll() }
+        statuses.filter { it.second?.status != ConnectionStatus.Connected }.map { it.first }
+            .takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.NotConnected(it) }
+        statuses.filter { it.second?.reviewedAt == null }.map { it.first }
+            .takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.NotReviewed(it) }
+    }
+
+    // Checked before anything is written: odin-core refuses every share otherwise.
+    private suspend fun assertGrantsAShare(circleId: Uuid) {
+        val circle = connections.getCirclesWithMembers().firstOrNull { it.circle.id.sameUuid(circleId) }?.circle ?: return
+        val granted = circle.driveGrants.orEmpty()
+            .filter { it.permissionedDrive?.drive?.alias?.sameUuid(PhotobaseProtocol.DriveAlias) == true }
+            .flatMap { DrivePermission.fromNames(it.permissionedDrive?.permission.orEmpty()) }
+        val missing = DrivePermission.fromValue(ROW_PERMISSIONS) - granted.toSet()
+        if (missing.isNotEmpty()) throw PhotoSharingException.CircleTooNarrow(circleId, circle.name, granted.distinct(), missing)
+    }
+
+    private fun String.sameUuid(id: Uuid) = replace("-", "").equals(id.toHexString(), ignoreCase = true)
+
+    /**
+     * Adds [members] to [circleId]; the ones pending, whose grant odin-core deposited. A skip is also its answer for one
+     * already in the circle or already pending, so only one in neither is refused.
+     */
+    private suspend fun enrollAll(circleId: Uuid, members: List<OdinId>): Set<OdinId> {
+        val outcomes = circles.enrollOutcomes(circleId, members)
+        val deposited = outcomes.filter { it.kind == EnrollmentOutcomeKind.Deposited }.mapTo(HashSet()) { it.odinId }
+        val skipped = outcomes.filter { it.kind == EnrollmentOutcomeKind.Skipped }.mapTo(HashSet()) { it.odinId }
+        if (skipped.isEmpty()) return deposited
+        val awaiting = circles.asApp.getPendingCircleMembers(circleId).mapTo(HashSet()) { it.odinId }
+        val refused = skipped - awaiting - circles.asApp.getCircleMembers(circleId).toSet()
+        if (refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(refused.toList())
+        return deposited + (skipped intersect awaiting)
+    }
+
     private suspend fun audienceCircles(): Map<Uuid, AlbumAudience> = audiencesOf(photobaseCircles())
 
     private suspend fun photobaseCircles(): List<CircleWithMembers> =

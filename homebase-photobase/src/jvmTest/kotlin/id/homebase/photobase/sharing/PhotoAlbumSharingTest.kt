@@ -35,15 +35,18 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.HttpMethod
 import io.ktor.http.headersOf
 import java.util.concurrent.CopyOnWriteArrayList
+import id.homebase.api.youauth.DrivePermission
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CoroutineScope
@@ -78,6 +81,11 @@ class PhotoAlbumSharingTest {
     // Each album record's live rows, by album.
     private val albumRows = mutableMapOf<Uuid, List<Uuid>>()
     @Volatile private var storedShareKey: String? = null
+    @Volatile private var samsPending = "[]"
+    private val photosCircle = Uuid.random()
+    // What Photos' recipients circle grants on the drive; null leaves it unlisted.
+    @Volatile private var photosCircleGrants: String? = "read, react, comment"
+    @Volatile private var samsConnection = """{"odinId":"sam.test","status":"connected","created":1,"lastUpdated":1,"connectionRequestOrigin":"identityOwner","hasVerificationHash":true,"rku":false}"""
 
     private fun albumRecord(albumId: Uuid): String {
         val key = KeyHeader.newRandom16()
@@ -105,6 +113,15 @@ class PhotoAlbumSharingTest {
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/shares") -> "{}"
+            path.endsWith("/connections/status") -> samsConnection
+            path.endsWith("/public-key") -> return@MockEngine respond("{}", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
+            path.endsWith("/circles/create") -> "\"$photosCircle\""
+            path.endsWith("/circles/with-members") -> photosCircleGrants?.let { permission ->
+                """[{"circle":{"id":"${photosCircle.toHexString()}","name":"Photos","driveGrants":[{"permissionedDrive":{"drive":{"alias":"${PhotobaseProtocol.DriveAlias.toHexString()}","type":"x"},"permission":"$permission"}}]},"members":[]}]"""
+            } ?: "[]"
+            path.endsWith("/circles/add-many") -> """{"outcomes":[{"odinId":"sam.test","kind":"skipped"}]}"""
+            path.endsWith("/circles/pending") -> samsPending
+            path.endsWith("/connections/circles") -> "[]"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
             else -> error("unexpected ${request.method} $path")
         }
@@ -201,6 +218,64 @@ class PhotoAlbumSharingTest {
         sharing.albumTagChanged(trip, on = true, setOf(photo(trip).fileId))
 
         assertTrue(calls.none { it.path.endsWith("/shares") || it.request.method == HttpMethod.Delete })
+    }
+
+    @Test
+    fun aConnectionNotYetReviewedIsNamedBeforeAnythingIsWritten() = runTest {
+        val sam = OdinId("sam.test")
+
+        val refused = assertFailsWith<PhotoSharingException.NotReviewed> {
+            sharing.share(trip, AlbumAudience.Person(sam), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertEquals(listOf(sam), refused.recipients)
+        assertTrue(calls.all { it.path.endsWith("/connections/status") }, calls.map { it.path }.toString())
+    }
+
+    @Test
+    fun someoneNotConnectedIsNamedBeforeAnythingIsWritten() = runTest {
+        samsConnection = samsConnection.replace("\"connected\"", "\"none\"")
+
+        assertFailsWith<PhotoSharingException.NotConnected> {
+            sharing.share(trip, AlbumAudience.Person(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertTrue(calls.all { it.path.endsWith("/connections/status") }, calls.map { it.path }.toString())
+    }
+
+    @Test
+    fun someonePendingIsNamedAndNoPhotoIsTouchedOrShared() = runTest {
+        samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
+        samsPending = """[{"odinId":"sam.test","deposited":1}]"""
+
+        val pending = assertFailsWith<PhotoSharingException.Pending> {
+            sharing.share(trip, AlbumAudience.Person(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertEquals(listOf(OdinId("sam.test")), pending.recipients)
+        assertTrue(calls.none { it.path.endsWith("/shares") || it.path.endsWith("/query-batch") || it.request.method == HttpMethod.Patch }, calls.map { it.path }.toString())
+    }
+
+    @Test
+    fun someoneSkippedWhoIsNeitherInTheCircleNorPendingIsRefused() = runTest {
+        samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
+
+        assertFailsWith<PhotoSharingException.RecipientNotAdded> {
+            sharing.share(trip, AlbumAudience.Person(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
+        }
+    }
+
+    @Test
+    fun aPhotosCircleThatGrantsOnlyReadStopsTheShareBeforeAnythingIsWritten() = runTest {
+        samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
+        photosCircleGrants = "read"
+
+        val narrow = assertFailsWith<PhotoSharingException.CircleTooNarrow> {
+            sharing.share(trip, AlbumAudience.Person(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertEquals(listOf(DrivePermission.React, DrivePermission.Comment), narrow.missing)
+        assertTrue(calls.none { it.path.endsWith("/add-many") || it.path.endsWith("/shares") || it.path.endsWith("/query-batch") }, calls.map { it.path }.toString())
     }
 
     private suspend fun decrypted(call: Call) =
