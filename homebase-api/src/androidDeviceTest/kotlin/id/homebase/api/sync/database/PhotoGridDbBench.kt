@@ -45,18 +45,7 @@ class PhotoGridDbBench {
     @Test
     fun measure() = runBlocking {
         assumeTrue("Pass photoGridBench=true to run", args.getString("photoGridBench") == "true")
-        results.delete()
-        var dbm = open()
-        // A run stopped while building leaves a partial database behind.
-        if (args.getString("photoGridRebuild") == "true" || photoCount(dbm.driver) != PHOTOS.toLong()) {
-            dbm.close()
-            context.deleteDatabase(DB)
-            dbm = open()
-            val took = TimeSource.Monotonic.markNow()
-            Fixture().populate(dbm)
-            log("built $PHOTOS photos + $CHAT_MESSAGES chat rows in ${took.elapsedNow().inWholeSeconds} s")
-        }
-        log("database ${context.getDatabasePath(DB).length() / MB} MB, zone $zone, runs $runs")
+        var dbm = library("photo-grid-bench.txt")
         dbm.driver.execute(null, "DROP INDEX IF EXISTS $GRID_INDEX", 0)
         // What an installed app does once, at its first open with IdxPhotoShelf in the schema.
         dbm.driver.execute(null, "DROP INDEX IF EXISTS $SHELF_INDEX", 0)
@@ -110,6 +99,430 @@ class PhotoGridDbBench {
         dbm.driver.execute(null, "DROP INDEX IF EXISTS $GRID_INDEX", 0)
         dbm.close()
         log("done")
+    }
+
+    private suspend fun library(resultsFile: String): DatabaseManager {
+        results = File(context.externalCacheDir, resultsFile).apply { delete() }
+        var dbm = open()
+        // A run stopped while building leaves a partial database behind.
+        if (args.getString("photoGridRebuild") == "true" || photoCount(dbm.driver) != PHOTOS.toLong()) {
+            dbm.close()
+            context.deleteDatabase(DB)
+            dbm = open()
+            val took = TimeSource.Monotonic.markNow()
+            Fixture().populate(dbm)
+            log("built $PHOTOS photos + $CHAT_MESSAGES chat rows in ${took.elapsedNow().inWholeSeconds} s")
+        }
+        log("database ${context.getDatabasePath(DB).length() / MB} MB, zone $zone, runs $runs")
+        return dbm
+    }
+
+    private class AlbumSet(val name: String, val favorites: Int, val trips: Int, val tripSize: Int, val big: Int)
+
+    /** What an album costs to show, by how many photos carry a tag, without and with an index on the tag. */
+    @Test
+    fun measureAlbums() = runBlocking {
+        assumeTrue("Pass photoAlbumsBench=true to run", args.getString("photoAlbumsBench") == "true")
+        var dbm = library("photo-albums-bench.txt")
+        val sets = listOf(
+            AlbumSet("typical: 500 favorites, 10 trip albums of 100", favorites = 500, trips = 10, tripSize = 100, big = 0),
+            AlbumSet("one big album: 2,000 favorites, 10 trips of 100, an album of 10,000", favorites = 2_000, trips = 10, tripSize = 100, big = 10_000),
+            AlbumSet("heavy: 5,000 favorites, 50 trips of 400, an album of 10,000", favorites = 5_000, trips = 50, tripSize = 400, big = 10_000),
+        )
+        val ids = Random(11)
+        for (set in sets) {
+            dbm.driver.execute(null, "DROP INDEX IF EXISTS $TAG_INDEX", 0)
+            dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+            val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
+            // Rows went in shuffled, so rowId order spreads a tag over the years; a trip is a run of consecutive photos.
+            tag(dbm.driver, favorites, "rowId DESC", set.favorites, 0)
+            val trips = List(set.trips) { i ->
+                Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "userDate DESC", set.tripSize, i * (PHOTOS / set.trips)) }
+            }
+            val big = if (set.big > 0) Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "rowId", set.big, 0) } else null
+            val albums = trips + listOfNotNull(big)
+            val rows = dbm.driver.executeQuery(null, "SELECT count(*) FROM DriveLocalTagIndex", { it.next(); QueryResult.Value(it.getLong(0)!!) }, 0).value
+            log("")
+            log("== ${set.name}: $rows tag rows on the Photos drive")
+            if (big != null) assertEquals(set.big, dbm.photoDays.taggedFileIds(IDENTITY, PHOTOS_DRIVE, big).size)
+
+            dbm.close()
+            dbm = open()
+            val before = measureTagged(dbm, "no tag index", favorites, trips.first(), big, albums)
+            once("build $TAG_INDEX") { dbm.driver.execute(null, "CREATE INDEX $TAG_INDEX ON DriveLocalTagIndex(identityId, driveId, tagId, fileId)", 0) }
+            dbm.close()
+            dbm = open()
+            val after = measureTagged(dbm, "tag index", favorites, trips.first(), big, albums)
+            assertEquals(before, after, "the index must not change what the albums show")
+            once("build $PHOTO_ID_INDEX") {
+                dbm.driver.execute(
+                    null,
+                    "CREATE INDEX $PHOTO_ID_INDEX ON DriveMainIndex(identityId, driveId, fileId, fileState, archivalStatus, userDate) " +
+                        "WHERE fileType = 7201 AND fileSystemType = 0",
+                    0,
+                )
+            }
+            dbm.close()
+            dbm = open()
+            val both = measureTagged(dbm, "tag index + photo id index", favorites, trips.first(), big, albums)
+            assertEquals(before, both, "the index must not change what the albums show")
+            measure("Library, two steps: counts + newest date per album, then the newest header of each") { coversInTwoSteps(dbm.driver, albums) }
+            dbm.driver.execute(null, "DROP INDEX IF EXISTS $PHOTO_ID_INDEX", 0)
+        }
+        dbm.driver.execute(null, "DROP INDEX IF EXISTS $PHOTO_ID_INDEX", 0)
+        dbm.driver.execute(null, "DROP INDEX IF EXISTS $TAG_INDEX", 0)
+        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        dbm.close()
+        log("done")
+    }
+
+    /** Other shapes of the same album reads, on the heavy set: what the time is spent on, and what avoids it. */
+    @Test
+    fun measureAlbumQueries() = runBlocking {
+        assumeTrue("Pass photoAlbumQueriesBench=true to run", args.getString("photoAlbumQueriesBench") == "true")
+        var dbm = library("photo-album-queries-bench.txt")
+        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
+        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        val ids = Random(11)
+        val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
+        tag(dbm.driver, favorites, "rowId DESC", 5_000, 0)
+        val trips = List(50) { i -> Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "userDate DESC", 400, i * (PHOTOS / 50)) } }
+        val big = Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "rowId", 10_000, 0) }
+        val albums = trips + big
+        log("heavy: 5,000 favorites, 50 trips of 400, an album of 10,000")
+        dbm.close()
+        dbm = open()
+        val driver = dbm.driver
+
+        for ((name, tag) in listOf("the big album (10,000)" to big, "a trip album (400)" to trips.first())) {
+            log("")
+            log("== $name")
+            val shipped = rawDays(driver, tagFirstDays(tag))
+            measure("shipped: tag rows first, look up each photo") { rawDays(driver, tagFirstDays(tag)) }
+            measure("tag rows first, count only (no day, no photo columns)") {
+                driver.executeQuery(null, "SELECT count(*) $TAG_JOIN WHERE t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId = ${hex(tag)}", { it.next(); QueryResult.Value(it.getLong(0)) }, 0)
+            }
+            measure("tag rows first, photo filters, no day") {
+                driver.executeQuery(null, "SELECT count(*) $TAG_JOIN WHERE ${taggedWhere(tag)}", { it.next(); QueryResult.Value(it.getLong(0)) }, 0)
+            }
+            measure("ids first, then photos by IN (500 ids a statement)") { assertEquals(shipped, idsThenIn(dbm, tag)) }
+            assertEquals(shipped, rawDays(driver, photosFirstDays(tag, SHELF_INDEX)))
+            plan(driver, photosFirstDays(tag, SHELF_INDEX))
+            measure("photos first by date ($SHELF_INDEX), keep those in the album") { rawDays(driver, photosFirstDays(tag, SHELF_INDEX)) }
+        }
+
+        once("build $SHELF_ID_INDEX (IdxPhotoShelf + fileId)") {
+            driver.execute(
+                null,
+                "CREATE INDEX $SHELF_ID_INDEX ON DriveMainIndex(identityId, driveId, archivalStatus, fileState, userDate, fileId) WHERE fileType = 7201 AND fileSystemType = 0",
+                0,
+            )
+        }
+        once("build $TAG_INDEX") { driver.execute(null, "CREATE INDEX $TAG_INDEX ON DriveLocalTagIndex(identityId, driveId, tagId, fileId)", 0) }
+        dbm.close()
+        dbm = open()
+        for ((name, tag) in listOf("the big album (10,000)" to big, "a trip album (400)" to trips.first(), "Favorites (5,000)" to favorites)) {
+            log("")
+            log("== $name, with both indexes")
+            val shipped = rawDays(dbm.driver, tagFirstDays(tag))
+            measure("shipped: tag rows first") { rawDays(dbm.driver, tagFirstDays(tag)) }
+            assertEquals(shipped, rawDays(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX)))
+            plan(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX))
+            measure("photos first by date ($SHELF_ID_INDEX), keep those in the album") { rawDays(dbm.driver, photosFirstDays(tag, SHELF_ID_INDEX)) }
+            // The grid's first screen: the album's newest days up to about 100 photos.
+            var upTo = 0
+            var photos = 0
+            while (upTo < shipped.lastIndex && photos < 100) photos += shipped[upTo++].second
+            val from = shipped[upTo].first
+            val to = shipped.first().first
+            val window = "m.userDate >= ${(from - 1L) * DAY_MS} AND m.userDate < ${(to + 2L) * DAY_MS} AND $DAY BETWEEN $from AND $to"
+            val shippedPage = rawHeaders(dbm.driver, "SELECT m.jsonHeader $TAG_JOIN WHERE ${taggedWhere(tag)} AND $window ORDER BY m.userDate DESC, m.rowId DESC")
+            measure("page of ${upTo + 1} days, before: tag rows first") {
+                rawHeaders(dbm.driver, "SELECT m.jsonHeader $TAG_JOIN WHERE ${taggedWhere(tag)} AND $window ORDER BY m.userDate DESC, m.rowId DESC")
+            }
+            val dateFirst = "SELECT m.jsonHeader FROM DriveMainIndex m INDEXED BY $SHELF_ID_INDEX WHERE ${photoFilters()} AND $window AND ${inAlbum(tag)} ORDER BY m.userDate DESC, m.rowId DESC"
+            assertEquals(shippedPage, rawHeaders(dbm.driver, dateFirst))
+            measure("page of ${upTo + 1} days: photos on those days first, keep those in the album") { rawHeaders(dbm.driver, dateFirst) }
+        }
+
+        log("")
+        log("== the Library's covers of ${albums.size} albums, with both indexes")
+        val tagList = albums.joinToString(",") { hex(it) }
+        val shippedCovers = "SELECT t.tagId, count(*), m.jsonHeader, max(m.userDate) $TAG_JOIN WHERE t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId IN ($tagList) " +
+            "AND ${photoFilters()} GROUP BY t.tagId"
+        measure("shipped: tag rows first") { rawCovers(dbm.driver, shippedCovers) }
+        val photosFirstCovers = "SELECT t.tagId, count(*), m.jsonHeader, max(m.userDate) FROM DriveMainIndex m INDEXED BY $SHELF_ID_INDEX " +
+            "JOIN DriveLocalTagIndex t ON t.identityId = m.identityId AND t.driveId = m.driveId AND t.fileId = m.fileId " +
+            "WHERE ${photoFilters()} AND t.tagId IN ($tagList) GROUP BY t.tagId"
+        assertEquals(rawCovers(dbm.driver, shippedCovers), rawCovers(dbm.driver, photosFirstCovers))
+        plan(dbm.driver, photosFirstCovers)
+        measure("photos first by date, then each photo's tags") { rawCovers(dbm.driver, photosFirstCovers) }
+        measure("two steps: counts + newest date, then one header per album") { coversInTwoSteps(dbm.driver, albums) }
+        val countsOnly = "SELECT t.tagId, count(*), max(m.userDate) $TAG_JOIN WHERE t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId IN ($tagList) AND ${photoFilters()} GROUP BY t.tagId"
+        measure("tag rows first, counts + newest date only (no header)") { rawHeaders(dbm.driver, countsOnly.replace("SELECT t.tagId,", "SELECT hex(t.tagId) ||") ) }
+
+        log("")
+        log("== page cache: the big album's shipped day counts on one connection")
+        dbm.withWriteTransaction {
+            timeBlocking("default cache (2 MB)") { rawDays(dbm.driver, tagFirstDays(big)) }
+            dbm.driver.execute(null, "PRAGMA cache_size = -65536", 0)
+            timeBlocking("64 MB cache") { rawDays(dbm.driver, tagFirstDays(big)) }
+            dbm.driver.execute(null, "PRAGMA cache_size = -2000", 0)
+        }
+
+        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
+        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        dbm.close()
+        log("done")
+    }
+
+    /** The album reads without a new index: the album as rowIds from the fileId index, then the shelf index, so only shown photos' rows are read. */
+    @Test
+    fun measureAlbumRowIds() = runBlocking {
+        assumeTrue("Pass photoAlbumRowIdsBench=true to run", args.getString("photoAlbumRowIdsBench") == "true")
+        var dbm = library("photo-album-rowids-bench.txt")
+        for (index in listOf(TAG_INDEX, PHOTO_ID_INDEX, SHELF_ID_INDEX)) dbm.driver.execute(null, "DROP INDEX IF EXISTS $index", 0)
+        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        val ids = Random(11)
+        val favorites = Uuid.fromLongs(ids.nextLong(), ids.nextLong())
+        tag(dbm.driver, favorites, "rowId DESC", 5_000, 0)
+        val trips = List(50) { i -> Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "userDate DESC", 400, i * (PHOTOS / 50)) } }
+        val big = Uuid.fromLongs(ids.nextLong(), ids.nextLong()).also { tag(dbm.driver, it, "rowId", 10_000, 0) }
+        val albums = trips + big
+        log("heavy: 5,000 favorites, 50 trips of 400, an album of 10,000; no new index")
+        dbm.close()
+        dbm = open()
+        val driver = dbm.driver
+        val shelf = "m.identityId = $ME AND m.driveId = $DRIVE AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN (0, 1)"
+        val dated = "+m.userDate BETWEEN -62167132800000 AND 253402214399999"
+        fun rowIds(tagWhere: String, tagColumn: Boolean = false) =
+            "SELECT ${if (tagColumn) "t.tagId, " else ""}p.rowId AS rid FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex p " +
+                "ON p.identityId = t.identityId AND p.driveId = t.driveId AND p.fileId = t.fileId WHERE t.identityId = $ME AND t.driveId = $DRIVE AND $tagWhere"
+
+        log("SQLite ${rawHeaders(driver, "SELECT sqlite_version()").single()}")
+        val coversOnly = args.getString("photoAlbumCoversOnly") == "true"
+        for ((name, tag) in listOf("the big album (10,000)" to big, "Favorites (5,000)" to favorites, "a trip album (400)" to trips.first()).takeUnless { coversOnly }.orEmpty()) {
+            log("")
+            log("== $name")
+            val inAlbum = "+m.rowId IN (${rowIds("t.tagId = ${hex(tag)}")})"
+            measure("the album's rowIds alone") { rawHeaders(driver, "SELECT count(*) || '' FROM (${rowIds("t.tagId = ${hex(tag)}")})") }
+
+            val shipped = rawDays(driver, tagFirstDays(tag))
+            measure("day counts, before: tag rows first") { rawDays(driver, tagFirstDays(tag)) }
+            val shelfFirst = "SELECT $DAY AS day, count(*) FROM DriveMainIndex m WHERE $shelf AND $dated AND $inAlbum GROUP BY day ORDER BY day DESC"
+            assertEquals(shipped, rawDays(driver, shelfFirst))
+            plan(driver, shelfFirst)
+            measure("day counts: shelf index first, keep the album's rowIds") { rawDays(driver, shelfFirst) }
+            val sortedRows = "SELECT $DAY AS day, count(*) FROM DriveMainIndex m WHERE m.rowId IN (${rowIds("t.tagId = ${hex(tag)}")}) AND $shelf AND $dated GROUP BY day ORDER BY day DESC"
+            assertEquals(shipped, rawDays(driver, sortedRows))
+            plan(driver, sortedRows)
+            measure("day counts: the album's rows in rowId order") { rawDays(driver, sortedRows) }
+
+            var upTo = 0
+            var photos = 0
+            while (upTo < shipped.lastIndex && photos < 100) photos += shipped[upTo++].second
+            val from = shipped[upTo].first
+            val to = shipped.first().first
+            val window = "m.userDate >= ${(from - 1L) * DAY_MS} AND m.userDate < ${(to + 2L) * DAY_MS} AND $DAY BETWEEN $from AND $to"
+            val shippedPage = "SELECT m.jsonHeader $TAG_JOIN WHERE ${taggedWhere(tag)} AND $window ORDER BY m.userDate DESC, m.rowId DESC"
+            val page = rawHeaders(driver, shippedPage)
+            measure("page of ${upTo + 1} days, before: tag rows first") { rawHeaders(driver, shippedPage) }
+            val shelfPage = "SELECT m.jsonHeader FROM DriveMainIndex m WHERE $shelf AND $window AND $inAlbum ORDER BY m.userDate DESC, m.rowId DESC"
+            assertEquals(page, rawHeaders(driver, shelfPage))
+            plan(driver, shelfPage)
+            measure("page of ${upTo + 1} days: shelf index first, keep the album's rowIds") { rawHeaders(driver, shelfPage) }
+            val existsPage = "SELECT m.jsonHeader FROM DriveMainIndex m WHERE $shelf AND $window AND EXISTS (SELECT 1 FROM DriveLocalTagIndex t " +
+                "WHERE t.identityId = m.identityId AND t.driveId = m.driveId AND t.fileId = m.fileId AND t.tagId = ${hex(tag)}) ORDER BY m.userDate DESC, m.rowId DESC"
+            assertEquals(page, rawHeaders(driver, existsPage))
+            measure("page of ${upTo + 1} days: shelf index first, look up each photo's tag") { rawHeaders(driver, existsPage) }
+
+            // What the app runs now, through PhotoDays, checked against the tag-first SQL it replaced.
+            val filter = PhotoFilter.Tagged(tag, listOf(0L, 1L))
+            assertEquals(shipped, dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter).map { it.day to it.photos })
+            measure("day counts, PhotoDays (this build)") { dbm.photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter) }
+            assertEquals(page, dbm.photoDays.headersOnDays(IDENTITY, PHOTOS_DRIVE, filter, from, to).map { it.jsonHeader })
+            measure("page of ${upTo + 1} days, PhotoDays (this build)") { dbm.photoDays.headersOnDays(IDENTITY, PHOTOS_DRIVE, filter, from, to) }
+
+            val busiest = shipped.maxBy { it.second }.first
+            val dayWindow = "m.userDate >= ${(busiest - 1L) * DAY_MS} AND m.userDate < ${(busiest + 2L) * DAY_MS} AND $DAY = $busiest"
+            measure("one day's count, before: tag rows first") { rawHeaders(driver, "SELECT count(*) || '' $TAG_JOIN WHERE ${taggedWhere(tag)} AND $dayWindow") }
+            val shelfDay = "SELECT count(*) || '' FROM DriveMainIndex m WHERE $shelf AND $dayWindow AND $inAlbum"
+            assertEquals(rawHeaders(driver, "SELECT count(*) || '' $TAG_JOIN WHERE ${taggedWhere(tag)} AND $dayWindow"), rawHeaders(driver, shelfDay))
+            measure("one day's count: shelf index first") { rawHeaders(driver, shelfDay) }
+            assertEquals(rawHeaders(driver, shelfDay).single().toInt(), dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, filter, busiest))
+            measure("one day's count, PhotoDays (this build)") { dbm.photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, filter, busiest) }
+        }
+
+        log("")
+        log("== the Library's covers of ${albums.size} albums")
+        val tagList = albums.joinToString(",") { hex(it) }
+        val shippedCovers = "SELECT t.tagId, count(*), m.jsonHeader, max(m.userDate) $TAG_JOIN WHERE t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId IN ($tagList) " +
+            "AND ${photoFilters()} GROUP BY t.tagId"
+        measure("shipped: tag rows first") { rawCovers(driver, shippedCovers) }
+        // Per album: photos and the newest date. A tie on the newest date may pick either header, so headers aren't compared.
+        fun counted(sql: String) = driver.executeQuery(null, sql, { c -> QueryResult.Value(c.collect { it.getString(0)!! to (it.getLong(1)!! to it.getLong(2)!!) }.toMap()) }, 0).value
+        val expected = counted("SELECT hex(t.tagId), count(*), max(m.userDate) $TAG_JOIN WHERE t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId IN ($tagList) AND ${photoFilters()} GROUP BY t.tagId")
+        fun headersByRowId(rowIds: Collection<Long>) = driver.executeQuery(
+            null,
+            "SELECT rowId, jsonHeader FROM DriveMainIndex WHERE rowId IN (${rowIds.joinToString(",")})",
+            { cursor -> QueryResult.Value(cursor.collect { it.getLong(0)!! to it.getString(1)!! }) },
+            0,
+        ).value.toMap()
+
+
+        fun inKotlin(): Map<String, Pair<Long, String>> {
+            val tagged = driver.executeQuery(null, rowIds("t.tagId IN ($tagList)", tagColumn = true).replace("SELECT t.tagId,", "SELECT hex(t.tagId),"),
+                { c -> QueryResult.Value(c.collect { it.getString(0)!! to it.getLong(1)!! }) }, 0).value
+            val dates = HashMap<Long, Long>()
+            driver.executeQuery(null, "SELECT m.rowId, m.userDate FROM DriveMainIndex m WHERE $shelf AND $dated", { c ->
+                while (c.next().value) dates[c.getLong(0)!!] = c.getLong(1)!!
+                QueryResult.Unit
+            }, 0)
+            val newest = HashMap<String, Triple<Long, Long, Long>>()
+            for ((tag, rowId) in tagged) {
+                val date = dates[rowId] ?: continue
+                val was = newest[tag]
+                newest[tag] = when {
+                    was == null -> Triple(1L, date, rowId)
+                    date > was.second -> Triple(was.first + 1, date, rowId)
+                    else -> was.copy(first = was.first + 1)
+                }
+            }
+            val headers = headersByRowId(newest.values.map { it.third })
+            return newest.mapValues { (_, v) -> v.first to headers.getValue(v.third) }
+        }
+        assertEquals(expected.mapValues { it.value.first }, inKotlin().mapValues { it.value.first })
+        measure("album rowIds and shelf dates read separately, counted in Kotlin, then the newest headers by rowId") { inKotlin() }
+
+        dbm.driver.execute(null, "DELETE FROM DriveLocalTagIndex WHERE identityId = ? AND driveId = ?", 2) { bindPhotos() }
+        dbm.close()
+        log("done")
+    }
+
+    private fun hex(id: Uuid) = "X'${id.toHexString()}'"
+
+    private fun photoFilters() =
+        "m.identityId = $ME AND m.driveId = $DRIVE AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN (0, 1) " +
+            "AND m.userDate BETWEEN -62167132800000 AND 253402214399999"
+
+    private fun taggedWhere(tag: Uuid) = "t.identityId = $ME AND t.driveId = $DRIVE AND t.tagId = ${hex(tag)} AND ${photoFilters()}"
+
+    private fun inAlbum(tag: Uuid) = "m.fileId IN (SELECT fileId FROM DriveLocalTagIndex WHERE identityId = $ME AND driveId = $DRIVE AND tagId = ${hex(tag)})"
+
+    private fun tagFirstDays(tag: Uuid) = "SELECT $DAY AS day, count(*) $TAG_JOIN WHERE ${taggedWhere(tag)} GROUP BY day ORDER BY day DESC"
+
+    private fun photosFirstDays(tag: Uuid, index: String) =
+        "SELECT $DAY AS day, count(*) FROM DriveMainIndex m INDEXED BY $index WHERE ${photoFilters()} AND ${inAlbum(tag)} GROUP BY day ORDER BY day DESC"
+
+    private suspend fun idsThenIn(dbm: DatabaseManager, tag: Uuid): List<Pair<Int, Int>> {
+        val counts = sortedMapOf<Int, Int>(reverseOrder())
+        for (chunk in dbm.photoDays.taggedFileIds(IDENTITY, PHOTOS_DRIVE, tag).sorted().chunked(500)) {
+            val sql = "SELECT $DAY AS day, count(*) FROM DriveMainIndex m WHERE ${photoFilters()} AND m.fileId IN (${chunk.joinToString(",") { hex(it) }}) GROUP BY day"
+            for ((day, photos) in rawDays(dbm.driver, sql)) counts[day] = (counts[day] ?: 0) + photos
+        }
+        return counts.map { it.key to it.value }
+    }
+
+    private fun rawDays(driver: SqlDriver, sql: String): List<Pair<Int, Int>> =
+        driver.executeQuery(null, sql, { cursor -> QueryResult.Value(cursor.collect { it.getLong(0)!!.toInt() to it.getLong(1)!!.toInt() }) }, 0).value
+
+    private fun rawHeaders(driver: SqlDriver, sql: String): List<String> =
+        driver.executeQuery(null, sql, { cursor -> QueryResult.Value(cursor.collect { it.getString(0)!! }) }, 0).value
+
+    private fun rawCovers(driver: SqlDriver, sql: String): Set<Pair<Long, String>> =
+        driver.executeQuery(null, sql, { cursor -> QueryResult.Value(cursor.collect { it.getLong(1)!! to it.getString(2)!! }.toSet()) }, 0).value
+
+    private fun plan(driver: SqlDriver, sql: String) {
+        val steps = driver.executeQuery(null, "EXPLAIN QUERY PLAN $sql", { cursor -> QueryResult.Value(cursor.collect { it.getString(3)!! }) }, 0).value
+        log("  plan: ${steps.joinToString(" | ")}")
+    }
+
+    private fun timeBlocking(name: String, block: () -> Unit) {
+        repeat(2) { block() }
+        val samples = List(runs) {
+            val start = TimeSource.Monotonic.markNow()
+            block()
+            start.elapsedNow().inWholeMicroseconds / 1000.0
+        }.sorted()
+        log("$name: median ${samples[runs / 2]} ms, p90 ${samples[runs * 9 / 10]} ms, min ${samples.first()} ms")
+    }
+
+    private fun tag(driver: SqlDriver, tag: Uuid, order: String, photos: Int, skip: Int) {
+        driver.execute(
+            null,
+            "INSERT OR IGNORE INTO DriveLocalTagIndex(identityId, driveId, fileId, tagId) " +
+                "SELECT identityId, driveId, fileId, ? FROM DriveMainIndex WHERE $photoWhere ORDER BY $order LIMIT ? OFFSET ?",
+            5,
+        ) {
+            bindBytes(0, tag.toByteArray())
+            bindBytes(1, IDENTITY.toByteArray())
+            bindBytes(2, PHOTOS_DRIVE.toByteArray())
+            bindLong(3, photos.toLong())
+            bindLong(4, skip.toLong())
+        }
+    }
+
+    /** The shipped PhotoDays reads behind the Library's albums, an album's screen and deleting an album; returns what they read. */
+    private suspend fun measureTagged(dbm: DatabaseManager, index: String, favorites: Uuid, trip: Uuid, big: Uuid?, albums: List<Uuid>): List<Any> {
+        val photoDays = dbm.photoDays
+        val shown = listOf(0L, 1L)
+        log("-- $index")
+        plan(dbm.driver, "taggedDayCounts", favorites)
+        once("first Library covers on a fresh connection") { photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown) }
+        measure("Library: covers + counts of ${albums.size} albums") { photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown) }
+        measure("Library: covers + counts + parse the cover headers") {
+            photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown).forEach { OdinSystemSerializer.deserialize<HomebaseFile>(it.newestHeader) }
+        }
+        val read = mutableListOf<Any>(photoDays.taggedCovers(IDENTITY, PHOTOS_DRIVE, albums, shown).map { it.tag to it.photos }.toSet())
+        for ((name, tag) in listOfNotNull("Favorites" to favorites, "a trip album" to trip, big?.let { "the big album" to it })) {
+            val filter = PhotoFilter.Tagged(tag, shown)
+            val days = photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter)
+            measure("$name (${days.sumOf { it.photos }} photos on ${days.size} days): day counts") { photoDays.dayCounts(IDENTITY, PHOTOS_DRIVE, filter) }
+            // The grid's first screen: the newest days up to about 100 photos.
+            var upTo = 0
+            var photos = 0
+            while (upTo < days.lastIndex && photos < 100) photos += days[upTo++].photos
+            val from = days[upTo].day
+            val to = days.first().day
+            measure("$name: headers of its newest ${upTo + 1} days") { photoDays.headersOnDays(IDENTITY, PHOTOS_DRIVE, filter, from, to) }
+            val busiest = days.maxBy { it.photos }.day
+            measure("$name: one day's count, busiest day") { photoDays.photosOn(IDENTITY, PHOTOS_DRIVE, filter, busiest) }
+            measure("$name: every file id (delete)") { photoDays.taggedFileIds(IDENTITY, PHOTOS_DRIVE, tag) }
+            read.addAll(days)
+            read.addAll(photoDays.headersOnDays(IDENTITY, PHOTOS_DRIVE, filter, from, to))
+        }
+        return read
+    }
+
+    // Counting needs only indexed columns; the header is read once per album rather than with every photo.
+    private fun coversInTwoSteps(driver: SqlDriver, albums: List<Uuid>): List<String> {
+        val join = "FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId " +
+            "WHERE t.identityId = ? AND t.driveId = ? AND t.tagId = ? AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1 AND m.archivalStatus IN (0, 1)"
+        return albums.mapNotNull { tag ->
+            val bind: SqlPreparedStatement.() -> Unit = {
+                bindBytes(0, IDENTITY.toByteArray())
+                bindBytes(1, PHOTOS_DRIVE.toByteArray())
+                bindBytes(2, tag.toByteArray())
+            }
+            val newest = driver.executeQuery(COVER_COUNT_ID, "SELECT count(*), max(m.userDate) $join", { cursor -> cursor.next(); QueryResult.Value(cursor.getLong(1)) }, 3, bind).value
+                ?: return@mapNotNull null
+            driver.executeQuery(COVER_HEADER_ID, "SELECT m.jsonHeader $join AND m.userDate = ? LIMIT 1", { cursor -> cursor.next(); QueryResult.Value(cursor.getString(0)) }, 4) {
+                bind()
+                bindLong(3, newest)
+            }.value
+        }
+    }
+
+    private fun plan(driver: SqlDriver, name: String, tag: Uuid) {
+        val sql = "EXPLAIN QUERY PLAN SELECT count(*) FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m " +
+            "ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId " +
+            "WHERE t.identityId = ? AND t.driveId = ? AND t.tagId = ? AND m.fileSystemType = 0 AND m.fileType = 7201 AND m.fileState = 1"
+        val steps = driver.executeQuery(null, sql, { cursor -> QueryResult.Value(cursor.collect { it.getString(3)!! }) }, 3) {
+            bindBytes(0, IDENTITY.toByteArray())
+            bindBytes(1, PHOTOS_DRIVE.toByteArray())
+            bindBytes(2, tag.toByteArray())
+        }.value
+        log("  $name plan: ${steps.joinToString(" | ")}")
     }
 
     private fun open() = DatabaseManager({ openAndroidSqliteDriver(context, DB, SqlCipherRawKey.format(KEY)) })
@@ -208,7 +621,7 @@ class PhotoGridDbBench {
     }
 
     // A file outlives a dropped USB link, where logcat output would be lost.
-    private val results = File(context.externalCacheDir, "photo-grid-bench.txt")
+    private lateinit var results: File
 
     private fun log(message: String) {
         Log.i(TAG, message)
@@ -304,6 +717,15 @@ class PhotoGridDbBench {
         const val BATCH = 500
         const val PHOTO_FILE_TYPE = 7201
         const val GRID_INDEX = "IdxBenchPhotoGrid"
+        const val TAG_INDEX = "IdxBenchLocalTag"
+        const val PHOTO_ID_INDEX = "IdxBenchPhotoById"
+        const val SHELF_ID_INDEX = "IdxBenchPhotoShelfId"
+        const val TAG_JOIN = "FROM DriveLocalTagIndex t CROSS JOIN DriveMainIndex m ON m.identityId = t.identityId AND m.driveId = t.driveId AND m.fileId = t.fileId"
+        const val DAY = "CAST(julianday(date(m.userDate / 1000.0, 'unixepoch', 'localtime')) - 2440587.5 AS INTEGER)"
+        const val ME = "X'11111111111141118111111111111111'"
+        const val DRIVE = "X'44444444444444448444444444444444'"
+        const val COVER_COUNT_ID = 0x50470005
+        const val COVER_HEADER_ID = 0x50470006
         const val SHELF_INDEX = "IdxPhotoShelf"
         const val LIBRARY = 0L
         const val BIN = 2L
