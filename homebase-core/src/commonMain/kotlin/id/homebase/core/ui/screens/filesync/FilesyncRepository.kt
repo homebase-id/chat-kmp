@@ -16,6 +16,7 @@ import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
+import id.homebase.api.client.drives.query.forEachPage
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
@@ -278,16 +279,4 @@ internal suspend fun DriveQueryProvider.forEachFilesyncPage(
     ownerOdinId: OdinId? = null,
     externalFileKey: ExternalFileKey? = null,
     onPage: suspend (QueryBatchResponse) -> Boolean,
-) {
-    var cursor: String? = null
-    do {
-        val page = queryBatch(
-            FilesyncProtocol.DriveAlias,
-            QueryBatchRequest(queryParams = params, resultOptionsRequest = options.copy(cursorState = cursor)),
-            ownerOdinId = ownerOdinId,
-            externalFileKey = externalFileKey,
-        )
-        val more = onPage(page)
-        cursor = page.cursorState?.takeIf { more && page.hasMoreRows && it != cursor }
-    } while (cursor != null)
-}
+) = forEachPage(FilesyncProtocol.DriveAlias, params, options, ownerOdinId, externalFileKey, onPage)

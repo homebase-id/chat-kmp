@@ -65,6 +65,8 @@ class PhotoAlbums(
     private val sync: () -> Unit,
     /** Photos on the server with one tag of the album's but not the other: (local only, app only). */
     private val tagsApart: suspend (tag: Uuid) -> Pair<List<Uuid>, List<Uuid>> = { emptyList<Uuid>() to emptyList() },
+    /** Before an album is deleted: whoever it's shared with stops seeing it. */
+    private val beforeDelete: suspend (id: Uuid) -> Unit = {},
 ) : PhotoAlbumSource {
     private val forgotten = MutableStateFlow(0)
     // Read on the one collector stateIn runs.
@@ -109,6 +111,7 @@ class PhotoAlbums(
     override suspend fun rename(id: Uuid, name: String) = write(id, name, create = false)
 
     override suspend fun delete(id: Uuid) {
+        beforeDelete(id)
         val tagged = (store.taggedFileIds(id) + taggedOnServer(id)).distinct()
         // A record gone first would leave tags no album names, and nothing to delete again to clear them.
         if (tagged.isNotEmpty() && mover.setTag(id, on = false, tagged).failed > 0) throw IllegalStateException("album $id: tags not all taken off")

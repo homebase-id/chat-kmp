@@ -9,6 +9,7 @@ import id.homebase.api.client.OdinApiException
 import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.UnauthorizedException
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.errorCodeEnum
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.connections.EnrollmentOutcomeKind
@@ -18,6 +19,7 @@ import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.toSecureByteArray
+import id.homebase.api.crypto.HashUtil
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.youauth.AppSignIn
 import id.homebase.api.youauth.DrivePermission
@@ -66,6 +68,7 @@ class SelectiveShareCircles(
     private val appCredentials: CredentialsManager,
     private val notSignedIn: () -> Exception,
     private val notSealedYet: (owner: OdinId) -> Exception,
+    private val notReviewedByOwner: (owner: OdinId) -> Exception,
 ) {
     val asApp = ConnectionNetworkProvider(httpClient, session.credentials)
     val appKeys = CircleShareKeyProvider(httpClient, session.credentials)
@@ -161,6 +164,14 @@ class SelectiveShareCircles(
             }
             ShareKeys.openFileKey(circleKey, locked, drive.alias, fileId, globalTransitId, circleId).toSecureByteArray()
         }
+    }
+
+    /** Why nothing of [owner]'s opened, of the [failures] its circles' keys gave: unreviewed first, then not sealed yet. */
+    fun whyUnopened(owner: OdinId, failures: Collection<Exception>): Exception {
+        val notSealed = notSealedYet(owner)::class
+        return failures.firstNotNullOfOrNull { e ->
+            (e as? ForbiddenException)?.takeIf { it.problem?.errorCodeEnum() == OdinClientErrorCode.NotReviewedByOwner }?.let { notReviewedByOwner(owner) }
+        } ?: failures.firstOrNull { it::class == notSealed } ?: failures.first()
     }
 
     /** Seals [circleId]'s key to whichever of [unsealedMembers] (all its unsealed members when null) [points] has. */
@@ -259,5 +270,14 @@ class SelectiveShareCircles(
         const val PARALLEL = 8
         private const val ADD_MANY_LIMIT = 500
         private const val TAG = "SelectiveShareCircles"
+
+        // The recipients and editors circles' slugs never look like this; nothing else of an app's may.
+        val GROUP_SLUG = Regex("g[0-9a-f]{13}")
+
+        /** `i` and 13 hex characters of the person's hash: within the 14-character slug limit, the same on every device. */
+        fun individualSlug(person: OdinId): String =
+            "i" + HashUtil.sha256Sync(person.domainName.lowercase().encodeToByteArray()).toHexString().take(13)
+
+        fun groupSlug(): String = "g" + Uuid.random().toHexString().take(13)
     }
 }

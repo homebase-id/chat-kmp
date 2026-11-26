@@ -105,6 +105,8 @@ class PhotoMover(
     private val binned: suspend () -> List<HomebaseFile>,
     /** Asks the drive to sync, so the device's copy catches up with the writes. */
     private val sync: () -> Unit,
+    /** Photos put in an album or taken out: a shared album's shares follow. */
+    private val albumChanged: suspend (album: Uuid, on: Boolean, fileIds: Set<Uuid>) -> Unit = { _, _, _ -> },
 ) {
     suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from.status, to.status)
@@ -133,7 +135,10 @@ class PhotoMover(
                     }
                 }
             }
-            if (tag != PhotobaseProtocol.FavoriteTag) mirrorAppTag(tag, on, tally.written)
+            if (tag != PhotobaseProtocol.FavoriteTag) {
+                mirrorAppTag(tag, on, tally.written)
+                shareAsTheAlbum(tag, on, tally.written)
+            }
         } finally {
             sync()
         }
@@ -160,6 +165,18 @@ class PhotoMover(
         }
         if (failed > 0) Logger.w(tag = TAG) { "album tag $tag ${if (on) "on" else "off"}: $failed photos' headers not written" }
         return failed
+    }
+
+    // The move itself is done; a share that didn't follow is caught up by the album's next upkeep.
+    private suspend fun shareAsTheAlbum(album: Uuid, on: Boolean, fileIds: Set<Uuid>) {
+        if (fileIds.isEmpty()) return
+        try {
+            albumChanged(album, on, fileIds)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "album $album's shares didn't follow ${fileIds.size} photos" }
+        }
     }
 
     /** Deletes for good what the bin shows, not what reached the server since. */

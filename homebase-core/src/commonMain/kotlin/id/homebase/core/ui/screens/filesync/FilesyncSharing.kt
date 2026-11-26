@@ -175,6 +175,7 @@ class FilesyncSharing(
         appCredentials,
         notSignedIn = { FilesyncSharingException.NotSignedIn() },
         notSealedYet = { FilesyncSharingException.NotSealedYet(it) },
+        notReviewedByOwner = { FilesyncSharingException.NotReviewedByOwner(it) },
     )
     private val asFilesync = circles.asApp
     private val filesyncKeys = circles.appKeys
@@ -525,11 +526,7 @@ class FilesyncSharing(
         }
     }
 
-    private fun whyUnopened(owner: OdinId, failures: Collection<Exception>): Exception =
-        failures.firstNotNullOfOrNull { e ->
-            (e as? ForbiddenException)?.takeIf { it.problem?.errorCodeEnum() == OdinClientErrorCode.NotReviewedByOwner }
-                ?.let { FilesyncSharingException.NotReviewedByOwner(owner) }
-        } ?: failures.firstOrNull { it is FilesyncSharingException.NotSealedYet } ?: failures.first()
+    private fun whyUnopened(owner: OdinId, failures: Collection<Exception>): Exception = circles.whyUnopened(owner, failures)
 
     /** Keeps [sharer] among [sharers], so their files can be found again without the chat message that told of them. */
     suspend fun keepSharer(sharer: OdinId) {
@@ -725,8 +722,7 @@ class FilesyncSharing(
         private val RETRY = RetryConfig(maxRetries = 3, retryOn = { it.isTransientNetworkFailure() || it is ServerException })
         private const val PARALLEL = SelectiveShareCircles.PARALLEL
         private val recipientsDeclared = filesyncAppRegistration.circles.single { it.slug == FilesyncProtocol.CircleSlug }
-        // The recipients and editors circles' slugs never look like this; nothing else of Filesync's may.
-        private val GROUP_SLUG = Regex("g[0-9a-f]{13}")
+        private val GROUP_SLUG = SelectiveShareCircles.GROUP_SLUG
         private const val TAG = "FilesyncSharing"
         private val filesyncAppId = Uuid.parseHex(filesyncAppRegistration.appId)
 
@@ -735,9 +731,8 @@ class FilesyncSharing(
             Uuid.fromByteArray(HashUtil.sha256Sync("filesync-marker\n${sender.domainName.lowercase()}\n${recipient.domainName.lowercase()}".encodeToByteArray()).copyOf(16))
 
         /** `i` and 13 hex characters of the person's hash: within the 14-character slug limit, the same on every device. */
-        fun individualSlug(person: OdinId): String =
-            "i" + HashUtil.sha256Sync(person.domainName.lowercase().encodeToByteArray()).toHexString().take(13)
+        fun individualSlug(person: OdinId): String = SelectiveShareCircles.individualSlug(person)
 
-        internal fun groupSlug(): String = "g" + Uuid.random().toHexString().take(13)
+        internal fun groupSlug(): String = SelectiveShareCircles.groupSlug()
     }
 }

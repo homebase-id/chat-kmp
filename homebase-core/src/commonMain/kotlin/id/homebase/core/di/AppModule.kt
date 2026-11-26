@@ -45,6 +45,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.config.photosLabeledDrive
+import id.homebase.core.config.returnUrl
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -224,6 +225,10 @@ import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
 import id.homebase.photobase.gallery.photosTagged
 import id.homebase.photobase.gallery.photosWithTagsApart
+import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.photobase.sharing.PhotobaseSession
+import id.homebase.photobase.ui.AlbumShareViewModel
+import id.homebase.photobase.sharing.PhotoShareUpkeep
 import id.homebase.photobase.gallery.OpenGallery
 import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
@@ -837,6 +842,7 @@ val appModule = module {
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
                 get<FilesyncShareUpkeep>().start()
+                get<PhotoShareUpkeep>().start()
 
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
@@ -1569,6 +1575,17 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
+    viewModel { (albumId: Uuid) ->
+        val credentials = get<CredentialsManager>()
+        AlbumShareViewModel(
+            albumId = albumId,
+            sharing = get(),
+            signedIn = PhotobaseSession.signedIn,
+            restore = { PhotobaseSession.restoreFor(credentials) },
+            signInUrl = { onDone -> PhotobaseSession.signInUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, onDone) },
+            missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
+        )
+    }
     single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
     single {
         val store = get<PhotoGalleryStore>()
@@ -1577,6 +1594,7 @@ val appModule = module {
             filesOf = store::filesOf,
             binned = { store.filesOn(PhotoShelf.Bin) },
             sync = { syncPhotos() },
+            albumChanged = { album, on, fileIds -> get<PhotoAlbumSharing>().albumTagChanged(album, on, fileIds) },
         )
     }
     single {
@@ -1603,9 +1621,15 @@ val appModule = module {
             scope = get(),
             sync = { syncPhotos() },
             tagsApart = { get<DriveQueryProvider>().photosWithTagsApart(it) },
+            beforeDelete = { get<PhotoAlbumSharing>().withdrawAll(it) },
         )
     }
     single<PhotoAlbumSource> { get<PhotoAlbums>() }
+    single {
+        val store = get<PhotoGalleryStore>()
+        PhotoAlbumSharing(get(), get(), get(), get(), get(), get(), get(), get(), store::filesOf)
+    }
+    single { PhotoShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { PhotoCommentsService(get(), get(), get(), get(), get(), get()) }
     single { PhotoActionService(get(), get(), get(), get(), get(), get()) }
     // The tab's own gallery has no parameter.

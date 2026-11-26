@@ -240,6 +240,7 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.ui.PhotoLibraryScreen
+import id.homebase.photobase.ui.AlbumShareScreen
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -2486,6 +2487,17 @@ fun AppNavHost(
                                         viewModel = koinViewModel(parameters = { parametersOf(gallery) }),
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
+                                        onBack = { navController.popBackStack() },
+                                        onShareAlbum = { navController.navigate(Route.PhotoAlbumShare(it.toString())) },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoAlbumShare> { backStackEntry ->
+                                if (isAuthenticated) {
+                                    val albumId = Uuid.parse(backStackEntry.toRoute<Route.PhotoAlbumShare>().albumId)
+                                    AlbumShareScreen(
+                                        viewModel = koinViewModel(key = "album-share-$albumId", parameters = { parametersOf(albumId) }),
                                         onBack = { navController.popBackStack() },
                                     )
                                 }

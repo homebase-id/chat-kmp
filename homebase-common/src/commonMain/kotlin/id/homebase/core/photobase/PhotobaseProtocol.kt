@@ -29,6 +29,9 @@ object PhotobaseProtocol {
     const val CommentFileType = 7204
     const val CommentVersion = 1
 
+    /** "This person shares albums with me", kept on my own drive: its content names them. */
+    const val SharerFileType = 7205
+
     const val ImageDataType = 1
     const val VideoDataType = 2
     const val LivePhotoDataType = 3
