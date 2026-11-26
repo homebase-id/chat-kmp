@@ -79,8 +79,8 @@ import id.homebase.core.ui.screens.feed.widget.PostCard
 import id.homebase.core.ui.screens.feed.widget.PostSkeleton
 import id.homebase.core.ui.screens.feed.widget.feedMediaOverlay
 import id.homebase.resources.MR
-import id.homebase.resources.feed_open_link_failed
 import id.homebase.resources.feed_comment_action_failed
+import id.homebase.resources.feed_open_link_failed
 import id.homebase.resources.feed_reactors_partial
 import id.homebase.resources.feed_timeline_compose_action
 import id.homebase.resources.feed_timeline_empty_body
