@@ -7,7 +7,9 @@ import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.Foundation.isLowPowerModeEnabled
 import platform.UIKit.UIDevice
 import kotlin.coroutines.resume
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 actual fun createDeviceSensors(): DeviceSensors = AppleDeviceSensors
 
@@ -15,13 +17,14 @@ private object AppleDeviceSensors : DeviceSensors {
 
     private val pedometer = CMPedometer()
 
-    init {
-        UIDevice.currentDevice.batteryMonitoringEnabled = true
-    }
-
     override suspend fun batteryPercent(): Int? {
-        // -1.0 when monitoring is off or unsupported (e.g. simulator).
-        val level = UIDevice.currentDevice.batteryLevel
+        // UIDevice is main-thread only. -1.0 when monitoring is off or unsupported (e.g. simulator).
+        val level = withContext(Dispatchers.Main) {
+            UIDevice.currentDevice.run {
+                batteryMonitoringEnabled = true
+                batteryLevel
+            }
+        }
         if (level < 0f) return null
         return (level * 100f).toInt().coerceIn(0, 100)
     }
