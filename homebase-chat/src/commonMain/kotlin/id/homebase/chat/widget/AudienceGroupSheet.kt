@@ -46,7 +46,7 @@ import org.jetbrains.compose.resources.stringResource
 
 /**
  * Who's in [group], and why it can't be picked when it can't. With [onSave], its members can be changed, starting there
- * when [startEditing]; [saving] shows the save running.
+ * when [startEditing]; [saving] shows the save running, and Save waits while not [enabled].
  */
 @Composable
 fun AudienceGroupSheet(
@@ -55,12 +55,13 @@ fun AudienceGroupSheet(
     onSave: ((List<OdinId>) -> Unit)? = null,
     startEditing: Boolean = false,
     saving: Boolean = false,
+    enabled: Boolean = true,
 ) {
     var editing by rememberSaveable(group.id) { mutableStateOf(startEditing) }
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 420.dp) {
         Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (editing && onSave != null) {
-                EditMembers(group, saving, onCancel = { if (startEditing) onDismiss() else editing = false }, onSave = onSave)
+                EditMembers(group, saving, enabled, onCancel = { if (startEditing) onDismiss() else editing = false }, onSave = onSave)
             } else {
                 Members(group, onDismiss, onEdit = onSave?.let { { editing = true } })
             }
@@ -99,7 +100,7 @@ fun PersonRow(person: OdinId, supporting: String? = null, trailing: (@Composable
 
 /** Picks [group]'s members from the connections, the ones in it now first; at least one stays. */
 @Composable
-private fun EditMembers(group: AudienceGroup, saving: Boolean, onCancel: () -> Unit, onSave: (List<OdinId>) -> Unit) {
+private fun EditMembers(group: AudienceGroup, saving: Boolean, enabled: Boolean, onCancel: () -> Unit, onSave: (List<OdinId>) -> Unit) {
     val search = rememberTextFieldState()
     // The pending are in it too: unticking one takes them out before they join.
     val current = remember(group.members, group.pending) { (group.members + group.pending).mapTo(HashSet()) { it.domainName } }
@@ -118,7 +119,7 @@ private fun EditMembers(group: AudienceGroup, saving: Boolean, onCancel: () -> U
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = onCancel, enabled = !saving) { Text(stringResource(MR.string.cancel)) }
         Button(
-            enabled = !saving && chosen.isNotEmpty() && chosenSet != current,
+            enabled = enabled && !saving && chosen.isNotEmpty() && chosenSet != current,
             onClick = { onSave(chosen.map(::OdinId)) },
         ) { ButtonProgressContent(saving, stringResource(MR.string.audience_group_saving), stringResource(MR.string.save)) }
     }

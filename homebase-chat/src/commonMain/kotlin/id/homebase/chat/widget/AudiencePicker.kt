@@ -238,13 +238,14 @@ private fun GroupRow(group: AudienceGroup, selected: Boolean, enabled: Boolean, 
         supportingContent = {
             if (available) {
                 // Without the members button, the names are the only way to see who a group reaches.
-                val people = onMembers?.let { pluralStringResource(MR.plurals.audience_group_people, group.members.size, group.members.size) }
-                Text(people ?: group.members.joinToString { it.domainName }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val everyone = group.members + group.pending
+                val people = onMembers?.let { pluralStringResource(MR.plurals.audience_group_people, everyone.size, everyone.size) }
+                Text(people ?: everyone.joinToString { it.domainName }, maxLines = 1, overflow = TextOverflow.Ellipsis)
             } else {
                 Text(group.unavailable.orEmpty(), color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         },
-        leadingContent = { GroupFaces(group.members) },
+        leadingContent = { GroupFaces(group.members + group.pending) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onMembers != null) {

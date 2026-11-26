@@ -201,6 +201,7 @@ fun AlbumShareScreen(
                 onDismiss = { sheetGroup = null },
                 onSave = { members -> viewModel.onAction(AlbumShareUiAction.EditGroup(group, members)) },
                 saving = uiState.running == AlbumShareStep.EditGroup,
+                enabled = !uiState.busy,
             )
         }
     }
@@ -222,13 +223,12 @@ fun AlbumShareScreen(
     }
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
+            // The snackbar is under the sheet: an outcome closes it so it's seen.
+            if (event !is AlbumShareEvent.OpenUrl && event !is AlbumShareEvent.OpenSignIn) sheetGroup = null
             when (event) {
                 is AlbumShareEvent.OpenUrl -> uriHandler.openUri(event.url)
                 is AlbumShareEvent.OpenSignIn -> onOpenSignIn(event.url)
-                is AlbumShareEvent.GroupSaved -> {
-                    sheetGroup = null
-                    snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))
-                }
+                is AlbumShareEvent.GroupSaved -> snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))
                 is AlbumShareEvent.GroupPending -> snackbar.showSnackbar(getString(MR.string.photobase_group_pending, event.who, event.group))
                 AlbumShareEvent.GroupGone -> snackbar.showSnackbar(getString(MR.string.photobase_group_gone))
                 is AlbumShareEvent.LeftOut -> snackbar.showSnackbar(getString(MR.string.photobase_share_left_out, event.who))

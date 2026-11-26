@@ -138,15 +138,17 @@ class AlbumShareViewModel(
                 if (edit.changed) _events.send(AlbumShareEvent.GroupSaved(action.group.name))
                 if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
                 if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(edit.pending.joinToString { it.domainName }, action.group.name))
-                if (edit.joined.isEmpty()) return@busy
+                // The pending are told too: their invite opens once their grant lands.
+                val added = edit.joined + edit.pending
+                if (added.isEmpty()) return@busy
                 // The edit is saved: a failure telling them is theirs not being told, not the edit failing.
                 val untold = try {
-                    sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(edit.joined, shared, access) }.distinct()
+                    sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(added, shared, access) }.distinct()
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     Logger.w(tag = TAG, throwable = e) { "group ${action.group.circleId}: new members not told" }
-                    edit.joined
+                    added
                 }
                 if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             }
@@ -202,10 +204,10 @@ class AlbumShareViewModel(
                 is AudienceChoice.NewGroup -> sharing.shareWithNewGroup(albumId, choice.name, choice.members, state.access, expiresAt = null)
             }
             _events.send(AlbumShareEvent.Shared(audience.label))
-            // Only a new group has pending members here: they join on their own, nothing to try again.
+            // Only a new group has pending members here: they join on their own, and their invite opens once they have.
             if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(shared.pending.joinToString { it.domainName }, audience.label))
             if (shared.refused.isNotEmpty()) _events.send(AlbumShareEvent.LeftOut(shared.refused.joinToString { it.domainName }))
-            val untold = tell(audience.members - shared.pending.toSet() - shared.refused.toSet(), shared, state.access)
+            val untold = tell((audience.members + shared.pending).distinct() - shared.refused.toSet(), shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }

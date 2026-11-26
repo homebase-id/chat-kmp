@@ -191,8 +191,8 @@ class PhotoAlbumSharing(
 
     /**
      * Shares album [albumId] with [audience]: its record, and every photo in it. Telling its members is the caller's.
-     * A pending recipient isn't queued: one person pending stops the share, a group's pending members are named, and the
-     * owner tries again later.
+     * A pending recipient isn't queued: one person pending stops the share, and the owner tries again later. A group's
+     * pending members are reached through the group's circle once their grant lands.
      */
     suspend fun share(albumId: Uuid, audience: AlbumAudience, access: PhotoAlbumAccess, expiresAt: Long?): AlbumShared =
         shareTo(albumId, audience, access, expiresAt, onWriting = {})
@@ -225,11 +225,13 @@ class PhotoAlbumSharing(
 
         val recipients = recipientsCircle()
         assertGrantsAShare(listOfNotNull(recipients, group?.circleId))
-        // Their individual shares then don't depend on a group they might leave.
-        val toRecipients = enrollAll(recipients, members - unsupported.toSet())
+        val reachable = members - unsupported.toSet()
         val circleId = if (group != null) {
+            // Their individual shares then don't depend on a group they might leave; its own circle is what reaches them.
+            circles.enroll(recipients, reachable)
             group.circleId
         } else {
+            val toRecipients = enrollAll(recipients, reachable)
             if (toRecipients.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(toRecipients.refused.toList())
             val individual = circles.asApp.createCircle(
                 CreateAppCircleRequest(
@@ -254,7 +256,7 @@ class PhotoAlbumSharing(
         }
         setAdding(albumId, circleId, access == PhotoAlbumAccess.Add)
         // After the rows and the record, so a concurrent syncEditors that read them before can't take the members out again.
-        if (access == PhotoAlbumAccess.Add) editing.withLock { circles.enroll(editorsCircle(), members) }
+        if (access == PhotoAlbumAccess.Add) editing.withLock { circles.enroll(editorsCircle(), reachable) }
         else editorsMayHaveChanged(removalsOnly = true)
         return AlbumShared(
             albumId, circleId, recordFile.albumName().orEmpty(),
@@ -303,11 +305,15 @@ class PhotoAlbumSharing(
     private suspend fun createGroup(name: String, members: List<OdinId>): Pair<AlbumAudience.Group, List<OdinId>> {
         circles.requireSignedIn()
         assertMayJoin(members)
+        // As an edit refuses them: someone whose Homebase can't take shares would be left out of every share.
+        circles.keysOf(members).unsupported().takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.RecipientNotAdded(it) }
         val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
         val enrolment = try {
             enrollAll(circleId, members).also { if (it.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(it.refused.toList()) }
         } catch (e: Throwable) {
-            withContext(NonCancellable) { runCatching { circles.asApp.deleteCircle(circleId, removeMembers = true) } }
+            withContext(NonCancellable) {
+                runCatching { circles.asApp.deleteCircle(circleId, removeMembers = true) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group $circleId not deleted" } }
+            }
             throw e
         }
         val pending = members.filter { it in enrolment.pending }
