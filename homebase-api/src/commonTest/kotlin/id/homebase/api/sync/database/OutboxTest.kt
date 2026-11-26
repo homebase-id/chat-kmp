@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -18,6 +19,27 @@ class OutboxTest {
 
     @AfterTest
     fun tearDown() {
+    }
+
+    @Test
+    fun aDriveHasBulkRowsOnlyWhileOneIsQueuedForIt() = runTest {
+        DatabaseManager({ createInMemoryDatabase() }).use { dbm ->
+            val photos = Uuid.random()
+            suspend fun queue(drive: Uuid, priority: Long): Uuid {
+                val id = Uuid.random()
+                dbm.outbox.insert(driveId = drive, uniqueId = id, dependencyUniqueId = null, priority = priority, uploadType = 0L, json = byteArrayOf(), filePaths = byteArrayOf())
+                return id
+            }
+            queue(Uuid.random(), OUTBOX_BULK_PRIORITY)
+            queue(photos, priority = 0L)
+            assertFalse(dbm.outbox.existsBulkByDrive(photos))
+
+            val backup = queue(photos, OUTBOX_BULK_PRIORITY)
+            assertTrue(dbm.outbox.existsBulkByDrive(photos))
+
+            dbm.outbox.deleteBy(photos, backup)
+            assertFalse(dbm.outbox.existsBulkByDrive(photos))
+        }
     }
 
     @Test

@@ -48,6 +48,11 @@ fun submitBackupTasks() {
     submit(processingRequest())
 }
 
+fun cancelBackupTasks() {
+    BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(backupRefreshTaskId)
+    BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(backupProcessingTaskId)
+}
+
 private fun refreshRequest() = BGAppRefreshTaskRequest(backupRefreshTaskId).apply {
     earliestBeginDate = NSDate.dateWithTimeIntervalSinceNow(REFRESH_EARLIEST.inWholeSeconds.toDouble())
 }
@@ -105,8 +110,7 @@ class IosBackupTriggers : BackupTriggers {
         val scheduler = BGTaskScheduler.sharedScheduler
         enabled = settings.enabled
         if (!settings.enabled) {
-            scheduler.cancelTaskRequestWithIdentifier(backupRefreshTaskId)
-            scheduler.cancelTaskRequestWithIdentifier(backupProcessingTaskId)
+            cancelBackupTasks()
             BackgroundUploadBridgeHolder.bridge?.cancelAll()
             cancelStuckAlert()
             return

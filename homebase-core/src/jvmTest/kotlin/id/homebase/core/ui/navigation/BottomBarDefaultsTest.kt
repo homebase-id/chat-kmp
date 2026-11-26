@@ -34,7 +34,6 @@ class BottomBarDefaultsTest {
         contactBookVisible = ContactBookPreferences(db).iconVisible.value,
         emailVisible = EmailPreferences(db).iconVisible.value,
         everyApp = false,
-        photobaseAvailable = true,
         emailAvailable = true,
     )
 

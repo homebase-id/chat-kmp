@@ -2484,7 +2484,6 @@
     <string name="feed_settings_show_icon">Vis Feed i navigationslinjen</string>
     <string name="filesync_settings_open">Åbn Drive</string>
     <string name="photobase_settings_open">Åbn Photos</string>
-    <string name="photobase_settings_in_testing">Photos er stadig under test. Slå det til i Udviklermenu for at prøve det.</string>
     <string name="webdrop_settings_open">Åbn WebDrop</string>
     <string name="calls_settings_open">Åbn Opkald</string>
     <string name="location_settings_open">Åbn Lokation</string>

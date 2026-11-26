@@ -20,8 +20,6 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.ContactPage
-import id.homebase.core.ui.assets.HomebaseIcons
-import id.homebase.core.ui.assets.PhotosOutlined
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
@@ -95,8 +93,6 @@ import id.homebase.resources.dev_menu_crash_confirm_action
 import id.homebase.resources.dev_menu_crash_confirm_message
 import id.homebase.resources.dev_menu_crash_confirm_title
 import id.homebase.resources.dev_menu_force_sync
-import id.homebase.resources.dev_menu_photobase
-import id.homebase.resources.dev_menu_photobase_desc
 import id.homebase.resources.dev_menu_filesync_sync_shared
 import id.homebase.resources.dev_menu_filesync_sync_shared_desc
 import id.homebase.resources.dev_menu_profile_card
@@ -300,19 +296,6 @@ fun DeveloperMenuUi(
                     checked = uiState.profileCardEnabled,
                     onCheckedChange = {
                         onAction(DeveloperMenuUiAction.SetProfileCardEnabled(it))
-                    },
-                ),
-            )
-
-            SettingsRow(
-                modifier = Modifier.testTag("photobaseDeveloperToggle"),
-                icon = HomebaseIcons.PhotosOutlined,
-                title = stringResource(MR.string.dev_menu_photobase),
-                supportingText = stringResource(MR.string.dev_menu_photobase_desc),
-                action = SettingsRowAction.Toggle(
-                    checked = uiState.photobaseEnabled,
-                    onCheckedChange = {
-                        onAction(DeveloperMenuUiAction.SetPhotobaseEnabled(it))
                     },
                 ),
             )

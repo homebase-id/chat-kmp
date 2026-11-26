@@ -131,7 +131,7 @@ class PhotoGallerySelectionTest {
             mover = PhotoMover(NoServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
-        setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
+        setContent { PhotoGalleryScreen(viewModel, onOpenSettings = null, backupIndicator = {}, haptics = Recorder()) }
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Photo").fetchSemanticsNodes().size == photos.size }
 
         onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
@@ -158,7 +158,7 @@ class PhotoGallerySelectionTest {
             mover = PhotoMover(server, filesOf = { ids -> ids.map { galleryTestFile(0, fileId = it).newVersion() } }, binned = { emptyList() }, sync = {}),
             libraryDays = flowOf(LibraryDays(intArrayOf(day), intArrayOf(photos.size))),
         )
-        setContent { PhotoGalleryScreen(viewModel, onOpenBackupSettings = null, backupIndicator = {}, haptics = Recorder()) }
+        setContent { PhotoGalleryScreen(viewModel, onOpenSettings = null, backupIndicator = {}, haptics = Recorder()) }
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Photo").fetchSemanticsNodes().size == photos.size }
         onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
 

@@ -18,8 +18,6 @@ enum class AppLink(val slug: String, val route: Route) {
     Home("home", Route.Home),
     Settings("settings", Route.Settings);
 
-    fun isAvailable(photobaseEnabled: Boolean): Boolean = this != Photobase || photobaseEnabled
-
     companion object {
         private val routes = entries.map { it.route }
 

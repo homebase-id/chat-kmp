@@ -411,7 +411,6 @@ fun AppNavHost(
     val filesyncIconVisible by koinInject<FilesyncPreferences>().iconVisible.collectAsStateWithLifecycle()
     val feedIconVisible by koinInject<FeedPreferences>().iconVisible.collectAsStateWithLifecycle()
     val photobaseIconVisible by koinInject<PhotobasePreferences>().iconVisible.collectAsStateWithLifecycle()
-    val photobaseAvailable by koinInject<DeveloperPreferences>().photobaseEnabled.collectAsStateWithLifecycle()
     val locationPreferences = koinInject<LocationPreferences>()
     val locationIconVisible by locationPreferences.iconVisible.collectAsStateWithLifecycle()
     val locationViewModel: LocationViewModel = koinViewModel()
@@ -446,7 +445,6 @@ fun AppNavHost(
         vaultIconVisible,
         filesyncIconVisible,
         feedIconVisible,
-        photobaseAvailable,
         photobaseIconVisible,
         locationIconVisible,
         contactBookIconVisible,
@@ -465,7 +463,6 @@ fun AppNavHost(
             // Fixed per platform, never per window size: tabs that came and went with the layout would leave a
             // pushed app inside another tab's saved stack.
             everyApp = isDesktopOrWeb(),
-            photobaseAvailable = photobaseAvailable,
             emailAvailable = serverSupportsMail == true,
         )
     }
@@ -732,15 +729,23 @@ fun AppNavHost(
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
+    // Every user builds backup here, so a failure to build it mustn't take down the first screen.
+    val photoBackupSupported = remember {
+        try {
+            koin.get<PhotoBackupController>().isSupported
+        } catch (e: Exception) {
+            Logger.e(tag = "AppNavHost", throwable = e) { "photo backup could not start" }
+            false
+        }
+    }
     val photoBackupLinks = PhotoBackupLinks(
         onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
-    ).takeIf { photobaseAvailable && koinInject<PhotoBackupController>().isSupported }
+    ).takeIf { photoBackupSupported }
     val appsPageLinks = AppsPageLinks(
         onOpenApp = { page -> if (page == AppsPage.Calls) openCalls() else navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },
         callsAvailable = callsAvailable,
-        photobaseAvailable = photobaseAvailable,
         photoBackup = photoBackupLinks,
         locationViewModel = locationViewModel,
     )
@@ -1187,7 +1192,7 @@ fun AppNavHost(
                                         onNavigateToVault = openVault,
                                         onNavigateToWebDrop = openWebDrop,
                                         onNavigateToFilesync = openFilesync,
-                                        onNavigateToPhotobase = openPhotobase.takeIf { photobaseAvailable },
+                                        onNavigateToPhotobase = openPhotobase,
                                         onNavigateToMoments = openMoments,
                                         onNavigateToLocation = openLocation,
                                         onNavigateToContacts = openContactBook,
@@ -2339,7 +2344,7 @@ fun AppNavHost(
                                     PhotobaseSetupGate(onDismiss = { navController.popBackStack() }) {
                                         PhotoGalleryScreen(
                                             viewModel = koinViewModel(),
-                                            onOpenBackupSettings = { navController.navigate(AppsPage.Photobase.route) }.takeIf { photoBackupLinks != null },
+                                            onOpenSettings = { navController.navigate(AppsPage.Photobase.route) },
                                             backupIndicator = { PhotobaseBackupIndicator { navController.navigate(Route.PhotoBackupStatus) } },
                                             onOpenLibrary = { navController.navigate(Route.PhotoLibrary) },
                                         )
@@ -2484,7 +2489,7 @@ fun AppNavHost(
                                 if (isAuthenticated && gallery != null) {
                                     PhotoGalleryScreen(
                                         viewModel = koinViewModel(parameters = { parametersOf(gallery) }),
-                                        onOpenBackupSettings = null,
+                                        onOpenSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },
                                     )
@@ -2840,13 +2845,12 @@ internal fun topLevelRoutesFor(
     feedVisible: Boolean = true,
     // Desktop and web show every available app; a phone's switches choose.
     everyApp: Boolean,
-    photobaseAvailable: Boolean,
     emailAvailable: Boolean,
 ): List<TopLevelRoute> = buildList {
     fun shown(iconVisible: Boolean) = everyApp || iconVisible
     // The order of Settings → Apps (AppsPage), then Apps.
     add(TopLevelRoute.Chat)
-    if (photobaseAvailable && shown(photobaseVisible)) add(TopLevelRoute.Photobase)
+    if (shown(photobaseVisible)) add(TopLevelRoute.Photobase)
     if (shown(filesyncVisible)) add(TopLevelRoute.Filesync)
     if (emailAvailable && shown(emailVisible)) add(TopLevelRoute.Email)
     if (shown(feedVisible)) add(TopLevelRoute.Feed)

@@ -1783,8 +1783,6 @@
     <string name="dev_menu_network_last_good_ip_none">none captured yet</string>
     <string name="dev_menu_profile_card">Profile card</string>
     <string name="dev_menu_profile_card_desc">Show your profile card in Settings and the profile editor.</string>
-    <string name="dev_menu_photobase">Photos</string>
-    <string name="dev_menu_photobase_desc">Show Photos and allow photo backup. Turning it off stops any backup that's running.</string>
     <string name="dev_menu_filesync_sync_shared">Sync shared files to computers</string>
     <string name="dev_menu_filesync_sync_shared_desc">Show "Sync to my computers" for each person in Drive's Shared with me. Computers don't act on it yet.</string>
     <string name="dev_menu_force_sync">Force Sync All</string>
@@ -3407,7 +3405,6 @@
     <string name="circle_delete_body_members">%1$d people are in this circle. Deleting it removes them from it, and removes the circle and its card.</string>
     <string name="circle_delete_failed">Couldn't delete the circle. Try again.</string>
     <string name="profile_card_style_custom">Custom</string>
-    <string name="photobase_backup_title">Photo backup</string>
     <string name="photobase_backup_enable">Back up photos and videos</string>
     <string name="photobase_backup_enable_desc">Keep your phone's library on your Homebase drive, encrypted, in full quality.</string>
     <string name="photobase_backup_status">Status</string>
@@ -3517,7 +3514,6 @@
     <string name="photobase_bin_move">Move to bin</string>
     <string name="photobase_bin_restore">Restore</string>
     <string name="photobase_bin_delete_forever">Delete forever</string>
-    <string name="photobase_library_title">Library</string>
     <string name="photobase_favorites_title">Favorites</string>
     <string name="photobase_favorite_state">Favorite</string>
     <string name="photobase_favorites_empty_state">Tap the heart on a photo to keep it here.</string>
@@ -3574,7 +3570,6 @@
     <string name="feed_settings_show_icon">Show Feed in the navigation bar</string>
     <string name="filesync_settings_open">Open Drive</string>
     <string name="photobase_settings_open">Open Photos</string>
-    <string name="photobase_settings_in_testing">Photos is still being tested. Turn it on in the Developer menu to try it.</string>
     <string name="webdrop_settings_open">Open WebDrop</string>
     <string name="calls_settings_open">Open Calls</string>
     <string name="location_settings_open">Open Location</string>
