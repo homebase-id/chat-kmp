@@ -58,7 +58,7 @@ import id.homebase.resources.settings_feed_desc
 import id.homebase.resources.settings_location_desc
 import id.homebase.resources.settings_moments_desc
 import id.homebase.resources.settings_section_apps
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.PhotosOutlined
 import id.homebase.resources.photobase_home_subtitle
 import id.homebase.resources.photobase_label
 import id.homebase.resources.settings_vault_desc
@@ -71,7 +71,7 @@ private class AppsRow(val page: AppsPage, val tag: String, val icon: ImageVector
 
 private val AppsRows = listOf(
     AppsRow(AppsPage.Chat, "chatSettingsButton", BootstrapChatOutlined, MR.string.nav_chats, MR.string.settings_chat_desc),
-    AppsRow(AppsPage.Photobase, "photobaseSettingsButton", Icons.Outlined.PhotoLibrary, MR.string.photobase_label, MR.string.photobase_home_subtitle),
+    AppsRow(AppsPage.Photobase, "photobaseSettingsButton", HomebaseIcons.PhotosOutlined, MR.string.photobase_label, MR.string.photobase_home_subtitle),
     AppsRow(AppsPage.Filesync, "filesyncSettingsButton", HomebaseIcons.Filesync, MR.string.filesync_label, MR.string.filesync_home_subtitle),
     AppsRow(AppsPage.Email, "emailSettingsButton", Icons.Outlined.MailOutline, MR.string.email_settings_section, MR.string.settings_email_desc),
     AppsRow(AppsPage.Feed, "feedSettingsButton", HomebaseIcons.RssFeed, MR.string.nav_feed, MR.string.settings_feed_desc),

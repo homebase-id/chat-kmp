@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.PhotosOutlined
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
@@ -137,7 +137,7 @@ internal fun PhotobaseSettingsUi(
                 onOpenPhotos?.let { open ->
                     SettingsRow(
                         modifier = Modifier.testTag("photobaseOpenButton"),
-                        icon = Icons.Outlined.PhotoLibrary,
+                        icon = HomebaseIcons.PhotosOutlined,
                         title = stringResource(MR.string.photobase_settings_open),
                         containerColor = rowColor,
                         action = SettingsRowAction.Navigate(open),
@@ -148,7 +148,7 @@ internal fun PhotobaseSettingsUi(
                     title = stringResource(MR.string.settings_photobase_icon_desc),
                     checked = uiState.photobaseIconVisible,
                     onCheckedChange = { onAction(SettingsUiAction.SetPhotobaseIconVisible(it)) },
-                    icon = Icons.Outlined.PhotoLibrary,
+                    icon = HomebaseIcons.PhotosOutlined,
                     containerColor = rowColor,
                 )
                 intervalRow?.invoke()
