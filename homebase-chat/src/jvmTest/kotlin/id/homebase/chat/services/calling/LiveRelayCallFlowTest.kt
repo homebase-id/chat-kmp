@@ -23,6 +23,7 @@ class LiveRelayCallFlowTest {
     private val gimli = "gimli.demo.rocks"
     private val candidates = hostCandidates(4)
     private val heldCandidates = hostCandidates(30)
+    private val lateCandidate = "candidate:99 1 udp 2122260223 198.51.100.9 50000 typ host"
 
     private fun hostCandidates(n: Int) = List(n) { "candidate:$it 1 udp 2122260223 192.0.2.$it 50000 typ host" }
 
@@ -49,9 +50,9 @@ class LiveRelayCallFlowTest {
         return Peer(controller, engines)
     }
 
-    private suspend fun await(what: String, condition: () -> Boolean) {
+    private suspend fun await(what: String, timeoutMs: Long = 10_000, condition: () -> Boolean) {
         try {
-            withTimeout(10_000) { while (!condition()) delay(10) }
+            withTimeout(timeoutMs) { while (!condition()) delay(10) }
         } catch (e: TimeoutCancellationException) {
             throw AssertionError("timed out waiting for $what")
         }
@@ -148,6 +149,60 @@ class LiveRelayCallFlowTest {
         delay(300)
 
         assertIs<CallSignal.Restart>(relay.lastRetained(sam, frodo))
+    }
+
+    @Test
+    fun aCallerWhoseSocketMissedTheAnswerFindsItInTheCalleesRetainedCandidates() = flow { relay ->
+        val callerDevice = relay.device(frodo, online = true)
+        val caller = peer(relay, frodo, callerDevice)
+        val callee = peer(relay, sam, relay.device(sam, online = true), FakeCallScript(connectAfterMs = 60_000))
+        caller.controller.startCall(sam, video = false, callId = "c-answer-overwritten")
+        await("callee rings") { callee.state.phase == CallPhase.Incoming }
+
+        callerDevice.online = false
+        callee.controller.accept()
+        await("answer posted") { relay.signalsFrom(sam).any { it is CallSignal.Answer } }
+        callee.engines.single().simulateLocalIce(lateCandidate)
+        await("the callee's candidates replace its answer on the relay") { relay.lastRetained(frodo, sam) is CallSignal.Ice }
+
+        relay.connect(callerDevice)
+        await("caller applies the answer") { caller.state.phase != CallPhase.Outgoing }
+        assertEquals(CallPhase.Connecting, caller.state.phase)
+        await("caller adds the callee's candidate") { lateCandidate in caller.engines.single().addedIce }
+    }
+
+    @Test
+    fun aCalleeWhoseSocketMissedTheRestartFindsItInTheCallersRetainedCandidates() = calleeReconnectsAfterRestart(resent = false)
+
+    @Test
+    fun aCalleeWhoseSocketMissedAResentRestartStillGetsTheNewCandidates() = calleeReconnectsAfterRestart(resent = true)
+
+    private fun calleeReconnectsAfterRestart(resent: Boolean) = flow { relay ->
+        val callId = "c-restart-overwritten"
+        val callerDevice = relay.device(frodo, online = true)
+        val calleeDevice = relay.device(sam, online = true)
+        val caller = peer(relay, frodo, callerDevice, FakeCallScript(connectAfterMs = 50))
+        val callee = peer(relay, sam, calleeDevice, FakeCallScript(connectAfterMs = 50))
+        caller.controller.startCall(sam, video = false, callId = callId)
+        await("callee rings") { callee.state.phase == CallPhase.Incoming }
+        callee.controller.accept()
+        await("both connected") { caller.state.phase == CallPhase.Connected && callee.state.phase == CallPhase.Connected }
+
+        calleeDevice.online = false
+        caller.engines.single().simulateDrop()
+        await("restart posted") { relay.signalsFrom(frodo).any { it is CallSignal.Restart } }
+        caller.engines.single().simulateLocalIce(lateCandidate)
+        await("new candidates posted") { relay.signalsFrom(frodo).any { s -> s is CallSignal.Ice && s.all.any { it.candidate == lateCandidate } } }
+        if (resent) {
+            relay.replay(callerDevice, sam, CallSignal.RestartRequest(callId), CallChannel.keyFor(frodo))
+            await("restart resent") { relay.signalsFrom(frodo).count { it is CallSignal.Restart } == 2 }
+        }
+        delay(200)
+
+        // Inside the reconnect tick, which would resend the restart to the now-online callee.
+        relay.connect(calleeDevice)
+        await("callee answers the restart", timeoutMs = 2_000) { relay.signalsFrom(sam).any { it is CallSignal.RestartAnswer } }
+        await("callee adds the new candidate", timeoutMs = 2_000) { lateCandidate in callee.engines.single().addedIce }
     }
 
     @Test

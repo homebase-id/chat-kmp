@@ -531,6 +531,7 @@ class CallControllerTest {
             CallSignal.Ringing("c"),
             CallSignal.Answer("c", "sdp"),
             CallSignal.Ice("c", "cand", "0", 1),
+            CallSignal.Ice.of("c", listOf(LocalCandidate("cand", "0", 0)), CallSignal.Answer("c", "sdp", offerSeq = 2, iceBatch = true)),
             CallSignal.Hangup("c", HangupReason.Busy),
         )
         all.forEach { assertEquals(it, CallSignalCodec.decode(CallSignalCodec.encode(it))) }

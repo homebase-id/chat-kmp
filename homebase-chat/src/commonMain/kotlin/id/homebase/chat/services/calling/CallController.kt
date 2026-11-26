@@ -86,6 +86,7 @@ class CallController(
     private var publishedOfferSdp: String? = null
     private var republishJob: Job? = null
     private var iceSender: IceSender? = null
+    private var carriedSignal: CallSignal? = null
     private val remoteIce = mutableSetOf<CallEffect.AddIce>()
     private var answeredRestartOffer: String? = null
     private var restartOfferSdp: String? = null
@@ -211,13 +212,16 @@ class CallController(
 
     private suspend fun send(peer: String, signal: CallSignal) {
         // The relay keeps only each sender's last blob: no candidate may follow the hangup, and the chosen device must
-        // still get the whole list after the caller tells its siblings the call was answered elsewhere.
+        // still get the whole list after the caller tells its siblings the call was answered elsewhere. An answer or
+        // restart rides in every later list, which is posted again after it so that the list, carrying both, is kept.
         val ice = iceSender?.takeIf { it.peer == peer }
         if (ice?.closed == true) ice.join()
+        val carried = signal is CallSignal.Answer || signal is CallSignal.Restart
+        if (carried) carriedSignal = signal
         try {
             post(peer, signal)
         } finally {
-            if (signal is CallSignal.Hangup && signal.reason.isElsewhere) ice?.repost()
+            if ((signal is CallSignal.Hangup && signal.reason.isElsewhere) || carried) ice?.repost(carriedSignal)
         }
     }
 
@@ -431,6 +435,7 @@ class CallController(
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
+                    if (effect.carried && effect.offerSdp == answeredRestartOffer) return
                     refreshIceServers(state)
                     if (effect.offerSdp != answeredRestartOffer) newIceGeneration()
                     answeredRestartOffer = effect.offerSdp
@@ -507,7 +512,7 @@ class CallController(
 
     private fun trickle(state: CallState, candidates: List<LocalCandidate>) {
         val sender = iceSender?.takeUnless { it.closed }
-            ?: IceSender(state.peer!!, state.callId!!, state.peerIceBatch).also { iceSender = it }
+            ?: IceSender(state.peer!!, state.callId!!, state.peerIceBatch, carriedSignal).also { iceSender = it }
         sender.add(candidates)
     }
 
@@ -524,8 +529,8 @@ class CallController(
 
     // Off the inbox, which a relay round trip must not hold; one post at a time, each repeating every candidate before it,
     // since the relay keeps only the last blob.
-    private inner class IceSender(val peer: String, private val callId: String, private val batch: Boolean) {
-        private val progress = MutableStateFlow(IceProgress())
+    private inner class IceSender(val peer: String, private val callId: String, private val batch: Boolean, carried: CallSignal?) {
+        private val progress = MutableStateFlow(IceProgress(carried = carried))
         private val job = scope.launch { progress.collect { postUnsent() } }
         var closed = false
             private set
@@ -533,8 +538,8 @@ class CallController(
         fun add(candidates: List<LocalCandidate>) = progress.update { it.copy(all = it.all + candidates) }
 
         // A single-candidate post is not the whole list, so only a batch is posted again.
-        fun repost() {
-            if (batch) progress.update { it.copy(sent = 0, reposts = it.reposts + 1) }
+        fun repost(carried: CallSignal?) {
+            if (batch) progress.update { it.copy(sent = 0, reposts = it.reposts + 1, carried = carried) }
         }
 
         private suspend fun postUnsent() {
@@ -544,7 +549,7 @@ class CallController(
                 val p = progress.value
                 if (p.sent >= p.all.size) return
                 val c = p.all[p.sent]
-                val signal = if (batch) CallSignal.Ice.of(callId, p.all) else CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex)
+                val signal = if (batch) CallSignal.Ice.of(callId, p.all, p.carried) else CallSignal.Ice(callId, c.candidate, c.sdpMid, c.sdpMLineIndex)
                 if (sendBestEffort(peer, signal)) {
                     val done = if (batch) p.all.size else p.sent + 1
                     // A repost asked for while this one was in flight keeps its reset.
@@ -637,6 +642,7 @@ class CallController(
         offerSdp = null
         answerSdp = null
         restartOfferSdp = null
+        carriedSignal = null
     }
 
     private companion object {
@@ -650,4 +656,4 @@ class CallController(
     }
 }
 
-private data class IceProgress(val all: List<LocalCandidate> = emptyList(), val sent: Int = 0, val reposts: Int = 0)
+private data class IceProgress(val all: List<LocalCandidate> = emptyList(), val sent: Int = 0, val reposts: Int = 0, val carried: CallSignal? = null)
