@@ -17,6 +17,7 @@ import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.settings.UserPreferences
 import id.homebase.api.file.contentType
 import id.homebase.api.file.resolveContentType
+import id.homebase.api.util.isBlobUrl
 import id.homebase.imageeditor.ui.CropResultBus
 import id.homebase.imageeditor.ui.DrawResultBus
 import io.github.vinceglb.filekit.name
@@ -428,6 +429,7 @@ internal suspend fun AttachmentPendingFile.toAttachmentInput(fileOps: FileOperat
         displayName = file.name,
         trimStartMs = trimStartMs,
         trimEndMs = trimEndMs,
+        inputBlobUrl = playablePath?.takeIf { it.isBlobUrl() },
     )
 
     is AttachmentPendingFile.Gallery -> AttachmentInput(
