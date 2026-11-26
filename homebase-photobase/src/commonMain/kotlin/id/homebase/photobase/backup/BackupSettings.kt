@@ -99,10 +99,15 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
             .getOrDefault(BackupSettings())
     }
 
-    // The settings first: nothing may see them readable while they still hold the defaults.
+    // Never readable while holding the defaults: a failure flags before the defaults go in, a success after the settings.
     private fun apply(stored: BackupSettings?) {
-        _settings.value = stored ?: BackupSettings()
-        _unreadable.value = stored == null
+        if (stored == null) {
+            _unreadable.value = true
+            _settings.value = BackupSettings()
+        } else {
+            _settings.value = stored
+            _unreadable.value = false
+        }
     }
 
     private companion object {
