@@ -11,7 +11,7 @@ class CallKitMirror(
 ) {
     private var reported: String? = null
     private var answered: String? = null
-    private var videoReported = false
+    private var videoCallId: String? = null
     private var connectedReported: String? = null
 
     private data class Key(
@@ -38,11 +38,11 @@ class CallKitMirror(
                 when (phase) {
                     CallPhase.Outgoing -> if (reported != id) {
                         reported = id
-                        videoReported = videoOn
+                        videoCallId = id.takeIf { videoOn }
                         bridge.reportOutgoing(id, peer.orEmpty(), videoOn)
                     }
-                    CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video && !videoReported) {
-                        videoReported = true
+                    CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video && videoCallId != id) {
+                        videoCallId = id
                         bridge.reportVideo(id, true)
                     }
                     CallPhase.Connected -> {
@@ -50,8 +50,8 @@ class CallKitMirror(
                             connectedReported = id
                             bridge.reportConnected(id)
                         }
-                        if (videoOn != videoReported) {
-                            videoReported = videoOn
+                        if (videoOn != (videoCallId == id)) {
+                            videoCallId = id.takeIf { videoOn }
                             bridge.reportVideo(id, videoOn)
                         }
                     }
@@ -63,7 +63,7 @@ class CallKitMirror(
                         if (reported == id) reported = null
                         if (answered == id) answered = null
                         if (connectedReported == id) connectedReported = null
-                        videoReported = false
+                        if (videoCallId == id) videoCallId = null
                     }
                     else -> Unit
                 }
