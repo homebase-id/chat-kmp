@@ -30,6 +30,7 @@ internal fun desktopHttpClient(
         val pool = ConnectionPool()
         config {
             connectionPool(pool)
+            eventListener(ServerIpCaptureEventListener())
             dispatcher(Dispatcher().apply { maxRequests = MAX_REQUESTS_PER_HOST; maxRequestsPerHost = MAX_REQUESTS_PER_HOST })
         }
         if (trustManager != null) {

@@ -20,7 +20,7 @@ object ServerIpCaptureRegistry {
 
 /**
  * Records the owner server's IP whenever the real app completes a **validated TLS connection** to
- * it (fed by the Android OkHttp `EventListener` on `connectEnd`, which fires only on a
+ * it (fed by the Android and desktop OkHttp `EventListener` on `connectEnd`, which fires only on a
  * cert-validated success). Because SNI = hostname and the cert is validated against it, the
  * captured IP is provably the real owner server — so it's safe to reuse later as a
  * last-known-good fallback (see [ServerIpStore]). Only the owner host is persisted; connections to
