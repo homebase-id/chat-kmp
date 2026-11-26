@@ -68,7 +68,8 @@ class AlbumShareViewModel(
 
     init {
         viewModelScope.launch {
-            if (guarded { restore() } == true) ready()
+            // A stored sign-in may still lack what sharing needs: checked as after signing in.
+            if (guarded { restore() } == true) finishSigningIn(openOwnerPage = false)
         }
     }
 

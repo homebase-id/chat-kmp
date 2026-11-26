@@ -9,6 +9,7 @@ import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.util.codePointCount
 import id.homebase.chat.services.decodeReactionCode
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.coroutines.async
@@ -37,23 +38,20 @@ class PhotoActionService(
 ) {
     private val drive = PhotobaseProtocol.DriveAlias
     private val toggled = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
-    // The last read of each target's reactions, per identity: a toggle needs only to know whether the emoji is ours.
-    private val lastRead = HashMap<Pair<OdinId?, Uuid>, PhotoReactions>()
-    private val lastReadLock = Mutex()
     // One toggle at a time: a quick second tap must see the first one's result.
     private val toggling = Mutex()
 
     /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
     suspend fun toggleReaction(photo: PhotoTarget, emoji: String) = toggling.withLock {
-        if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return@withLock
+        if (emoji.isBlank() || emoji.codePointCount() > MAX_EMOJI_CODEPOINTS) return@withLock
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        val key = credentialsManager.getActiveCredentials()?.domain to photo.globalTransitId
-        val known = lastReadLock.withLock { lastRead[key] } ?: read(photo)
         val on = on(photo)
-        val mine = emoji in known.own
-        if (mine) on.delete(reaction) else on.add(reaction)
-        // Before the re-read lands, so a second tap undoes this one.
-        lastReadLock.withLock { lastRead[key] = known.copy(own = if (mine) known.own - emoji else known.own + emoji) }
+        // Read now, not from the last read: another device may have reacted since.
+        if (emoji in on.own(credentialsManager.getActiveCredentials()?.domain ?: return@withLock).mapNotNull(::decodeReactionCode)) {
+            on.delete(reaction)
+        } else {
+            on.add(reaction)
+        }
         toggled.emit(photo.globalTransitId)
     }
 
@@ -69,7 +67,6 @@ class PhotoActionService(
         val summary = async { on.summary() }
         val own = async { on.own(self) }
         PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct())
-            .also { read -> lastReadLock.withLock { lastRead[self to photo.globalTransitId] = read } }
     }
 
     // Where the target's reactions are: here by file id, or on its owner's drive over peer by global transit id.
@@ -102,7 +99,8 @@ class PhotoActionService(
     }
 
     private companion object {
-        const val MAX_EMOJI_LENGTH = 8
+        // A family or flag is several code points; the longest the picker offers fit.
+        const val MAX_EMOJI_CODEPOINTS = 10
     }
 }
 

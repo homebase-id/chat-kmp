@@ -2517,7 +2517,8 @@ fun AppNavHost(
                                     val owner = OdinId(route.owner)
                                     val albumId = Uuid.parse(route.albumId)
                                     val sharedAlbum: SharedAlbumViewModel = koinViewModel(key = "shared-album-${route.owner}-$albumId", parameters = { parametersOf(owner, albumId) })
-                                    val picker = rememberFilePickerLauncher(type = FileKitType.ImageAndVideo, mode = FileKitMode.Multiple()) { files ->
+                                    // Images only: a pick is built as a still photo, and a video needs the backup's video path.
+                                    val picker = rememberFilePickerLauncher(type = FileKitType.Image, mode = FileKitMode.Multiple()) { files ->
                                         if (!files.isNullOrEmpty()) sharedAlbum.addPhotos(files)
                                     }
                                     SharedAlbumScreen(

@@ -128,8 +128,10 @@ class PhotoMemberWrites internal constructor(
             check(shares.isNotEmpty()) { "${album.owner}'s album ${album.id} reaches this identity through no share" }
             val deposit = depositSpec(spec, album, globalTransitId, shares, ownersDriveKey(album.owner))
             val made = PhotoAdd(album.owner, album.id, uniqueId, globalTransitId, name)
-            // Waiting before it's queued: the outbox may finish it before enqueue returns.
+            // Waiting before it's queued: the outbox may finish it before enqueue returns. The outbox tells of an
+            // item by its uniqueId, the photo's content: the same photo again waits until the first has gone.
             lock.withLock {
+                check(uniqueId !in pending) { "this photo is already on its way to ${pending.getValue(uniqueId).second.owner}" }
                 pending[uniqueId] = made to album
                 if (ownedCopy) copies[uniqueId] = path
             }

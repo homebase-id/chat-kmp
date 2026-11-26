@@ -155,4 +155,19 @@ class PhotoMemberWritesTest {
         assertFailsWith<IllegalStateException> { writes().add(album.copy(shares = emptyList()), "/copy.jpg", "image/jpeg", "picked.jpg", 1_000, ownedCopy = true) }
         assertEquals(listOf("/copy.jpg"), discarded)
     }
+
+    @Test
+    fun theSamePhotoAgainWhileTheFirstIsOnItsWayIsRefusedAndLeavesTheFirstAlone() = runTest {
+        val writes = writes()
+        val first = writes.add(album, "/first.jpg", "image/jpeg", "picked.jpg", 1_000, ownedCopy = true)
+        val outcome = backgroundScope.async { writes.outcomes.first() }
+        testScheduler.runCurrent()
+
+        assertFailsWith<IllegalStateException> { writes.add(album, "/second.jpg", "image/jpeg", "picked.jpg", 1_000, ownedCopy = true) }
+        assertEquals(listOf("/second.jpg"), discarded, "only the refused one's copy")
+
+        events.emit(BackendEvent.OutboxEvent.ItemCompleted(PhotoMemberWrites.DEPOSIT_DRIVE, uniqueId))
+        assertEquals(PhotoAddOutcome.Delivered(first), outcome.await())
+        assertEquals(1, enqueued.size)
+    }
 }
