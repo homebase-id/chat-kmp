@@ -17,6 +17,7 @@ import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.QueryBatch
+import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.parseRecord
@@ -146,7 +147,7 @@ class PhotoCommentsService(
                 groupId = photoId,
                 fileType = PhotobaseProtocol.CommentFileType,
                 userDate = userDate,
-                content = OdinSystemSerializer.serialize(PhotoCommentContent(PhotobaseProtocol.CommentVersion, body)),
+                content = commentContent(body),
             ),
         )
 
@@ -162,6 +163,12 @@ internal fun <T> EventBus.rereadOn(drive: Uuid, matches: (HomebaseFile) -> Boole
         .filter { event -> event is BackendEvent.DataEvent.BatchReceived && event.driveId == drive && event.batchData.any(matches) }
         .collect { emit(read()) }
 }
+
+// The longest a comment can be and still fit the encrypted header, at four bytes a code point.
+internal const val MAX_COMMENT_CODE_POINTS = 1000
+
+internal fun commentContent(body: String): String =
+    OdinSystemSerializer.serialize(PhotoCommentContent(PhotobaseProtocol.CommentVersion, body.truncateToCodePoints(MAX_COMMENT_CODE_POINTS)))
 
 internal fun HomebaseFile.isCommentOn(photoId: Uuid): Boolean =
     fileMetadata.appData.fileType == PhotobaseProtocol.CommentFileType && fileMetadata.appData.groupId == photoId

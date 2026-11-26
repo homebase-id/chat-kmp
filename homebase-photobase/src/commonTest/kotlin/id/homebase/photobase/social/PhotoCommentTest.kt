@@ -1,5 +1,6 @@
 package id.homebase.photobase.social
 
+import id.homebase.api.HomebaseProtocol
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.photobase.gallery.galleryTestFile
@@ -48,5 +49,12 @@ class PhotoCommentTest {
     @Test
     fun unreadableContentStillShowsTheComment() {
         assertEquals("", comment(content = "not json").toPhotoComment()!!.body)
+    }
+
+    @Test
+    fun theLongestCommentFitsTheHeaderAndALongerOneIsCut() {
+        val longest = "😀".repeat(MAX_COMMENT_CODE_POINTS)
+        assertTrue(HomebaseProtocol.fitsHeaderContent(commentContent(longest)))
+        assertEquals(longest, OdinSystemSerializer.deserialize<PhotoCommentContent>(commentContent(longest + "😀")).body)
     }
 }
