@@ -27,8 +27,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.withContext
 
 data class AlbumShareUiState(
     val signedIn: Boolean = false,
@@ -128,10 +126,12 @@ class AlbumShareViewModel(
             is AlbumShareUiAction.Share -> share(action.choice)
             is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
             is AlbumShareUiAction.EditGroup -> busy(AlbumShareStep.EditGroup) {
-                val joined = sharing.setMembers(action.group, action.members)
+                val edit = sharing.setMembers(action.group, action.members)
                 _events.send(AlbumShareEvent.GroupSaved(action.group.name))
-                if (joined.isEmpty()) return@busy
-                val untold = sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(joined, shared, access) }.distinct()
+                if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
+                if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(edit.pending.joinToString { it.domainName }))
+                if (edit.joined.isEmpty()) return@busy
+                val untold = sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(edit.joined, shared, access) }.distinct()
                 if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             }
         }
@@ -177,19 +177,13 @@ class AlbumShareViewModel(
     private fun share(choice: AudienceChoice) {
         val state = _uiState.value
         busy(AlbumShareStep.Share) {
-            val audience = when (choice) {
-                is AudienceChoice.Group -> state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy
-                is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId)
-                is AudienceChoice.NewGroup -> sharing.createGroup(choice.name, choice.members)
-            }
-            val shared = try {
-                sharing.share(albumId, audience, state.access, expiresAt = null)
-            } catch (e: Exception) {
-                // A group made for this share and not reached by it would be left behind, and a retry would make another.
-                if (choice is AudienceChoice.NewGroup && audience is AlbumAudience.Group) {
-                    withContext(NonCancellable) { runCatching { sharing.deleteGroup(audience) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${audience.circleId} not deleted" } } }
+            val (audience, shared) = when (choice) {
+                is AudienceChoice.Group -> {
+                    val group = state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy
+                    group to sharing.share(albumId, group, state.access, expiresAt = null)
                 }
-                throw e
+                is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId).let { it to sharing.share(albumId, it, state.access, expiresAt = null) }
+                is AudienceChoice.NewGroup -> sharing.shareWithNewGroup(albumId, choice.name, choice.members, state.access, expiresAt = null)
             }
             _events.send(AlbumShareEvent.Shared(audience.label))
             if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(shared.pending.joinToString { it.domainName }))

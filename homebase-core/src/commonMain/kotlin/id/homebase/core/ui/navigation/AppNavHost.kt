@@ -2538,9 +2538,10 @@ fun AppNavHost(
                                 if (isAuthenticated) {
                                     val albumId = Uuid.parse(backStackEntry.toRoute<Route.PhotoAlbumShare>().albumId)
                                     val youAuth = koinInject<YouAuthFlowManager>()
-                                    val scope = rememberCoroutineScope()
+                                    // The app's scope: the browser's answer may come after this screen has gone.
+                                    val appScope = koinInject<kotlinx.coroutines.CoroutineScope>()
                                     // On desktop and web the browser's answer only comes back through the launcher.
-                                    val signIn = rememberSignInAgainLauncher { url -> scope.launch { youAuth.handleCallback(url) } }
+                                    val signIn = rememberSignInAgainLauncher { url -> appScope.launch { youAuth.handleCallback(url) } }
                                     AlbumShareScreen(
                                         viewModel = koinViewModel(key = "album-share-$albumId", parameters = { parametersOf(albumId) }),
                                         onOpenSignIn = signIn::open,

@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** A text button's content: [idle], or a spinner before [busyLabel] while its work runs (UI_BEHAVIORS.md, section 1). */
+/** A text button's content: [idle], or a spinner before [busyLabel] while its work runs. */
 @Composable
 fun ButtonProgressContent(busy: Boolean, busyLabel: String, idle: String) {
     if (busy) {

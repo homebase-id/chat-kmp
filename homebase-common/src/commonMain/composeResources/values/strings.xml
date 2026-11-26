@@ -3577,6 +3577,7 @@
     <string name="photobase_group_saved">Saved %1$s.</string>
     <string name="photobase_group_short_of_access">Doesn't give the access a shared album needs. Update this group in your owner console.</string>
     <string name="photobase_share_recipient_detail">%1$s · %2$s</string>
+    <string name="photobase_share_server_status">your Homebase answered with an error (%1$d)</string>
     <string name="photobase_share_device_error">an error on this device</string>
     <string name="photobase_share_sign_in_blocked">Your browser blocked the sign-in window. Continue to open it.</string>
     <string name="photobase_share_unreachable">Couldn't reach your Homebase. Check your connection and try again.</string>

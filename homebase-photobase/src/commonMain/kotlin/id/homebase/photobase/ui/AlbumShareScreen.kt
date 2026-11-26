@@ -79,6 +79,7 @@ import id.homebase.resources.photobase_share_failed_sign_in
 import id.homebase.resources.photobase_share_failed_sign_in_unfinished
 import id.homebase.resources.photobase_share_failed_withdraw
 import id.homebase.resources.photobase_share_device_error
+import id.homebase.resources.photobase_share_server_status
 import id.homebase.resources.photobase_share_sign_in_blocked
 import id.homebase.resources.photobase_share_unreachable
 import id.homebase.resources.sign_in_again_continue
@@ -153,6 +154,7 @@ private suspend fun List<DrivePermission>.names(): String =
 private suspend fun AlbumShareEvent.Failed.failureMessage(): String {
     if (reason.unreachable) return getString(MR.string.photobase_share_unreachable)
     val why = reason.reason
+        ?: reason.status?.let { getString(MR.string.photobase_share_server_status, it) }
         ?: if (step == AlbumShareStep.SignIn && reason.deviceError == null) return getString(MR.string.photobase_share_failed_sign_in_unfinished)
         else getString(MR.string.photobase_share_device_error)
     return getString(

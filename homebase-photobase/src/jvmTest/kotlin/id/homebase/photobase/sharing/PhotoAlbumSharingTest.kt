@@ -82,6 +82,7 @@ class PhotoAlbumSharingTest {
     private val albumRows = mutableMapOf<Uuid, List<Uuid>>()
     @Volatile private var storedShareKey: String? = null
     @Volatile private var samsPending = "[]"
+    @Volatile private var addManyKind = "skipped"
     private val photosCircle = Uuid.random()
     // What Photos' recipients circle grants on the drive; null leaves it unlisted.
     @Volatile private var photosCircleGrants: String? = "read, react, comment"
@@ -119,7 +120,8 @@ class PhotoAlbumSharingTest {
             path.endsWith("/circles/with-members") -> photosCircleGrants?.let { permission ->
                 """[{"circle":{"id":"${photosCircle.toHexString()}","name":"Photos","driveGrants":[{"permissionedDrive":{"drive":{"alias":"${PhotobaseProtocol.DriveAlias.toHexString()}","type":"x"},"permission":"$permission"}}]},"members":[]}]"""
             } ?: "[]"
-            path.endsWith("/circles/add-many") -> """{"outcomes":[{"odinId":"sam.test","kind":"skipped"}]}"""
+            path.endsWith("/circles/add-many") -> """{"outcomes":[{"odinId":"sam.test","kind":"$addManyKind"}]}"""
+            path.endsWith("/circles/delete") -> "true"
             path.endsWith("/circles/pending") -> samsPending
             path.endsWith("/connections/circles") -> "[]"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
@@ -276,6 +278,20 @@ class PhotoAlbumSharingTest {
 
         assertEquals(listOf(DrivePermission.React, DrivePermission.Comment), narrow.missing)
         assertTrue(calls.none { it.path.endsWith("/add-many") || it.path.endsWith("/shares") || it.path.endsWith("/query-batch") }, calls.map { it.path }.toString())
+    }
+
+    @Test
+    fun aNewGroupWhoseShareIsRefusedBeforeAnythingIsWrittenGoesAgain() = runTest {
+        samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
+        addManyKind = "enrolled"
+        photosCircleGrants = "read"
+
+        assertFailsWith<PhotoSharingException.CircleTooNarrow> {
+            sharing.shareWithNewGroup(trip, "Trip", listOf(OdinId("sam.test")), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertTrue(calls.any { it.path.endsWith("/circles/delete") }, "a retry would otherwise make a second Trip")
+        assertTrue(calls.none { it.path.endsWith("/shares") || it.path.endsWith("/share-key") }, calls.map { it.path }.toString())
     }
 
     private suspend fun decrypted(call: Call) =
