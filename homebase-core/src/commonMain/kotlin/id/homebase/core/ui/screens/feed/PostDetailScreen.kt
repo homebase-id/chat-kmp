@@ -111,6 +111,7 @@ fun PostDetailScreen(
                 is PostDetailEvent.NavigateToAuthor -> onAuthorClick(event.odinId)
                 is PostDetailEvent.OpenUrl ->
                     uriHandler.openUrl(event.url) { scope.launch { snackbarHostState.showSnackbar(openLinkFailedMessage) } }
+                is PostDetailEvent.OpenUrlFailed -> scope.launch { snackbarHostState.showSnackbar(openLinkFailedMessage) }
                 is PostDetailEvent.ShowSnackbar -> {
                     scope.launch {
                         snackbarHostState.showSnackbar(event.message ?: actionFailedMessage)

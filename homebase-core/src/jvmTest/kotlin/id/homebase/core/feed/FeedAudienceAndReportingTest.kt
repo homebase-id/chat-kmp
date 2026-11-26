@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PostAudienceTest {
@@ -118,6 +119,13 @@ class ReportingUrlProviderTest {
             ReportingUrlProvider.DEFAULT_REPORT_URL,
             providerReturning("{}").reportUrlFor(OdinId("frodo.baggins.me")),
         )
+    }
+
+    @Test
+    fun aPublishedUrlThatIsNotAbsoluteHttpsIsNotOpened() = runTest {
+        listOf("your-na-report-content-url-here", "javascript:alert(1)", "http://example.org/abuse").forEach { published ->
+            assertNull(providerReturning("{\"url\":\"$published\"}").reportUrlFor(OdinId("frodo.baggins.me")), published)
+        }
     }
 
     @Test

@@ -26,6 +26,7 @@ import id.homebase.core.feed.services.withOwnReactions
 import id.homebase.core.sync.OptionalDriveActivation
 import id.homebase.core.widget.ReactionDisplayItem
 import id.homebase.resources.MR
+import id.homebase.resources.feed_open_link_failed
 import id.homebase.resources.feed_post_delete_failed
 import id.homebase.resources.feed_reaction_failed
 import id.homebase.resources.feed_timeline_refresh_failed
@@ -307,7 +308,10 @@ class FeedTimelineViewModel(
     fun reportPost(post: FeedPostItem) {
         val author = post.authorOdinId ?: return
         viewModelScope.launch {
-            _events.tryEmit(FeedTimelineEvent.OpenUrl(reportingUrlProvider.reportUrlFor(author)))
+            val url = reportingUrlProvider.reportUrlFor(author)
+            _events.tryEmit(
+                if (url != null) FeedTimelineEvent.OpenUrl(url) else FeedTimelineEvent.ShowSnackbar(MR.string.feed_open_link_failed),
+            )
         }
     }
 }

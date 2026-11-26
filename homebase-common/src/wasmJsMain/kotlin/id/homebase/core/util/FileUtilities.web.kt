@@ -15,7 +15,11 @@ actual fun getUriHandler(): FileSystemHandler {
     val saver = remember { FileSaver(WebAlbumSaver, fileOps) }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
-            runCatching { window.open(url, "_blank") ?: error("The browser blocked opening $url") }.onFailure(onError)
+            runCatching {
+                // window.open resolves a scheme-less URL against the app's own origin instead of failing.
+                require(hasUrlScheme(url)) { "No scheme in URL: $url" }
+                window.open(url, "_blank") ?: error("The browser blocked opening $url")
+            }.onFailure(onError)
         }
 
         // The browser has no path-based filesystem; file edit/browse aren't supported on web.
