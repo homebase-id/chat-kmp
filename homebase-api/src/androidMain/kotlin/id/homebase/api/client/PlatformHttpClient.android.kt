@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.okhttp.OkHttp
 import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 
 /**
  * Android uses the OkHttp engine, which validates TLS against the OS trust store.
@@ -23,6 +24,7 @@ internal actual fun createPlatformHttpClient(
         val pool = ConnectionPool()
         config {
             connectionPool(pool)
+            dispatcher(Dispatcher().apply { maxRequests = MAX_REQUESTS_PER_HOST; maxRequestsPerHost = MAX_REQUESTS_PER_HOST })
             eventListener(ServerIpCaptureEventListener())
         }
     }

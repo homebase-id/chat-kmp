@@ -3,6 +3,9 @@ package id.homebase.api.client
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 
+/** At least `thumbnailSemaphore` (30) plus room for other calls; OkHttp's default per host is 5. */
+internal const val MAX_REQUESTS_PER_HOST = 64
+
 /**
  * Builds an [HttpClient] on the platform's native engine, applying the shared
  * [block] configuration. Centralising engine selection here (rather than relying
