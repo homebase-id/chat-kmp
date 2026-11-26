@@ -10,7 +10,7 @@ import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
 
-internal class SkiaPipelineBitmap(private val image: Image) : PipelineBitmap {
+internal class SkiaPipelineBitmap(internal val image: Image) : PipelineBitmap {
     override val width get() = image.width
     override val height get() = image.height
     override val isSrgb get() = image.colorSpace.let { it == null || it.isSRGB }

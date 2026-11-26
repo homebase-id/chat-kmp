@@ -56,6 +56,7 @@ kotlin {
             api(project(":homebase-upload"))
             implementation(project(":homebase-common"))
             implementation(project(":homebase-chat"))
+            implementation(libs.atomicfu)
 
             implementation(libs.kermit)
             implementation(libs.jetbrains.compose.runtime)

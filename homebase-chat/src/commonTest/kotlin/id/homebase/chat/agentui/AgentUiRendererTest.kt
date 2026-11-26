@@ -10,6 +10,8 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.Clipboard
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.NativeClipboard
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
@@ -26,6 +28,7 @@ import id.homebase.chat.agentui.AgentUiFixtures.valid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class AgentUiRendererTest {
@@ -35,6 +38,8 @@ class AgentUiRendererTest {
         pending: Set<String> = emptySet(),
         answered: Set<String> = emptySet(),
         clipboard: Clipboard? = null,
+        uriHandler: UriHandler? = null,
+        onLongClick: (() -> Unit)? = null,
         onAction: (AgentUiActionRequest) -> Unit = {},
     ) = setContent {
         MaterialTheme {
@@ -48,9 +53,11 @@ class AgentUiRendererTest {
                     pendingActionIds = pending,
                     onAction = onAction,
                     answeredActionIds = answered,
+                    onLongClick = onLongClick,
                 )
             }
-            if (clipboard == null) view() else CompositionLocalProvider(LocalClipboard provides clipboard) { view() }
+            val locals = listOfNotNull(clipboard?.let { LocalClipboard provides it }, uriHandler?.let { LocalUriHandler provides it })
+            CompositionLocalProvider(*locals.toTypedArray()) { view() }
         }
     }
 
@@ -292,5 +299,49 @@ class AgentUiRendererTest {
         show(AgentUiFixtures.decodeDraftPostCard(), pending = setOf("approve"))
         onNodeWithText("Approve").assertIsNotEnabled()
         onNodeWithTag(ChosenIconTag, useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test fun url_button_opens_the_link_and_never_sends_an_action() = runComposeUiTest {
+        val t = valid(tree("""{"id":"root","type":"button","label":"Track order","style":"outlined","url":"https://acme.example/orders/1042"}"""))
+        val opened = mutableListOf<String>()
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, uriHandler = object : UriHandler { override fun openUri(uri: String) { opened += uri } }, onAction = { seen += it })
+        onNodeWithTag(LinkIconTag, useUnmergedTree = true).assertExists()
+        onNodeWithText("Track order").assertIsEnabled().performClick()
+        assertEquals(listOf("https://acme.example/orders/1042"), opened)
+        assertEquals(emptyList(), seen)
+    }
+
+    // A selectable (pointer) card once dropped the title's weight, so a long title squeezed the badge away.
+    @Test fun a_long_list_item_title_leaves_room_for_its_trailing_badge() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"li","type":"listItem","title":"${"Order ".repeat(40)}","trailing":"st"}""",
+                """{"id":"st","type":"badge","label":"Shipped"}""",
+                root = "li",
+            ),
+        )
+        show(t, onLongClick = {})
+        val badge = onNodeWithText("Shipped").fetchSemanticsNode().boundsInRoot
+        assertTrue(badge.width > 0f, "badge width ${badge.width}")
+    }
+
+    @Test fun list_item_facts_and_badge_render_their_text() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"root","type":"column","children":["a","b","f"]}""",
+                """{"id":"a","type":"listItem","title":"Order #1042","subtitle":"2 items","trailing":"st"}""",
+                """{"id":"st","type":"badge","label":"Shipped","tone":"success"}""",
+                """{"id":"b","type":"listItem","title":"Order #1043","caption":"Due Friday","trailing":"pay"}""",
+                """{"id":"pay","type":"button","label":"Pay","style":"tonal","action":{"id":"pay"}}""",
+                """{"id":"f","type":"facts","items":[{"label":"Total","value":"$42.00"}]}""",
+            ),
+        )
+        val seen = mutableListOf<AgentUiActionRequest>()
+        show(t, onAction = { seen += it })
+        listOf("Order #1042", "2 items", "Shipped", "Order #1043", "Due Friday", "Total", "$42.00").forEach { onNodeWithText(it).assertExists() }
+        onNodeWithText("Shipped").assertHasNoClickAction()
+        onNodeWithText("Pay").performClick()
+        assertEquals("pay", seen.single().actionId)
     }
 }

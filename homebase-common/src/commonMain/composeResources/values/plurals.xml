@@ -140,6 +140,10 @@
         <item quantity="one">Moved %1$d to the bin.</item>
         <item quantity="other">Moved %1$d to the bin.</item>
     </plurals>
+    <plurals name="photobase_library_count">
+        <item quantity="one">%1$d photo</item>
+        <item quantity="other">%1$d photos</item>
+    </plurals>
     <plurals name="photobase_favorites_added">
         <item quantity="one">Added %1$d to favorites.</item>
         <item quantity="other">Added %1$d to favorites.</item>
@@ -147,6 +151,14 @@
     <plurals name="photobase_favorites_removed">
         <item quantity="one">Removed %1$d from favorites.</item>
         <item quantity="other">Removed %1$d from favorites.</item>
+    </plurals>
+    <plurals name="photobase_album_added">
+        <item quantity="one">Added %1$d to the album.</item>
+        <item quantity="other">Added %1$d to the album.</item>
+    </plurals>
+    <plurals name="photobase_album_removed">
+        <item quantity="one">Removed %1$d from the album.</item>
+        <item quantity="other">Removed %1$d from the album.</item>
     </plurals>
     <plurals name="photobase_archive_archived">
         <item quantity="one">Archived %1$d.</item>

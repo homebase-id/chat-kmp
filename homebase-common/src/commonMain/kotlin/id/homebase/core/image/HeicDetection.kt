@@ -11,12 +11,6 @@ fun isHeicSource(result: SourceFetchResult): Boolean {
     if (result.mimeType == "image/heic" || result.mimeType == "image/heif") {
         return true
     }
-    return try {
-        val peek = result.source.source().peek()
-        val header = ByteArray(12)
-        if (peek.read(header) < 12) return false
-        ImageFormatDetector.isHeic(header)
-    } catch (_: Exception) {
-        false
-    }
+    val header = result.peekHeader(12) ?: return false
+    return header.size == 12 && ImageFormatDetector.isHeic(header)
 }

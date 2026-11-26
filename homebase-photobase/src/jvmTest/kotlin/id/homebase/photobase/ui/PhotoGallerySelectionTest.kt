@@ -31,7 +31,7 @@ import id.homebase.core.haptics.HapticEvent
 import id.homebase.core.haptics.Haptics
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.LibraryDays
-import id.homebase.photobase.gallery.PhotoShelf
+import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoMover
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.api.client.drives.HomebaseFile
@@ -137,11 +137,10 @@ class PhotoGallerySelectionTest {
         onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
 
         onNodeWithText("1 selected").assertExists()
-        onNodeWithText("Move to bin").assertExists()
-        onNodeWithText("Archive").assertExists()
+        for (action in listOf("Add to favorites", "Add to album", "Archive", "Move to bin")) onNodeWithContentDescription(action).assertExists()
         onNodeWithContentDescription("Clear selection").performClick()
-        onNodeWithText("Move to bin").assertDoesNotExist()
-        assertEquals(PhotoShelf.Library, viewModel.shelf)
+        onNodeWithContentDescription("Move to bin").assertDoesNotExist()
+        assertEquals(PhotoGallery.Library, viewModel.gallery)
     }
 
     @Test
@@ -163,13 +162,13 @@ class PhotoGallerySelectionTest {
         waitUntil(timeoutMillis = 5_000) { onAllNodesWithContentDescription("Photo").fetchSemanticsNodes().size == photos.size }
         onAllNodesWithContentDescription("Photo")[0].performTouchInput { longClick() }
 
-        onNodeWithText("Move to bin").performClick()
+        onNodeWithContentDescription("Move to bin").performClick()
         onNodeWithText("Move 1 photo to the bin?").assertExists()
         onNodeWithText("Cancel").performClick()
         onNodeWithText("1 selected").assertExists()
         assertEquals(emptyList(), moved, "nothing moves until the user says yes")
 
-        onNodeWithText("Move to bin").performClick()
+        onNodeWithContentDescription("Move to bin").performClick()
         onNode(hasText("Move to bin") and hasAnyAncestor(isDialog())).performClick()
         waitUntil(timeoutMillis = 5_000) { moved.isNotEmpty() }
         assertEquals(listOf(photos[0].fileId), moved)

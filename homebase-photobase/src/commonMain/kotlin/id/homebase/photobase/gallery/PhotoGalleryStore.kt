@@ -16,16 +16,16 @@ import kotlinx.coroutines.withContext
 import kotlin.uuid.Uuid
 
 /**
- * The photos and days of one [shelf], read from the device's copy of the Photos drive, which the drive sync keeps
+ * The photos and days of one [gallery], read from the device's copy of the Photos drive, which the drive sync keeps
  * current.
  */
 class PhotoGalleryStore internal constructor(
     private val db: DatabaseManager,
     private val identityId: suspend () -> Uuid,
-    val shelf: PhotoShelf = PhotoShelf.Library,
+    val gallery: PhotoGallery = PhotoGallery.Library,
     private val photosDriveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoGallerySource {
-    private val filter = shelf.filter
+    private val filter = gallery.filter
 
     // Called from each gallery view model's own reading thread.
     private val unparsable = mutableSetOf<Int>()
@@ -58,9 +58,21 @@ class PhotoGalleryStore internal constructor(
     suspend fun filesOf(fileIds: Collection<Uuid>): List<HomebaseFile> =
         parsedOffMain(db.photoDays.headersOf(identityId(), photosDriveId, fileIds))
 
-    /** The device's copy of every photo on this shelf. */
-    suspend fun filesOnShelf(): List<HomebaseFile> =
+    /** The device's copy of every photo on [shelf]. */
+    suspend fun filesOn(shelf: PhotoShelf): List<HomebaseFile> =
         parsedOffMain(db.photoDays.headersOnShelf(identityId(), photosDriveId, shelf.status.value.toLong()))
+
+    /** The device's copy of every album record. */
+    suspend fun albumRecords(): List<HomebaseFile> =
+        parsedOffMain(db.photoDays.headersOfType(identityId(), photosDriveId, PhotobaseProtocol.AlbumFileType.toLong()))
+
+    /** For each of [albums] that holds a photo in the library or the archive: how many, and the newest. */
+    suspend fun albumCovers(albums: Collection<Uuid>): Map<Uuid, AlbumCover> =
+        db.photoDays.taggedCovers(identityId(), photosDriveId, albums, TAGGED_STATUSES)
+            .associate { it.tag to AlbumCover(it.photos, parsed(it.newestHeader)?.toGalleryItem()) }
+
+    /** Every photo carrying [tag], binned and deleted ones too. */
+    suspend fun taggedFileIds(tag: Uuid): List<Uuid> = db.photoDays.taggedFileIds(identityId(), photosDriveId, tag)
 
     // A bin action asks from Main; a few thousand headers take seconds to parse.
     private suspend fun parsedOffMain(headers: List<String>): List<HomebaseFile> =
@@ -75,5 +87,7 @@ class PhotoGalleryStore internal constructor(
     }
 }
 
-fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, shelf: PhotoShelf = PhotoShelf.Library) =
-    PhotoGalleryStore(db, { credentials.requireActiveCredentials().getIdentityId() }, shelf)
+class AlbumCover(val photos: Int, val cover: PhotoGalleryItem?)
+
+fun photoGalleryStore(db: DatabaseManager, credentials: CredentialsManager, gallery: PhotoGallery) =
+    PhotoGalleryStore(db, { credentials.requireActiveCredentials().getIdentityId() }, gallery)

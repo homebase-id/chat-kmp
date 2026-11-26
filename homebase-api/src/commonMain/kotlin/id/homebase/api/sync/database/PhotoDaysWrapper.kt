@@ -55,6 +55,23 @@ class PhotoDaysWrapper(
     suspend fun headersOnShelf(identityId: Uuid, driveId: Uuid, archivalStatus: Long): List<String> =
         databaseManager.readValue("photoDays.headersOnShelf") { queries.headersOnShelf(identityId, driveId, archivalStatus).executeAsList() }
 
+    /** The headers of the drive's active files of [fileType] that belong to no group. */
+    suspend fun headersOfType(identityId: Uuid, driveId: Uuid, fileType: Long): List<String> =
+        databaseManager.readValue("photoDays.headersOfType") { queries.headersOfType(identityId, driveId, fileType).executeAsList() }
+
+    /** For each of [tags] that a photo with one of [archivalStatuses] carries: how many do, and the newest one's header. */
+    suspend fun taggedCovers(identityId: Uuid, driveId: Uuid, tags: Collection<Uuid>, archivalStatuses: List<Long>): List<TagCover> =
+        tags.chunked(IDS_PER_READ).flatMap { chunk ->
+            databaseManager.readValue("photoDays.taggedCovers") {
+                queries.taggedCovers(identityId, driveId, chunk, archivalStatuses) { tag, photos, jsonHeader, _ -> TagCover(tag, photos.toInt(), jsonHeader) }
+                    .executeAsList()
+            }
+        }
+
+    /** Every file carrying [tag], in any state. */
+    suspend fun taggedFileIds(identityId: Uuid, driveId: Uuid, tag: Uuid): List<Uuid> =
+        databaseManager.readValue("photoDays.taggedFileIds") { queries.taggedFileIds(identityId, driveId, tag).executeAsList() }
+
     private companion object {
         const val IDS_PER_READ = 500
     }
@@ -72,3 +89,5 @@ sealed interface PhotoFilter {
 data class DayCount(val day: Int, val photos: Int)
 
 data class DayHeader(val day: Int, val jsonHeader: String)
+
+data class TagCover(val tag: Uuid, val photos: Int, val newestHeader: String)

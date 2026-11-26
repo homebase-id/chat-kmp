@@ -1006,6 +1006,7 @@
     <string name="chat_agent_ui_chosen">Chosen</string>
     <string name="chat_agent_ui_open_card">Open card</string>
     <string name="chat_agent_ui_open_image">View image</string>
+    <string name="chat_agent_ui_opens_link">Opens link</string>
 
     <!-- Shared contact card (vCard shared into the app) -->
     <string name="chat_file_share_you_one">You shared 1 file · %1$s</string>
@@ -3515,11 +3516,25 @@
     <string name="photobase_bin_move">Move to bin</string>
     <string name="photobase_bin_restore">Restore</string>
     <string name="photobase_bin_delete_forever">Delete forever</string>
+    <string name="photobase_library_title">Library</string>
     <string name="photobase_favorites_title">Favorites</string>
     <string name="photobase_favorite_state">Favorite</string>
     <string name="photobase_favorites_empty_state">Tap the heart on a photo to keep it here.</string>
     <string name="photobase_favorites_add">Add to favorites</string>
     <string name="photobase_favorites_remove">Remove from favorites</string>
+    <string name="photobase_albums_title">Albums</string>
+    <string name="photobase_album_title">Album</string>
+    <string name="photobase_album_new">New album</string>
+    <string name="photobase_album_name">Album name</string>
+    <string name="photobase_album_add">Add to album</string>
+    <string name="photobase_album_remove">Remove from album</string>
+    <string name="photobase_album_rename">Rename album</string>
+    <string name="photobase_album_delete">Delete album</string>
+    <string name="photobase_album_delete_confirm_title">Delete the album %1$s?</string>
+    <string name="photobase_album_delete_confirm_text">The album goes on all your devices. Its photos stay where they are.</string>
+    <string name="photobase_album_empty_state">Select photos in your library and tap Add to album to put them here.</string>
+    <string name="photobase_albums_none">No albums yet.</string>
+    <string name="photobase_album_failed">Couldn't save the album. Try again.</string>
     <string name="photobase_archive_title">Archive</string>
     <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>
     <string name="photobase_archive_move">Archive</string>

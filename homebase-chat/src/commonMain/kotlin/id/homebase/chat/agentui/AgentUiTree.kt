@@ -32,10 +32,14 @@ object AgentUiLimits {
     const val MAX_VALUES = 20
     const val MAX_VALUE_CP = 1000
     const val MAX_COPY_CP = 2000
+    const val MAX_URL_LENGTH = 2000
+    const val MAX_FACTS = 12
     const val MAX_ID_LENGTH = 64
     const val MAX_JSON_NESTING = 8
     val ACTION_ID = Regex("^[a-z0-9_.-]{1,64}$")
     val IMAGE_KEY = Regex("^chat_web\\d$")
+    // ASCII RFC 3986 characters only, which every platform's link handler accepts; lowercase scheme, no userinfo.
+    val HTTPS_URL = Regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#][A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]*)?$")
 }
 
 /** Keys of this message's payloads that a tree may show as images. */
@@ -47,10 +51,13 @@ enum class Tone { Default, Primary, Secondary, Error }
 enum class TextStyleKind { Title, Body, Label, Caption }
 enum class ButtonStyle { Filled, Tonal, Outlined, Text, Destructive }
 enum class ListDirection { Vertical, Horizontal }
+enum class BadgeTone { Neutral, Primary, Success, Warning, Error }
 
 data class AgentUiNodeAction(val id: String, val include: List<String>)
 
 data class SelectOption(val id: String, val label: String)
+
+data class Fact(val label: String, val value: String)
 
 const val MULTI_SELECT_SEPARATOR = ","
 
@@ -67,13 +74,23 @@ sealed interface AgentUiNode {
     data class ListNode(override val id: String, val children: List<AgentUiNode>, val direction: ListDirection) : AgentUiNode
     data class Table(override val id: String, val header: List<String>, val rows: List<List<String>>) : AgentUiNode
     data class Progress(override val id: String, val value: Float?, val label: String?) : AgentUiNode
-    /** With [copy] set the button copies it on the device and never sends an action; [action] is then null. */
+    data class ListItem(
+        override val id: String,
+        val title: String,
+        val subtitle: String?,
+        val caption: String?,
+        val trailing: AgentUiNode?,
+    ) : AgentUiNode
+    data class Facts(override val id: String, val items: List<Fact>) : AgentUiNode
+    data class Badge(override val id: String, val label: String, val tone: BadgeTone) : AgentUiNode
+    /** At most one of [action], [copy] and [url]: [copy] and [url] act on the device and never send anything. */
     data class Button(
         override val id: String,
         val label: String,
         val style: ButtonStyle,
         val action: AgentUiNodeAction?,
         val copy: String? = null,
+        val url: String? = null,
     ) : AgentUiNode
     data class Toggle(override val id: String, val label: String, val value: Boolean, val action: AgentUiNodeAction?) : AgentUiNode
     data class TextInput(
@@ -248,7 +265,7 @@ data class AgentUiTree(
             // A card that would draw nothing must show its fallback instead.
             if (!root.showsSomething()) {
                 return AgentUiTreeResult.Invalid(
-                    withNotes("nothing to show: no non-blank text, labelled chip, table, image, input, button or fallback"),
+                    withNotes("nothing to show: no non-blank text, labelled chip or badge, list item, facts, table, image, input, button or fallback"),
                 )
             }
             return AgentUiTreeResult.Valid(AgentUiTree(root, inputs, multiSelects))
@@ -303,6 +320,21 @@ data class AgentUiTree(
                 "table" -> table(id, obj)
                 "progress" -> AgentUiNode.Progress(id, progressValue(obj["value"]), obj.label("label"))
                 "button" -> button(id, obj)
+                "listItem" -> {
+                    val title = obj.label("title") ?: ""
+                    if (title.isBlank()) note(missing("listItem '$id' has no title", obj, "title", "label", "text", "markdown"))
+                    val trailing = obj.strictString("trailing")?.let { build(it, depth + 1, parent = id) }
+                    if (failure != null) return null
+                    val fits = trailing is AgentUiNode.Button || trailing is AgentUiNode.Badge || trailing is AgentUiNode.Chip
+                    if (trailing != null && !fits) note("listItem '$id' trailing '${trailing.id}' is not a button, badge or chip, so it is dropped")
+                    AgentUiNode.ListItem(id, title, obj.label("subtitle")?.takeIf { it.isNotBlank() }, obj.label("caption")?.takeIf { it.isNotBlank() }, trailing.takeIf { fits })
+                }
+                "facts" -> facts(id, obj)
+                "badge" -> {
+                    val label = obj.label("label") ?: ""
+                    if (label.isBlank()) note(missing("badge '$id' has no label", obj, "label", "text", "markdown", "value"))
+                    AgentUiNode.Badge(id, label, badgeTone(obj.strictString("tone")))
+                }
                 "toggle" -> {
                     val v = obj.strictBoolean("value") ?: false
                     inputs[id] = v.toString()
@@ -350,15 +382,23 @@ data class AgentUiTree(
         private fun button(id: String, obj: JsonObject): AgentUiNode? {
             val label = obj.label("label") ?: ""
             if (label.isBlank()) return fail(missing("button '$id' has no label", obj, "label", "text", "markdown", "title"))
-            // An explicit JSON null counts as absent, for copy and action alike.
+            // An explicit JSON null counts as absent, for copy, url and action alike.
+            listOf("copy", "url", "action").filter { obj.present(it) != null }.takeIf { it.size > 1 }?.let { (a, b) ->
+                return fail("button '$id' has both $a and $b; a button does one thing")
+            }
             val copy = if (obj.present("copy") == null) null else {
                 val s = obj.strictString("copy")?.takeIf { it.isNotBlank() } ?: return fail("button '$id' copy must be a non-blank string")
                 val cp = s.codePointCount()
                 if (cp > AgentUiLimits.MAX_COPY_CP) return fail("button '$id' copy is $cp code points, limit ${AgentUiLimits.MAX_COPY_CP}")
-                if (obj.present("action") != null) return fail("button '$id' has both copy and action; a copy button sends nothing")
                 s
             }
-            return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), if (copy == null) action(id, obj["action"]) else null, copy)
+            val url = if (obj.present("url") == null) null else {
+                val s = obj.strictString("url") ?: return fail("button '$id' url must be a string")
+                if (s.length > AgentUiLimits.MAX_URL_LENGTH) return fail("button '$id' url is ${s.length} characters, limit ${AgentUiLimits.MAX_URL_LENGTH}")
+                if (!AgentUiLimits.HTTPS_URL.matches(s)) return fail("button '$id' url must be an https:// link with a host, percent-encoded, with no spaces or user@")
+                s
+            }
+            return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), action(id, obj["action"]), copy, url)
         }
 
         private fun JsonObject.present(key: String): JsonElement? = this[key]?.takeUnless { it is JsonNull }
@@ -389,6 +429,15 @@ data class AgentUiTree(
             val header = cells(obj["header"])
             if (header.isEmpty() && rows.isEmpty()) note("table '$id' has no header or rows")
             return AgentUiNode.Table(id, header, rows)
+        }
+
+        private fun facts(id: String, obj: JsonObject): AgentUiNode {
+            val items = (obj["items"] as? JsonArray).orEmpty().mapNotNull { e ->
+                val o = e as? JsonObject ?: return@mapNotNull null
+                Fact(o.label("label") ?: "", o.label("value") ?: "").takeIf { it.label.isNotBlank() || it.value.isNotBlank() }
+            }.take(AgentUiLimits.MAX_FACTS)
+            if (items.isEmpty()) note("facts '$id' has no items with a label or value")
+            return AgentUiNode.Facts(id, items)
         }
 
         private fun options(obj: JsonObject, idOk: (String) -> Boolean = { true }): List<SelectOption> {
@@ -460,6 +509,14 @@ data class AgentUiTree(
             else -> TextStyleKind.Body
         }
 
+        private fun badgeTone(s: String?) = when (s) {
+            "primary" -> BadgeTone.Primary
+            "success" -> BadgeTone.Success
+            "warning" -> BadgeTone.Warning
+            "error" -> BadgeTone.Error
+            else -> BadgeTone.Neutral
+        }
+
         private fun buttonStyle(s: String?) = when (s) {
             "tonal" -> ButtonStyle.Tonal
             "outlined" -> ButtonStyle.Outlined
@@ -487,6 +544,9 @@ private fun AgentUiNode.action(): AgentUiNodeAction? = when (this) {
 private fun AgentUiNode.showsSomething(): Boolean = when (this) {
     is AgentUiNode.Text -> markdown.isNotBlank()
     is AgentUiNode.Chip -> label.isNotBlank()
+    is AgentUiNode.Badge -> label.isNotBlank()
+    is AgentUiNode.Facts -> items.isNotEmpty()
+    is AgentUiNode.ListItem -> title.isNotBlank() || subtitle != null || caption != null || trailing?.showsSomething() == true
     is AgentUiNode.Table -> header.isNotEmpty() || rows.isNotEmpty()
     is AgentUiNode.Unknown -> fallback != null
     is AgentUiNode.Divider -> false
@@ -498,6 +558,7 @@ internal fun AgentUiNode.children(): List<AgentUiNode>? = when (this) {
     is AgentUiNode.Row -> children
     is AgentUiNode.Card -> children
     is AgentUiNode.ListNode -> children
+    is AgentUiNode.ListItem -> listOfNotNull(trailing)
     else -> null
 }
 

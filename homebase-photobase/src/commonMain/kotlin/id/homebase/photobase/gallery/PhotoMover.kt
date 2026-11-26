@@ -78,13 +78,13 @@ class PhotoMover(
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)
 
     /**
-     * Hearts [fileIds], or takes the heart away, wherever each is. No version is checked: a heart is the same whoever set
-     * it, and another device's heart on the same photo stands beside this one.
+     * Puts [tag] on [fileIds], a heart or an album, or takes it off, wherever each is. No version is checked: a tag is
+     * the same whoever set it, and another device's tags on the same photo stand beside this one.
      */
-    suspend fun setFavorite(fileIds: Collection<Uuid>, favorite: Boolean): PhotoMoveResult {
+    suspend fun setTag(tag: Uuid, on: Boolean, fileIds: Collection<Uuid>): PhotoMoveResult {
         val tally = Tally(to = null)
         try {
-            for (answer in send(fileIds.distinct(), tally) { server.setLocalTag(PhotobaseProtocol.FavoriteTag, favorite, it) }) {
+            for (answer in send(fileIds.distinct(), tally) { server.setLocalTag(tag, on, it) }) {
                 when (answer.errorCode) {
                     null -> {
                         tally.done++
@@ -101,7 +101,7 @@ class PhotoMover(
             sync()
         }
         return tally.result().also {
-            Logger.i(tag = TAG) { "${if (favorite) "favorite" else "not favorite"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
+            Logger.i(tag = TAG) { "tag $tag ${if (on) "on" else "off"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
         }
     }
 
