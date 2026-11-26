@@ -72,6 +72,6 @@ class IosNetworkMonitor : NetworkMonitor {
             nw_endpoint_copy_address_string(gateway)?.let { gateways += it.toKString(); free(it) }
             true
         }
-        return "$name|${gateways.joinToString(",")}"
+        return "$name|${gateways.sorted().joinToString(",")}"
     }
 }

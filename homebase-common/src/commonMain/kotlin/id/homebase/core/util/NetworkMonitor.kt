@@ -13,7 +13,7 @@ interface NetworkMonitor {
 
     /**
      * Emits once each time the default network becomes a different network (Wi-Fi to cellular, cellular to Wi-Fi,
-     * one Wi-Fi to another, any network after none). Never for the network in use when collection starts, for losing the
+     * any network after none; one Wi-Fi to another where the platform can tell them apart). Never for the network in use when collection starts, for losing the
      * network with no replacement, or for signal, bandwidth or metering changes on the same network. Cold: each
      * collector runs its own watch. Web never emits: browsers have no portable default-network signal.
      */

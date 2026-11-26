@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import java.net.DatagramSocket
+import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
@@ -31,7 +32,9 @@ class JvmNetworkMonitor : NetworkMonitor {
         DatagramSocket().use { socket ->
             socket.connect(InetSocketAddress(probe, 53))
             val local = socket.localAddress
-            if (local.isAnyLocalAddress) null else "${NetworkInterface.getByInetAddress(local)?.name}/${local.hostAddress}"
+            // An IPv6 source address rotates (privacy addresses) on the same network, so only its /64 prefix counts.
+            val address = if (local is Inet6Address) local.address.copyOf(8).joinToString(":") else local.hostAddress
+            if (local.isAnyLocalAddress) null else "${NetworkInterface.getByInetAddress(local)?.name}/$address"
         }
     } catch (_: SocketException) {
         null
