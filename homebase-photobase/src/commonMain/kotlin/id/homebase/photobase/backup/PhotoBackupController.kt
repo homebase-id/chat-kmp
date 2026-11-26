@@ -38,8 +38,13 @@ class PhotoBackupController(
 
     val settings: StateFlow<BackupSettings> get() = settingsStore.settings
 
+    val settingsUnreadable: StateFlow<Boolean> get() = settingsStore.unreadable
+
+    fun retrySettings() = settingsStore.retryIfUnreadable()
+
     fun onAppForeground() {
         inForeground = true
+        settingsStore.retryIfUnreadable()
         val run = run ?: return
         if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
@@ -76,6 +81,7 @@ class PhotoBackupController(
     }
 
     suspend fun runFromBackground(request: BackupRunRequest) {
+        settingsStore.retryIfUnreadable()
         if (triggers?.rescansAfterBackgroundWake == true) run?.markWokenInBackground()
         // Another phone turning backup off or logging out cancels the identity's one schedule.
         if (settingsStore.settings.value.enabled && request.trigger.restoresPushSchedule) {
@@ -98,6 +104,7 @@ class PhotoBackupController(
     /** One call from a push: enqueues on Android, runs in what's left of the wake on iOS. */
     suspend fun onWake(remaining: Duration, isBackupPush: Boolean = true) {
         val triggers = triggers ?: return
+        settingsStore.retryIfUnreadable()
         if (!settingsStore.settings.value.enabled || remaining < MIN_WAKE) return
         if (!isBackupPush && (!triggers.usesOtherPushes || run?.takeOtherPushWake(OTHER_PUSH_WAKE_GAP) != true)) return
         triggers.onWake(remaining) { request -> runFromBackground(request) }
@@ -105,6 +112,7 @@ class PhotoBackupController(
 
     /** Re-arms what a process death can lose. */
     fun onProcessStart() {
+        settingsStore.retryIfUnreadable()
         val settings = settingsStore.settings.value
         if (settings.enabled) triggers?.rearm(settings)
     }
@@ -136,7 +144,13 @@ class PhotoBackupController(
     fun update(transform: (BackupSettings) -> BackupSettings) {
         scope.launch {
             val before = settingsStore.settings.value
-            settingsStore.update(transform)
+            try {
+                settingsStore.update(transform)
+            } catch (e: BackupSettingsUnreadable) {
+                // The settings screen says so; the user's change isn't kept.
+                Logger.w(tag = TAG, throwable = e) { "not saved" }
+                return@launch
+            }
             val after = settingsStore.settings.value
             triggers?.rearm(after)
             when {

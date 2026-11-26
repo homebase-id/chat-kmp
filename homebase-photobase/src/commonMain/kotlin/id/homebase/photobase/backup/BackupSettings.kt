@@ -36,9 +36,17 @@ data class BackupSettings(
     }
 }
 
+class BackupSettingsUnreadable : IllegalStateException("backup settings couldn't be read")
+
 /** Per identity: lives in KeyValue, which logout wipes. */
 class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     private val keyValue get() = databaseManager.keyValue
+
+    // Before the first read, which sets it.
+    private val _unreadable = MutableStateFlow(false)
+
+    /** The stored settings couldn't be read: [settings] holds the defaults, so backup is off and nothing saves over them. */
+    val unreadable: StateFlow<Boolean> = _unreadable.asStateFlow()
 
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<BackupSettings> = _settings.asStateFlow()
@@ -47,7 +55,15 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
         _settings.value = read()
     }
 
+    /** A failed read may have been a moment's lock: read again. */
+    fun retryIfUnreadable() {
+        if (_unreadable.value) reset()
+    }
+
+    /** Throws [BackupSettingsUnreadable] while the stored settings can't be read: saving the defaults would replace them. */
     suspend fun update(transform: (BackupSettings) -> BackupSettings) {
+        retryIfUnreadable()
+        if (_unreadable.value) throw BackupSettingsUnreadable()
         val next = transform(_settings.value).let {
             it.copy(pushIntervalMs = it.pushIntervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds))
         }
@@ -57,7 +73,9 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
 
     // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
     private fun read(): BackupSettings {
-        val bytes = runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }.getOrNull()
+        val read = runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }
+        _unreadable.value = read.isFailure
+        val bytes = read.getOrNull()
         if (bytes == null || bytes.isEmpty()) return BackupSettings()
         return OdinSystemSerializer.deserialize(bytes.decodeToString())
     }

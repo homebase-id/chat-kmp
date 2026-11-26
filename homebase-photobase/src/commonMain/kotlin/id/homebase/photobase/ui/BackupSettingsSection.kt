@@ -76,6 +76,8 @@ import id.homebase.resources.photobase_library_allow_all
 import id.homebase.resources.photobase_library_limited
 import id.homebase.resources.photobase_library_none
 import id.homebase.resources.photobase_location_allow
+import id.homebase.resources.photobase_backup_settings_retry
+import id.homebase.resources.photobase_backup_settings_unreadable
 import id.homebase.resources.photobase_location_withheld
 import id.homebase.resources.photobase_refresh_status
 import id.homebase.resources.photobase_refresh_status_desc
@@ -99,6 +101,7 @@ fun BackupSettingsSection(
     val rowColor = MaterialTheme.colorScheme.surfaceContainer
     val onPermissionChanged = { onAction(BackupSettingsUiAction.PermissionChanged) }
     val requestPhotoLocations = rememberPhotoLocationAccess(onPermissionChanged)
+    if (uiState.settingsUnreadable) SettingsUnreadableRow { onAction(BackupSettingsUiAction.RetrySettings) }
     LibraryAccessRow(uiState.status.libraryAccess, onPermissionChanged)
     if (settings.enabled && uiState.status.photoLocationsWithheld) PhotoLocationRow(requestPhotoLocations)
     RowGroup {
@@ -277,6 +280,13 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
             stringResource(if (access == LibraryAccess.None) MR.string.photobase_library_none else MR.string.photobase_library_limited),
         )
     }
+}
+
+@Composable
+private fun SettingsUnreadableRow(onRetry: () -> Unit) {
+    ListItem(
+        supportingContent = { Button(onClick = onRetry) { Text(stringResource(MR.string.photobase_backup_settings_retry)) } },
+    ) { Text(stringResource(MR.string.photobase_backup_settings_unreadable)) }
 }
 
 @Composable

@@ -20,10 +20,12 @@ data class BackupSettingsUiState(
     val status: BackupStatus = BackupStatus(),
     val albums: List<DeviceAlbum> = emptyList(),
     val batteryGuidance: BatteryGuidance? = null,
+    val settingsUnreadable: Boolean = false,
 )
 
 sealed interface BackupSettingsUiAction {
     data class SetEnabled(val enabled: Boolean) : BackupSettingsUiAction
+    data object RetrySettings : BackupSettingsUiAction
     data class SetWifiOnly(val wifiOnly: Boolean) : BackupSettingsUiAction
     data class SetVideosOnCellular(val allowed: Boolean) : BackupSettingsUiAction
     data class SetChargingOnly(val chargingOnly: Boolean) : BackupSettingsUiAction
@@ -52,6 +54,9 @@ class BackupSettingsViewModel(
         viewModelScope.launch {
             controller.settings.collect { settings -> _uiState.update { it.copy(settings = settings) } }
         }
+        viewModelScope.launch {
+            controller.settingsUnreadable.collect { unreadable -> _uiState.update { it.copy(settingsUnreadable = unreadable) } }
+        }
         controller.status?.let { status ->
             viewModelScope.launch {
                 status.collect { value -> _uiState.update { it.copy(status = value) } }
@@ -63,6 +68,7 @@ class BackupSettingsViewModel(
     fun onAction(action: BackupSettingsUiAction) {
         when (action) {
             is BackupSettingsUiAction.SetEnabled -> controller.update { it.copy(enabled = action.enabled) }
+            BackupSettingsUiAction.RetrySettings -> controller.retrySettings()
             is BackupSettingsUiAction.SetWifiOnly -> controller.update { it.copy(wifiOnly = action.wifiOnly) }
             is BackupSettingsUiAction.SetVideosOnCellular -> controller.update { it.copy(videosOnCellular = action.allowed) }
             is BackupSettingsUiAction.SetChargingOnly -> controller.update { it.copy(chargingOnly = action.chargingOnly) }
