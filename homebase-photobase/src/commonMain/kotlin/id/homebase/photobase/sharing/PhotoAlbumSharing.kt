@@ -39,6 +39,7 @@ import id.homebase.api.client.peer.PeerDriveQueryProvider
 import id.homebase.api.client.withRetryResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.HashUtil
+import id.homebase.api.util.compareStringUuId
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionSet
 import id.homebase.core.config.photobaseAppRegistration
@@ -86,8 +87,10 @@ val AlbumAudience.key: String
 
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
-/** A share made: the circle it went to, and the members whose key waits for them to set up Photos. */
-/** [pending]: a group's members odin-core holds the grant of until their identity next calls this one; they don't see it yet. */
+/**
+ * A share made: the circle it went to, the members whose key waits for them to set up Photos, and the [pending] ones,
+ * whose grant odin-core holds until their identity next calls this one.
+ */
 data class AlbumShared(val circleId: Uuid, val albumName: String, val waiting: List<OdinId>, val pending: List<OdinId> = emptyList())
 
 /** An album [owner] shares with this identity, as their drive holds it. */
@@ -104,12 +107,15 @@ sealed class PhotoSharingException(message: String) : Exception(message) {
     /** Sharing writes as Photobase, which this device hasn't signed in to. */
     class NotSignedIn : PhotoSharingException("Not signed in to Photobase")
 
-    class RecipientNotAdded(val recipients: List<OdinId>) : PhotoSharingException("$recipients couldn't be added")
+    /** Why these [recipients] can't be shared with. */
+    sealed class ForRecipients(val recipients: List<OdinId>, why: String) : PhotoSharingException("$recipients $why")
 
-    class NotConnected(val recipients: List<OdinId>) : PhotoSharingException("$recipients aren't connected")
+    class RecipientNotAdded(recipients: List<OdinId>) : ForRecipients(recipients, "couldn't be added")
+
+    class NotConnected(recipients: List<OdinId>) : ForRecipients(recipients, "aren't connected")
 
     /** Photos' circles take only connections the owner has reviewed. */
-    class NotReviewed(val recipients: List<OdinId>) : PhotoSharingException("$recipients aren't reviewed")
+    class NotReviewed(recipients: List<OdinId>) : ForRecipients(recipients, "aren't reviewed")
 
     /**
      * Photos' recipients circle grants less than a share asks: odin-core returns an existing circle as it is, so one made
@@ -119,7 +125,7 @@ sealed class PhotoSharingException(message: String) : Exception(message) {
         PhotoSharingException("circle $circleName ($circleId) grants $granted, lacks $missing")
 
     /** odin-core holds their grant until their identity next calls this one, and refuses a share with them until then. */
-    class Pending(val recipients: List<OdinId>) : PhotoSharingException("$recipients are pending")
+    class Pending(recipients: List<OdinId>) : ForRecipients(recipients, "are pending")
 
     /** [owner] hasn't reviewed this identity's connection, so it won't hand over the keys to what it shared. */
     class NotReviewedByOwner(val owner: OdinId) : PhotoSharingException("$owner hasn't reviewed this connection")
@@ -174,8 +180,7 @@ class PhotoAlbumSharing(
         val points = keys.points()
 
         val recipients = recipientsCircle()
-        assertGrantsAShare(recipients)
-        if (audience is AlbumAudience.Group) assertGrantsAShare(audience.circleId)
+        assertGrantsAShare(listOfNotNull(recipients, (audience as? AlbumAudience.Group)?.circleId))
         // Their individual shares then don't depend on a group they might leave.
         val pending = enrollAll(recipients, members).toMutableSet()
         val circleId = when (audience) {
@@ -228,19 +233,23 @@ class PhotoAlbumSharing(
     }
 
     /** Who album [albumId] is shared with now, withdrawn and expired shares left out. */
-    suspend fun sharedWith(albumId: Uuid): List<AlbumShareRecipient> {
+    suspend fun sharedWith(albumId: Uuid): List<AlbumShareRecipient> = sharedWithAndGroups(albumId).first
+
+    /** [sharedWith], and the groups to share it with too, from one read of the circles. */
+    suspend fun sharedWithAndGroups(albumId: Uuid): Pair<List<AlbumShareRecipient>, List<AlbumAudience.Group>> {
         circles.requireSignedIn()
         val (audiences, recordFile) = coroutineScope {
             val audiences = async { audienceCircles() }
             val recordFile = async { albumRecord(albumId) }
             audiences.await() to recordFile.await()
         }
-        recordFile ?: return emptyList()
+        val groups = audiences.values.filterIsInstance<AlbumAudience.Group>().sortedBy { it.name.lowercase() }
+        recordFile ?: return emptyList<AlbumShareRecipient>() to groups
         val adding = addingCircles(recordFile)
         // includeShares returns only live rows.
         return recordFile.shares.orEmpty().mapNotNull { row ->
             audiences[row.circleId]?.let { AlbumShareRecipient(it, if (row.circleId in adding) PhotoAlbumAccess.Add else PhotoAlbumAccess.View, row.expiresAt) }
-        }
+        } to groups
     }
 
     /** The groups this identity made, by name, then the people it has shared albums with. */
@@ -265,8 +274,9 @@ class PhotoAlbumSharing(
     /** Makes [group]'s members [members]; the ones added, for telling. Those who couldn't be added are named once the rest is done. */
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): List<OdinId> {
         circles.requireSignedIn()
-        assertMayJoin(members.filter { it !in group.members })
-        val keys = circles.keysOf(members.filter { it !in group.members })
+        val joining = members.filter { it !in group.members }
+        assertMayJoin(joining)
+        val keys = circles.keysOf(joining)
         val added = keys.keys.filter { it !in keys.unsupported() }
         if (added.isNotEmpty()) circles.enroll(recipientsCircle(), added)
         val refused = circles.enroll(group.circleId, added) + keys.unsupported()
@@ -492,7 +502,6 @@ class PhotoAlbumSharing(
         }
     }
 
-    // The editors circle is never shared with, nor the recipients' circle.
     // Before anything is written: odin-core skips anyone not connected or not reviewed, and the share then fails late.
     private suspend fun assertMayJoin(members: List<OdinId>) {
         val statuses = coroutineScope { members.map { async { it to connections.getConnectionStatus(it) } }.awaitAll() }
@@ -503,10 +512,13 @@ class PhotoAlbumSharing(
     }
 
     // Checked before anything is written: odin-core refuses every share otherwise.
-    private suspend fun assertGrantsAShare(circleId: Uuid) {
-        val circle = connections.getCirclesWithMembers().firstOrNull { it.circle.id.sameUuid(circleId) }?.circle ?: return
-        val missing = missingForAShare(circle)
-        if (missing.isNotEmpty()) throw PhotoSharingException.CircleTooNarrow(circleId, circle.name, grantedOnPhotos(circle), missing)
+    private suspend fun assertGrantsAShare(circleIds: List<Uuid>) {
+        val all = connections.getCirclesWithMembers()
+        for (circleId in circleIds) {
+            val circle = all.firstOrNull { compareStringUuId(it.circle.id, circleId.toHexString()) }?.circle ?: continue
+            val missing = missingForAShare(circle)
+            if (missing.isNotEmpty()) throw PhotoSharingException.CircleTooNarrow(circleId, circle.name, grantedOnPhotos(circle), missing)
+        }
     }
 
     /**
@@ -518,12 +530,17 @@ class PhotoAlbumSharing(
         val deposited = outcomes.filter { it.kind == EnrollmentOutcomeKind.Deposited }.mapTo(HashSet()) { it.odinId }
         val skipped = outcomes.filter { it.kind == EnrollmentOutcomeKind.Skipped }.mapTo(HashSet()) { it.odinId }
         if (skipped.isEmpty()) return deposited
-        val awaiting = circles.asApp.getPendingCircleMembers(circleId).mapTo(HashSet()) { it.odinId }
-        val refused = skipped - awaiting - circles.asApp.getCircleMembers(circleId).toSet()
+        val (awaiting, inIt) = coroutineScope {
+            val awaiting = async { circles.asApp.getPendingCircleMembers(circleId).mapTo(HashSet()) { it.odinId } }
+            val inIt = async { circles.asApp.getCircleMembers(circleId).toSet() }
+            awaiting.await() to inIt.await()
+        }
+        val refused = skipped - awaiting - inIt
         if (refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(refused.toList())
         return deposited + (skipped intersect awaiting)
     }
 
+    // The editors circle is never shared with, nor the recipients' circle.
     private suspend fun audienceCircles(): Map<Uuid, AlbumAudience> = audiencesOf(photobaseCircles())
 
     private suspend fun photobaseCircles(): List<CircleWithMembers> =
@@ -639,11 +656,10 @@ class PhotoAlbumSharing(
         internal fun sharerOf(content: String): OdinId? =
             contentObject(content)[ODIN_ID]?.let { runCatching { OdinId(it.jsonPrimitive.content) }.getOrNull() }
 
-        /** The app's circles that albums are shared with: each person's own, and the groups not disabled. */
         /** What [circle] grants on the Photos drive. */
         internal fun grantedOnPhotos(circle: RedactedCircleDefinition): List<DrivePermission> =
             circle.driveGrants.orEmpty()
-                .filter { it.permissionedDrive?.drive?.alias?.sameUuid(PhotobaseProtocol.DriveAlias) == true }
+                .filter { compareStringUuId(it.permissionedDrive?.drive?.alias, PhotobaseProtocol.DriveAlias.toHexString()) }
                 .flatMap { DrivePermission.fromNames(it.permissionedDrive?.permission.orEmpty()) }
                 .distinct()
 
@@ -651,8 +667,7 @@ class PhotoAlbumSharing(
         internal fun missingForAShare(circle: RedactedCircleDefinition): List<DrivePermission> =
             DrivePermission.fromValue(ROW_PERMISSIONS) - grantedOnPhotos(circle).toSet()
 
-        private fun String.sameUuid(id: Uuid) = replace("-", "").equals(id.toHexString(), ignoreCase = true)
-
+        /** The app's circles that albums are shared with: each person's own, and the groups not disabled. */
         internal fun audiencesOf(circles: List<CircleWithMembers>): Map<Uuid, AlbumAudience> =
             circles.mapNotNull { c ->
                 val id = Uuid.parse(c.circle.id)
@@ -680,7 +695,6 @@ class PhotoAlbumSharing(
     }
 }
 
-/** An identity a person typed, or null when it can't be one. */
 val AlbumAudience.label: String
     get() = when (this) {
         is AlbumAudience.Person -> odinId.domainName

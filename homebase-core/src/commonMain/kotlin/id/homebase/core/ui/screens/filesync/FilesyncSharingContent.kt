@@ -93,7 +93,7 @@ import id.homebase.resources.filesync_expiry_never
 import id.homebase.resources.filesync_expiry_title
 import id.homebase.resources.filesync_expiry_week
 import id.homebase.resources.filesync_expiry_year
-import id.homebase.resources.filesync_group_edit_members
+import id.homebase.resources.audience_group_edit
 import id.homebase.resources.filesync_share_access_edit
 import id.homebase.resources.filesync_share_access_view
 import id.homebase.resources.filesync_share_note
@@ -394,7 +394,7 @@ internal fun FilesyncShareView(
                     if (!incoming && shown is FilesyncAudience.Group) {
                         val members = shown.members.joinToString { it.domainName }
                         Text(members, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        TextButton(onClick = { editingMembers = true }) { Text(stringResource(MR.string.filesync_group_edit_members)) }
+                        TextButton(onClick = { editingMembers = true }) { Text(stringResource(MR.string.audience_group_edit)) }
                     }
                 }
                 if (incoming && sharing.canAddHere) FilesyncUploadButton(writes.pickToAdd)

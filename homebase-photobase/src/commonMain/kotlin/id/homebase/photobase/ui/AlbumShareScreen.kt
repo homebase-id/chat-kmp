@@ -2,9 +2,6 @@ package id.homebase.photobase.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,8 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -38,6 +33,8 @@ import id.homebase.chat.widget.AudienceGroup
 import id.homebase.chat.widget.AudienceGroupSheet
 import id.homebase.chat.widget.AudiencePicker
 import id.homebase.chat.widget.GroupFaces
+import id.homebase.chat.widget.PersonRow
+import id.homebase.core.widget.ButtonProgressContent
 import id.homebase.chat.widget.rememberAudiencePickerState
 import id.homebase.photobase.sharing.AlbumAudience
 import androidx.compose.runtime.remember
@@ -45,9 +42,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
-import id.homebase.core.avatars.AvatarOptions
-import id.homebase.core.avatars.IdentityAvatar
-import id.homebase.core.widget.ContactName
 import id.homebase.photobase.sharing.AlbumShareRecipient
 import id.homebase.resources.audience_group_people
 import id.homebase.resources.photobase_group_saved
@@ -76,7 +70,7 @@ import id.homebase.resources.photobase_permission_read
 import id.homebase.resources.photobase_permission_write
 import id.homebase.resources.photobase_share_circle_id
 import id.homebase.resources.photobase_share_circle_too_narrow
-import id.homebase.resources.photobase_share_details
+import id.homebase.resources.details
 import id.homebase.resources.photobase_share_details_body
 import id.homebase.resources.photobase_share_details_none
 import id.homebase.resources.photobase_share_failed_read
@@ -120,12 +114,7 @@ private fun RecipientRow(recipient: AlbumShareRecipient, enabled: Boolean, onMem
         }
     }
     when (val audience = recipient.audience) {
-        is AlbumAudience.Person -> ListItem(
-            leadingContent = { IdentityAvatar(audience.odinId, AvatarOptions(size = 40.dp)) },
-            headlineContent = { ContactName(audience.odinId, knownName = null, style = MaterialTheme.typography.bodyLarge) },
-            supportingContent = { Text(stringResource(MR.string.photobase_share_recipient_detail, audience.odinId.domainName, access)) },
-            trailingContent = stop,
-        )
+        is AlbumAudience.Person -> PersonRow(audience.odinId, stringResource(MR.string.photobase_share_recipient_detail, audience.odinId.domainName, access), stop)
         is AlbumAudience.Group -> ListItem(
             leadingContent = { GroupFaces(audience.members) },
             headlineContent = { Text(audience.name) },
@@ -185,9 +174,9 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
     // The group whose members are shown, by id, so a save's reload shows it as it is now.
     var sheetGroup by rememberSaveable { mutableStateOf<String?>(null) }
     sheetGroup?.let { id ->
-        val shown = groups.firstOrNull { it.id == id }
         val group = uiState.groups.firstOrNull { it.circleId.toString() == id }
-        if (shown != null && group != null) {
+        val shown = group?.let { g -> groups.firstOrNull { it.id == id } }
+        if (group != null && shown != null) {
             AudienceGroupSheet(
                 shown,
                 onDismiss = { sheetGroup = null },
@@ -204,7 +193,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
         AlertDialog(
             onDismissRequest = { details = null },
             confirmButton = { TextButton(onClick = { details = null }) { Text(stringResource(MR.string.ok)) } },
-            title = { Text(stringResource(MR.string.photobase_share_details)) },
+            title = { Text(stringResource(MR.string.details)) },
             text = { Text(body) },
         )
     }
@@ -227,12 +216,12 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
                 }
                 is AlbumShareEvent.Failed -> {
                     val message = event.failureMessage()
-                    val shown = snackbar.showSnackbar(message, actionLabel = event.reason.takeIf { it.status != null }?.let { getString(MR.string.photobase_share_details) })
+                    val shown = snackbar.showSnackbar(message, actionLabel = event.reason.takeIf { it.status != null }?.let { getString(MR.string.details) })
                     if (shown == SnackbarResult.ActionPerformed) details = event.reason.detailsText()
                 }
                 is AlbumShareEvent.CircleTooNarrow -> {
                     val message = getString(MR.string.photobase_share_circle_too_narrow, event.circleName, event.granted.names(), event.missing.names())
-                    val shown = snackbar.showSnackbar(message, actionLabel = getString(MR.string.photobase_share_details), duration = SnackbarDuration.Long)
+                    val shown = snackbar.showSnackbar(message, actionLabel = getString(MR.string.details), duration = SnackbarDuration.Long)
                     if (shown == SnackbarResult.ActionPerformed) details = getString(MR.string.photobase_share_circle_id, event.circleName, event.circleId.toString())
                 }
                 is AlbumShareEvent.Waiting -> snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who))
@@ -271,15 +260,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
                     Button(
                         onClick = { choice?.let { viewModel.onAction(AlbumShareUiAction.Share(it)) } },
                         enabled = !uiState.busy && choice != null,
-                    ) {
-                        if (uiState.busy) {
-                            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
-                            Spacer(Modifier.width(8.dp))
-                            Text(stringResource(MR.string.photobase_share_sharing))
-                        } else {
-                            Text(stringResource(MR.string.photobase_share_send))
-                        }
-                    }
+                    ) { ButtonProgressContent(uiState.busy, stringResource(MR.string.photobase_share_sharing), stringResource(MR.string.photobase_share_send)) }
                 }
             }
             item(key = "header") { SettingsSectionHeader(stringResource(MR.string.photobase_share_shared_with), Modifier.padding(start = 16.dp, top = 8.dp)) }

@@ -3294,7 +3294,6 @@
     <string name="audience_picker_typed">Or add someone by their Homebase ID</string>
     <string name="audience_picker_typed_invalid">That isn't a Homebase ID.</string>
     <string name="audience_picker_add">Add</string>
-    <string name="filesync_group_edit_members">Edit members</string>
     <string name="audience_group_members_title">People in %1$s</string>
     <string name="audience_group_members_body">Whoever you add sees everything shared with %1$s. Whoever you remove stops seeing it.</string>
     <string name="audience_group_see_members">See who's in %1$s</string>
@@ -3585,7 +3584,6 @@
     <string name="photobase_permission_write">add and change</string>
     <string name="photobase_permission_react">reactions</string>
     <string name="photobase_permission_comment">comments</string>
-    <string name="photobase_share_details">Details</string>
     <string name="photobase_share_details_body">Status: %1$s\nError code: %2$s\nCorrelation ID: %3$s</string>
     <string name="photobase_share_details_none">—</string>
     <string name="photobase_share_waiting">%1$s will see it once they set up Photos.</string>

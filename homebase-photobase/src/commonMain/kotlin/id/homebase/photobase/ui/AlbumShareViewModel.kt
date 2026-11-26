@@ -41,7 +41,6 @@ data class AlbumShareUiState(
 sealed interface AlbumShareEvent {
     data class OpenUrl(val url: String) : AlbumShareEvent
     data class OpenSignIn(val url: String) : AlbumShareEvent
-    /** [step] failed for [reason]: the server's, or none when Homebase wasn't reached ([unreachable]). */
     data class Failed(val step: AlbumShareStep, val reason: ShareFailure) : AlbumShareEvent
     /** The circle a share goes through grants [granted] on the Photos drive, short of [missing]; only the owner console changes it. */
     data class CircleTooNarrow(val circleName: String, val circleId: Uuid, val granted: List<DrivePermission>, val missing: List<DrivePermission>) : AlbumShareEvent
@@ -160,10 +159,6 @@ class AlbumShareViewModel(
             if (openOwnerPage) _events.send(AlbumShareEvent.OpenUrl(missing))
             return
         }
-        ready()
-    }
-
-    private suspend fun ready() {
         _uiState.update { it.copy(signedIn = true) }
         load()
     }
@@ -193,14 +188,16 @@ class AlbumShareViewModel(
                 block()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: PhotoSharingException.RecipientNotAdded) {
-                _events.send(AlbumShareEvent.NotAdded(e.recipients.joinToString { it.domainName }))
-            } catch (e: PhotoSharingException.NotConnected) {
-                _events.send(AlbumShareEvent.NotConnected(e.recipients.joinToString { it.domainName }))
-            } catch (e: PhotoSharingException.NotReviewed) {
-                _events.send(AlbumShareEvent.NotReviewed(e.recipients.joinToString { it.domainName }))
-            } catch (e: PhotoSharingException.Pending) {
-                _events.send(AlbumShareEvent.Pending(e.recipients.joinToString { it.domainName }))
+            } catch (e: PhotoSharingException.ForRecipients) {
+                val who = e.recipients.joinToString { it.domainName }
+                _events.send(
+                    when (e) {
+                        is PhotoSharingException.RecipientNotAdded -> AlbumShareEvent.NotAdded(who)
+                        is PhotoSharingException.NotConnected -> AlbumShareEvent.NotConnected(who)
+                        is PhotoSharingException.NotReviewed -> AlbumShareEvent.NotReviewed(who)
+                        is PhotoSharingException.Pending -> AlbumShareEvent.Pending(who)
+                    }
+                )
             } catch (e: PhotoSharingException.CircleTooNarrow) {
                 Logger.w(tag = TAG) { "album $albumId: ${e.message}" }
                 _events.send(AlbumShareEvent.CircleTooNarrow(e.circleName, e.circleId, e.granted, e.missing))
@@ -216,7 +213,7 @@ class AlbumShareViewModel(
     }
 
     private suspend fun load() {
-        guarded(AlbumShareStep.Read) { sharing.sharedWith(albumId) to sharing.audiences().filterIsInstance<AlbumAudience.Group>() }?.let { (recipients, groups) ->
+        guarded(AlbumShareStep.Read) { sharing.sharedWithAndGroups(albumId) }?.let { (recipients, groups) ->
             _uiState.update { it.copy(recipients = recipients, groups = groups) }
         }
     }

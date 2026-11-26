@@ -3,26 +3,22 @@ package id.homebase.chat.widget
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,6 +28,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.core.avatars.AvatarOptions
 import id.homebase.core.avatars.IdentityAvatar
 import id.homebase.core.widget.AdaptiveSheet
+import id.homebase.core.widget.ButtonProgressContent
 import id.homebase.core.widget.ContactName
 import id.homebase.core.widget.MinimalSearchTextField
 import id.homebase.resources.MR
@@ -58,7 +55,7 @@ fun AudienceGroupSheet(
     startEditing: Boolean = false,
     saving: Boolean = false,
 ) {
-    var editing by rememberSaveable(group.id) { mutableStateOf(startEditing && onSave != null) }
+    var editing by rememberSaveable(group.id) { mutableStateOf(startEditing) }
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 420.dp) {
         Column(modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (editing && onSave != null) {
@@ -86,12 +83,13 @@ private fun Members(group: AudienceGroup, onDismiss: () -> Unit, onEdit: (() -> 
     }
 }
 
-/** A person by name and avatar, their Homebase ID below. */
+/** A person by name and avatar, [supporting] below (their Homebase ID unless given). */
 @Composable
-fun PersonRow(person: OdinId, supporting: String? = null) {
+fun PersonRow(person: OdinId, supporting: String? = null, trailing: (@Composable () -> Unit)? = null) {
     ListItem(
         leadingContent = { IdentityAvatar(person, AvatarOptions(size = 36.dp)) },
         supportingContent = { Text(supporting ?: person.domainName) },
+        trailingContent = trailing,
         colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
     ) { ContactName(person, knownName = null, style = MaterialTheme.typography.bodyLarge) }
 }
@@ -100,30 +98,24 @@ fun PersonRow(person: OdinId, supporting: String? = null) {
 @Composable
 private fun EditMembers(group: AudienceGroup, saving: Boolean, onCancel: () -> Unit, onSave: (List<OdinId>) -> Unit) {
     val search = rememberTextFieldState()
-    var chosen by rememberSaveable(group.id) { mutableStateOf(group.members.map { it.domainName }) }
-    val people = rememberPeople(search.text.toString().trim(), first = group.members.mapTo(HashSet()) { it.domainName }, extra = group.members)
+    val current = remember(group.members) { group.members.mapTo(HashSet()) { it.domainName } }
+    var chosen by rememberSaveable(group.id) { mutableStateOf(current.toList()) }
+    val chosenSet = remember(chosen) { chosen.toSet() }
+    val people = rememberPeople(search.text.toString().trim(), first = current, extra = group.members)
     Text(stringResource(MR.string.audience_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(MR.string.audience_group_members_body, group.name), style = MaterialTheme.typography.bodyMedium)
     MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.audience_picker_search), modifier = Modifier.fillMaxWidth())
     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
         items(people, key = { it.domainName }) { person ->
-            val checked = person.domainName in chosen
+            val checked = person.domainName in chosenSet
             PersonCheckRow(person, checked, enabled = !saving) { chosen = if (checked) chosen - person.domainName else chosen + person.domainName }
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = onCancel, enabled = !saving) { Text(stringResource(MR.string.cancel)) }
         Button(
-            enabled = !saving && chosen.isNotEmpty() && chosen.toSet() != group.members.mapTo(HashSet()) { it.domainName },
+            enabled = !saving && chosen.isNotEmpty() && chosenSet != current,
             onClick = { onSave(chosen.map(::OdinId)) },
-        ) {
-            if (saving) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(MR.string.audience_group_saving))
-            } else {
-                Text(stringResource(MR.string.save))
-            }
-        }
+        ) { ButtonProgressContent(saving, stringResource(MR.string.audience_group_saving), stringResource(MR.string.save)) }
     }
 }
