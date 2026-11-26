@@ -104,7 +104,7 @@ data class DeviceState(
  * never raises the system permission dialog. Neither one suspends for longer than a few seconds.
  * [state] fills in `freeStorageBytes` and `isOverheated` on every platform that backs up; it's
  * polled every few seconds during a run, so both must be cheap. [state] and [isUnmetered] may be called from any
- * thread; [isUnmetered] reads only the network, as chat's send loop polls it on every drain.
+ * thread. [isUnmetered] reads only the network, as chat's outbox asks it on every bulk checkout; it is false with no network.
  */
 interface BackupDeviceProbe {
     suspend fun state(): DeviceState

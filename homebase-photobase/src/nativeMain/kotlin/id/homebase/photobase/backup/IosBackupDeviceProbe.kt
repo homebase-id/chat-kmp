@@ -5,7 +5,6 @@ import platform.UIKit.UIApplication
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSHomeDirectory
 import platform.Foundation.NSNumber
 import platform.Foundation.NSProcessInfo
@@ -30,7 +29,6 @@ import platform.UIKit.UIDevice
 import platform.UIKit.UIDeviceBatteryState
 import platform.darwin.dispatch_get_global_queue
 import kotlin.coroutines.resume
-import kotlin.time.Duration.Companion.seconds
 
 class IosBackupDeviceProbe : BackupDeviceProbe {
 
@@ -72,24 +70,22 @@ class IosBackupDeviceProbe : BackupDeviceProbe {
         UIApplication.sharedApplication.backgroundRefreshStatus != UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable
     }
 
-    // A monitor reports the current path once as soon as it starts. No answer counts as no network.
-    private suspend fun networkPath(): Pair<Boolean, Boolean> = withTimeoutOrNull(NETWORK_PATH_TIMEOUT) {
-        suspendCancellableCoroutine { continuation ->
-            val monitor = nw_path_monitor_create()
-            nw_path_monitor_set_queue(monitor, dispatch_get_global_queue(0, 0u))
-            nw_path_monitor_set_update_handler(monitor) { path ->
-                nw_path_monitor_cancel(monitor)
-                if (continuation.isActive) {
-                    continuation.resume((nw_path_get_status(path) == nw_path_status_satisfied) to !nw_path_is_expensive(path))
-                }
+    // A monitor reports the current path once as soon as it starts.
+    private suspend fun networkPath(): Pair<Boolean, Boolean> = suspendCancellableCoroutine { continuation ->
+        val monitor = nw_path_monitor_create()
+        nw_path_monitor_set_queue(monitor, dispatch_get_global_queue(0, 0u))
+        nw_path_monitor_set_update_handler(monitor) { path ->
+            nw_path_monitor_cancel(monitor)
+            if (continuation.isActive) {
+                val satisfied = nw_path_get_status(path) == nw_path_status_satisfied
+                continuation.resume(satisfied to (satisfied && !nw_path_is_expensive(path)))
             }
-            continuation.invokeOnCancellation { nw_path_monitor_cancel(monitor) }
-            nw_path_monitor_start(monitor)
         }
-    } ?: (false to false)
+        continuation.invokeOnCancellation { nw_path_monitor_cancel(monitor) }
+        nw_path_monitor_start(monitor)
+    }
 
     private companion object {
         const val LOW_BATTERY = 0.15f
-        val NETWORK_PATH_TIMEOUT = 5.seconds
     }
 }
