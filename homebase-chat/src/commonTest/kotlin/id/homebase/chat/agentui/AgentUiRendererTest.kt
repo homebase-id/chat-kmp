@@ -28,6 +28,7 @@ import id.homebase.chat.agentui.AgentUiFixtures.valid
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalTestApi::class)
 class AgentUiRendererTest {
@@ -38,6 +39,7 @@ class AgentUiRendererTest {
         answered: Set<String> = emptySet(),
         clipboard: Clipboard? = null,
         uriHandler: UriHandler? = null,
+        onLongClick: (() -> Unit)? = null,
         onAction: (AgentUiActionRequest) -> Unit = {},
     ) = setContent {
         MaterialTheme {
@@ -51,6 +53,7 @@ class AgentUiRendererTest {
                     pendingActionIds = pending,
                     onAction = onAction,
                     answeredActionIds = answered,
+                    onLongClick = onLongClick,
                 )
             }
             val locals = listOfNotNull(clipboard?.let { LocalClipboard provides it }, uriHandler?.let { LocalUriHandler provides it })
@@ -307,6 +310,20 @@ class AgentUiRendererTest {
         onNodeWithText("Track order").assertIsEnabled().performClick()
         assertEquals(listOf("https://acme.example/orders/1042"), opened)
         assertEquals(emptyList(), seen)
+    }
+
+    // A selectable (pointer) card once dropped the title's weight, so a long title squeezed the badge away.
+    @Test fun a_long_list_item_title_leaves_room_for_its_trailing_badge() = runComposeUiTest {
+        val t = valid(
+            tree(
+                """{"id":"li","type":"listItem","title":"${"Order ".repeat(40)}","trailing":"st"}""",
+                """{"id":"st","type":"badge","label":"Shipped"}""",
+                root = "li",
+            ),
+        )
+        show(t, onLongClick = {})
+        val badge = onNodeWithText("Shipped").fetchSemanticsNode().boundsInRoot
+        assertTrue(badge.width > 0f, "badge width ${badge.width}")
     }
 
     @Test fun list_item_facts_and_badge_render_their_text() = runComposeUiTest {

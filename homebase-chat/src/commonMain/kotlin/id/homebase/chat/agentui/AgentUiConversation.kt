@@ -115,7 +115,7 @@ private fun AgentUiNode.collectText(out: MutableList<String>) {
     when (this) {
         is AgentUiNode.Text -> markdown.takeIf { it.isNotBlank() }?.let(out::add)
         is AgentUiNode.Table -> (listOf(header) + rows).filter { it.isNotEmpty() }.forEach { out += it.joinToString("\t") }
-        is AgentUiNode.Facts -> items.forEach { out += "${it.label}\t${it.value}" }
+        is AgentUiNode.Facts -> items.forEach { f -> out += listOf(f.label, f.value).filter { it.isNotBlank() }.joinToString("\t") }
         is AgentUiNode.ListItem -> {
             listOfNotNull(title.takeIf { it.isNotBlank() }, subtitle, caption).forEach(out::add)
             children()?.forEach { it.collectText(out) }

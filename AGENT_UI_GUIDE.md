@@ -31,7 +31,7 @@ Every number below comes from `AgentUiLimits`, `AgentUiDescriptor`, `AgentUiActi
 | `list` | `vertical`: repeated items. `horizontal`: a carousel of 260 dp items, usually images. | A horizontal list of text; it scrolls sideways and hides content. |
 | `chip` | Display-only tags ("X", "LinkedIn"); `selected` marks the ones that apply. | Chips as buttons. They take no taps; use `select` for a choice. |
 | `badge` | A short status on a pill: "Shipped" (`success`), "Late" (`warning`), "Failed" (`error`), "New" (`primary`), "Draft" (`neutral`, the default). Display only. | Sentences in a badge; tones as decoration. |
-| `listItem` | One row of a list: `title`, a muted `subtitle`, a smaller `caption`, and one `trailing` node (a button, badge or chip) at the end. Consecutive list items in a `column`, `list` or card are split by dividers. | Markdown bullet lists of things the person acts on or scans; a whole layout as `trailing`. |
+| `listItem` | One row of a list: `title`, a muted `subtitle`, a smaller `caption`, and one `trailing` node (a button, badge or chip; anything else is dropped) at the end, at most 160 dp wide. Consecutive list items in a `column`, `list` or card are split by dividers. | Markdown bullet lists of things the person acts on or scans; a whole layout as `trailing`. |
 | `facts` | Label/value pairs: totals, dates, status, an address (at most 12). | A two-column `table` for the same; bold-label markdown lines. |
 | `divider` | Splitting two sections that spacing alone does not separate. | A divider between every block. |
 | `table` | Small tabular data. A column whose cells all look numeric is right-aligned and narrower. | Wide tables: 8 columns is the cap, but 3 or 4 is what fits on a phone. |
@@ -118,8 +118,8 @@ usable after other actions are sent.
 {"id":"track","type":"button","label":"Track order","style":"outlined","url":"https://acme.example/orders/1042"}
 ```
 
-`url` must start with `https://` (lowercase), have a host, and hold no spaces or `user@`; at most
-2000 characters. A button has at most one of `action`, `copy` and `url`; a bad `url` or two of them
+`url` must start with `https://` (lowercase), have a host, and hold no spaces or `user@`; anything
+outside ASCII URL characters must be percent-encoded. At most 2000 characters. A button has at most one of `action`, `copy` and `url`; a bad `url` or two of them
 refuses the tree. Older apps that do not know `url` show the button disabled, so put a link the
 person must have in the text too.
 
@@ -195,8 +195,8 @@ networks, and one clear primary action.
 
 Fallback: `"Draft post for X and LinkedIn, waiting for your approval"`.
 
-An order summary: list items with a status badge or an action at the end, the totals as facts, a
-link out, and the primary action last.
+An order summary: list items with a status badge at the end, the totals as facts, and the actions
+in one row at the bottom, the primary first and a link out beside it.
 
 ```json
 {"root":"card","nodes":[

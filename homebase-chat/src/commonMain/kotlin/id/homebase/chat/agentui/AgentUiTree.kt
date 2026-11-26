@@ -38,8 +38,8 @@ object AgentUiLimits {
     const val MAX_JSON_NESTING = 8
     val ACTION_ID = Regex("^[a-z0-9_.-]{1,64}$")
     val IMAGE_KEY = Regex("^chat_web\\d$")
-    // Lowercase scheme only: inline case-insensitive groups are not portable to the wasm regex engine.
-    val HTTPS_URL = Regex("^https://[^\\s/?#@]+([/?#]\\S*)?$")
+    // ASCII RFC 3986 characters only, which every platform's link handler accepts; lowercase scheme, no userinfo.
+    val HTTPS_URL = Regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#][A-Za-z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]*)?$")
 }
 
 /** Keys of this message's payloads that a tree may show as images. */
@@ -325,7 +325,9 @@ data class AgentUiTree(
                     if (title.isBlank()) note(missing("listItem '$id' has no title", obj, "title", "label", "text", "markdown"))
                     val trailing = obj.strictString("trailing")?.let { build(it, depth + 1, parent = id) }
                     if (failure != null) return null
-                    AgentUiNode.ListItem(id, title, obj.label("subtitle")?.takeIf { it.isNotBlank() }, obj.label("caption")?.takeIf { it.isNotBlank() }, trailing)
+                    val fits = trailing is AgentUiNode.Button || trailing is AgentUiNode.Badge || trailing is AgentUiNode.Chip
+                    if (trailing != null && !fits) note("listItem '$id' trailing '${trailing.id}' is not a button, badge or chip, so it is dropped")
+                    AgentUiNode.ListItem(id, title, obj.label("subtitle")?.takeIf { it.isNotBlank() }, obj.label("caption")?.takeIf { it.isNotBlank() }, trailing.takeIf { fits })
                 }
                 "facts" -> facts(id, obj)
                 "badge" -> {
@@ -393,7 +395,7 @@ data class AgentUiTree(
             val url = if (obj.present("url") == null) null else {
                 val s = obj.strictString("url") ?: return fail("button '$id' url must be a string")
                 if (s.length > AgentUiLimits.MAX_URL_LENGTH) return fail("button '$id' url is ${s.length} characters, limit ${AgentUiLimits.MAX_URL_LENGTH}")
-                if (!AgentUiLimits.HTTPS_URL.matches(s)) return fail("button '$id' url must be an https:// link with a host and no spaces")
+                if (!AgentUiLimits.HTTPS_URL.matches(s)) return fail("button '$id' url must be an https:// link with a host, percent-encoded, with no spaces or user@")
                 s
             }
             return AgentUiNode.Button(id, label, buttonStyle(obj.strictString("style")), action(id, obj["action"]), copy, url)

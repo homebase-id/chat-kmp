@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -91,7 +92,6 @@ import id.homebase.core.util.onSecondaryPress
 import id.homebase.core.clipboard.clipEntryOf
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
-import id.homebase.core.ui.theme.ExtendedColors
 import id.homebase.core.ui.theme.HomebaseTheme
 import id.homebase.resources.MR
 import id.homebase.resources.chat_agent_ui_chosen
@@ -115,6 +115,7 @@ data class AgentUiActionRequest(
 )
 
 private val ListItemWidth = 260.dp
+private val TrailingMaxWidth = 160.dp
 
 private const val CopiedMillis = 2000L
 
@@ -277,15 +278,18 @@ private fun ListItemView(node: AgentUiNode.ListItem, env: Env, modifier: Modifie
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SelectableOnDesktop(enabled = env.onLongClick != null) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (node.title.isNotBlank()) Text(node.title, style = MaterialTheme.typography.titleSmall)
-                val muted = MaterialTheme.colorScheme.onSurfaceVariant
-                node.subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
-                node.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
+        // The weight goes on a Box: inside SelectableOnDesktop the Column is not the Row's child.
+        Box(Modifier.weight(1f)) {
+            SelectableOnDesktop(enabled = env.onLongClick != null) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (node.title.isNotBlank()) Text(node.title, style = MaterialTheme.typography.titleSmall)
+                    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                    node.subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
+                    node.caption?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = muted) }
+                }
             }
         }
-        node.trailing?.let { NodeView(it, env) }
+        node.trailing?.let { NodeView(it, env, Modifier.widthIn(max = TrailingMaxWidth)) }
     }
 }
 
@@ -314,7 +318,7 @@ private fun BadgeView(node: AgentUiNode.Badge, modifier: Modifier) {
     val (container, content) = when (node.tone) {
         BadgeTone.Neutral -> scheme.onSurfaceVariant.copy(alpha = 0.12f) to tint
         BadgeTone.Primary -> scheme.primaryContainer to scheme.onPrimaryContainer
-        BadgeTone.Success -> ExtendedColors.Success.copy(alpha = 0.24f) to tint
+        BadgeTone.Success -> HomebaseTheme.extendedColors.success.copy(alpha = 0.24f) to tint
         BadgeTone.Warning -> HomebaseTheme.extendedColors.warning.copy(alpha = 0.24f) to tint
         BadgeTone.Error -> scheme.errorContainer to scheme.onErrorContainer
     }

@@ -98,13 +98,13 @@ which loads the full payload and pages through the card's images only, with no c
 | `image` | `payloadKey`, `alt` |
 | `chip` | `label`, `selected?` (display only) |
 | `badge` | `label`, `tone`: neutral, primary, success, warning, error (display only, takes no taps) |
-| `listItem` | `title`, `subtitle?`, `caption?`, `trailing?` (the id of one child node, usually a button or badge) |
+| `listItem` | `title`, `subtitle?`, `caption?`, `trailing?` (the id of one button, badge or chip; another node type is dropped) |
 | `facts` | `items` `[{label,value}]`: label/value rows; an item with neither is dropped |
 | `divider` | |
 | `list` | `children`, `direction`: vertical, horizontal |
 | `table` | `header` (strings), `rows` (arrays of strings) |
 | `progress` | `value` 0..1 or null (indeterminate), `label?` |
-| `button` | `label` (required: a blank label refuses the tree), `style`: filled, tonal, outlined, text, destructive; at most one of `action`, `copy` (a non-blank string of at most 2000 code points, copied to the clipboard on the device and never sent) and `url` (`https://` and a host, no spaces or userinfo, at most 2000 characters; opened on the device and never sent); two of them, or a bad `url`, refuse the tree |
+| `button` | `label` (required: a blank label refuses the tree), `style`: filled, tonal, outlined, text, destructive; at most one of `action`, `copy` (a non-blank string of at most 2000 code points, copied to the clipboard on the device and never sent) and `url` (`https://` and a host, ASCII URL characters only (percent-encode the rest), no userinfo, at most 2000 characters; opened on the device and never sent); two of them, or a bad `url`, refuse the tree |
 | `toggle` | `label`, `value`, `action?` (fires on change) |
 | `textInput` | `label`, `value`, `multiline`, `maxLength`, `action?` (single-line only: fires on the keyboard's send key) |
 | `select` | `label`, `options` `[{id,label}]`, `value?`, `action?` (fires on pick) |

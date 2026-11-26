@@ -476,6 +476,10 @@ class AgentUiTreeTest {
         assertReason(notHttps, button("\"https://\""))
         assertReason(notHttps, button("\"https://acme.example/a b\""))
         assertReason(notHttps, button("\"https://user@evil.example\""))
+        assertReason(notHttps, button("\"https://acme.example/a\u00A0b\""))
+        assertReason(notHttps, button("\"https://acme.example/a|b\""))
+        assertReason(notHttps, button("\"https://acme.example/\\u0001\""))
+        valid(button("\"https://acme.example:8443/a/b?q=1&r=%20x#top\""))
         assertReason("button 'root' url must be a string", button("5"))
         assertReason("button 'root' url is 2001 characters, limit 2000", button("\"https://a.example/${"x".repeat(1983)}\""))
         assertReason("button 'root' has both url and action", button("\"https://acme.example\"", ""","action":{"id":"go"}"""))
@@ -511,6 +515,11 @@ class AgentUiTreeTest {
         )
         assertEquals("pay", assertIs<AgentUiNode.Button>(assertIs<AgentUiNode.ListItem>(t.root).trailing).action?.id)
         assertTrue(t.overBudgetActions().isEmpty())
+    }
+
+    @Test fun list_item_drops_a_trailing_node_that_is_not_a_button_badge_or_chip() {
+        val t = valid(tree("""{"id":"li","type":"listItem","title":"Order","trailing":"t"}""", """{"id":"t","type":"text","markdown":"long"}""", root = "li"))
+        assertNull(assertIs<AgentUiNode.ListItem>(t.root).trailing)
     }
 
     @Test fun facts_are_clamped_and_drop_empty_items() {
