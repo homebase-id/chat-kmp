@@ -60,6 +60,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import id.homebase.api.coroutines.ioDispatcher
 
+/** The mics and speakers to offer; each descriptor must be one the engine's audio module can select. */
 interface AudioDeviceList {
     fun mics(): List<AudioDevice>
     fun speakers(): List<AudioDevice>

@@ -238,6 +238,7 @@ class WebRtcJavaCallEngineTest {
             val offersBefore = net.sent.count { it.signal is CallSignal.Offer }
             for (kind in listOf(MediaDeviceKind.Mic, MediaDeviceKind.Speaker)) {
                 val other = devices.devices.value.first { it.kind == kind && it.id != devices.selected.value[kind] }
+                // The headless module has one device of each, so this proves the switch path runs, not that audio moved.
                 devices.select(kind, other.id)
                 assertEquals(other.id, devices.selected.value[kind], "$kind switched")
                 assertEquals(CallPhase.Connected, caller.state.value.phase)
