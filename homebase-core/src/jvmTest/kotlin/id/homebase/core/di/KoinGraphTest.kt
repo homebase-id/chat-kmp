@@ -28,7 +28,7 @@ class KoinGraphTest {
                 definition<id.homebase.core.moments.services.MomentsUserStateStore>(kotlin.Function3::class, kotlin.Function2::class),
                 definition<id.homebase.core.location.tracking.LocationFixRouter>(kotlin.Function0::class, kotlin.Function3::class, kotlin.Function2::class),
                 definition<id.homebase.chat.services.livelocation.LiveLocationShareService>(kotlin.Function4::class),
-                definition<id.homebase.chat.services.calling.CallService>(kotlin.Function5::class, id.homebase.chat.services.calling.CallEngineFactory::class, kotlin.Function2::class, id.homebase.chat.services.calling.RingbackTone::class),
+                definition<id.homebase.chat.services.calling.CallService>(kotlin.Function5::class, id.homebase.chat.services.calling.CallEngineFactory::class, kotlin.Function2::class, id.homebase.chat.services.calling.RingbackTone::class, kotlinx.coroutines.flow.Flow::class),
                 definition<id.homebase.core.location.LocationService>(id.homebase.core.location.tracking.OneShotLocationProvider::class),
                 definition<id.homebase.core.sync.DriveRegistry>(kotlin.Function3::class, kotlin.Function2::class),
                 definition<id.homebase.api.sync.DriveSyncManager>(kotlin.collections.Map::class),

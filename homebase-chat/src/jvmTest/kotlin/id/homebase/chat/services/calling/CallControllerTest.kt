@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.onSubscription
@@ -49,6 +50,7 @@ class CallControllerTest {
         var sendHangs = false
         var iceSendMs = 0L
         var dropIncomingIce = false
+        val network = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
         private val link = net.endpoint(id)
         val controller = CallController(
             selfOdinId = id,
@@ -67,6 +69,7 @@ class CallControllerTest {
             scope = scope.backgroundScope,
             clock = { scope.testScheduler.currentTime },
             deviceId = device,
+            networkChanges = network,
         )
         val phase get() = controller.state.value.phase
         val state get() = controller.state.value
@@ -660,6 +663,31 @@ class CallControllerTest {
         assertTrue(net.sent.any { it.from == sam && it.signal is CallSignal.RestartAnswer })
         assertEquals(1, a.engines.single().restarts)
         assertEquals(1, b.engines.single().restarts)
+    }
+
+    @Test
+    fun aFlappingNetworkRestartsIceOnceItSettles() = runTest {
+        val (net, a, b) = pair()
+        runCurrent()
+        assertEquals(0, b.network.subscriptionCount.value, "not watched outside a call")
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        assertEquals(CallPhase.Connected, b.phase)
+
+        repeat(3) {
+            b.network.emit(Unit)
+            advanceTimeBy(500)
+        }
+        assertEquals(0, a.engines.single().restarts)
+
+        advanceTimeBy(NETWORK_SETTLE_MS)
+        assertEquals(1, net.sent.count { it.from == sam && it.signal is CallSignal.RestartRequest })
+        assertEquals(1, a.engines.single().restarts)
+        assertEquals(1, b.engines.single().restarts)
+        assertEquals(CallPhase.Connected, a.phase)
+        assertEquals(CallPhase.Connected, b.phase)
     }
 
     @Test

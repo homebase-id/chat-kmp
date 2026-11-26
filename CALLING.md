@@ -99,6 +99,10 @@ inbound signals, push ring/hangup, timers, media events. Effects are the only si
   `RestartAnswer`; the caller resends the same unanswered restart offer on each tick and stays `Reconnecting` until a
   `RestartAnswer` arrives (`restartPending`), even if its own link reports up first. A signal that fails to send while
   reconnecting is logged, not fatal. Only the caller drives it so the sides never offer at once.
+- **Network change.** While `Connected` or `Reconnecting`, a new default network (`NetworkMonitor.defaultNetworkChanges`,
+  debounced `NETWORK_SETTLE_MS`) restarts ICE at once without waiting for `Disconnected`: the caller sends `Restart`,
+  the callee sends `RestartRequest`. It is skipped while a restart is unanswered. The phase does not change, since
+  the old link may still carry audio while the new one is negotiated.
 - **Thread safety.** All mutable controller state (engine, timers, buffered ICE, SDPs) is touched only on the inbox
   loop. `close()` posts a `Close` command; scope cancellation runs the same teardown in the loop's `finally`. A user
   hangup or decline, or the peer's hangup for the live call, cancels the event in flight first, so an engine call that

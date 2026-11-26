@@ -41,6 +41,7 @@ import id.homebase.core.updater.UpdateAppManager
 import id.homebase.core.util.AlbumSaver
 import id.homebase.core.util.JvmAlbumSaver
 import id.homebase.core.util.JvmPlatformInfo
+import id.homebase.core.util.JvmNetworkMonitor
 import id.homebase.core.util.NetworkMonitor
 import id.homebase.core.diagnostics.DiagnosticsCrashTrigger
 import id.homebase.core.diagnostics.NoOpDiagnosticsCrashTrigger
@@ -59,8 +60,7 @@ actual fun platformModule(): Module = module {
     }
     single { ShareCacheStorage() }
     single<AlbumSaver> { JvmAlbumSaver() }
-    // Desktop is assumed to be on a wired/Wi-Fi link; there is no metered signal to read.
-    single<NetworkMonitor> { NetworkMonitor { true } }
+    single<NetworkMonitor> { JvmNetworkMonitor() }
     single { createSettings() }
     single<PlatformGalleryManager> { JvmGalleryManager() }
     single { GalleryCache(get<PlatformGalleryManager>()) }

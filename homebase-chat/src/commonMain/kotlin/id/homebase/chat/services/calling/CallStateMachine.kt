@@ -22,6 +22,8 @@ sealed interface CallEvent {
     data class SetVideo(val on: Boolean) : CallEvent
     data object SwitchCamera : CallEvent
     data class SetRoute(val route: AudioRoute) : CallEvent
+    /** The device's default network changed, already debounced. */
+    data object NetworkChanged : CallEvent
 }
 
 sealed interface CallEffect {
@@ -71,7 +73,8 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
 
     private fun log(before: CallState, event: CallEvent, t: CallTransition) {
         val after = t.state
-        val notable = (event is CallEvent.TimerFired && event.callId == before.callId) || (event is CallEvent.Media && event.event !is MediaEvent.LocalIce)
+        val notable = (event is CallEvent.TimerFired && event.callId == before.callId) || (event is CallEvent.Media && event.event !is MediaEvent.LocalIce) ||
+            event == CallEvent.NetworkChanged
         if (before.phase == after.phase && before.callId == after.callId && !notable) return
         val hangup = t.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().firstOrNull()
         Logger.i(tag = TAG) {
@@ -117,6 +120,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             }
         }
         is CallEvent.SetRoute -> control(state, CallEffect.SetRoute(event.route)) { it.copy(route = event.route) }
+        CallEvent.NetworkChanged -> networkChanged(state)
     }
 
     private fun userCall(s: CallState, e: CallEvent.UserCall): CallTransition {
@@ -390,6 +394,13 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     // A restart offer set locally but never answered leaves the caller on ICE credentials the peer
     // has not seen: the caller's link can report up while the peer's checks are rejected.
     private fun CallState.restarting() = if (direction == CallDirection.Outgoing) copy(restartPending = true) else this
+
+    // The live candidate pair sits on the old network: restarting now beats waiting seconds for ICE to report it dead,
+    // and is the only way onto a better network while the old one still works.
+    private fun networkChanged(s: CallState): CallTransition {
+        if ((s.phase != CallPhase.Connected && s.phase != CallPhase.Reconnecting) || s.restartPending) return CallTransition(s)
+        return CallTransition(s.restarting(), restartIce(s))
+    }
 
     private fun reconnected(s: CallState) =
         CallTransition(s.copy(phase = CallPhase.Connected, reconnectAttempt = 0, linkUp = true), listOf(CallEffect.CancelTimers))
