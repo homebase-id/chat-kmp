@@ -17,9 +17,9 @@ class PhotobaseAppRegistrationTest {
                 "appId" to "704334ede383476bb82e2b0d5bab36fd",
                 "n" to "Homebase Photos",
                 "as" to "photobase",
-                "d" to """[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","n":"Photos","d":"Photos and videos backed up by Homebase Photos","p":7,"ds":"photos","ts":"photos","sm":"selectiveShare"}]""",
+                "d" to """[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","n":"Photos","d":"Photos and videos backed up by Homebase Photos","p":15,"ds":"photos","ts":"photos","sm":"selectiveShare"}]""",
                 "cd" to "[]",
-                "ac" to """[{"s":"photobase","n":"Photos","d":"People who can see the photos you share through Homebase Photos","e":"📷","g":[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","p":1}]}]""",
+                "ac" to """[{"s":"photobase","n":"Photos","d":"People who can see the photos you share through Homebase Photos","e":"📷","g":[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","p":13}]}]""",
                 "return" to "https://frodo.example.com/apps/chat/permission-callback",
                 "cancel" to "https://frodo.example.com/apps/chat/permission-callback?status=canceled",
             ),
@@ -30,7 +30,7 @@ class PhotobaseAppRegistrationTest {
     @Test
     fun chatOnlyAsksForAccessToTheDrive() {
         assertEquals(
-            """[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","p":7,"ts":"photos"}]""",
+            """[{"a":"e3e5d4ed-462a-4fc0-835c-2d3722820be8","t":"764a8e3a-13b9-46e1-b53f-092679dc9953","p":15,"ts":"photos"}]""",
             TargetDriveAccessRequest.encodeList(photosTargetDriveAccessRequest),
         )
     }

@@ -10,6 +10,7 @@ import id.homebase.chat.agentui.AgentUiTree
 import id.homebase.chat.agentui.agentUiImageKeys
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.albumshare.AlbumShareDescriptor
 import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -63,6 +64,7 @@ object MessageContentParser {
             ChatProtocol.ChatContactCardMessageDataType -> parseContactCard(content)
             ChatProtocol.ChatViewOnceMessageDataType -> parseViewOnce(content)
             ChatProtocol.ChatFileShareMessageDataType -> parseFileShare(content)
+            ChatProtocol.ChatAlbumShareMessageDataType -> parseAlbumShare(content)
             ChatProtocol.ChatAgentUiMessageDataType -> parseAgentUi(content)
             ChatProtocol.ChatAgentUiActionMessageDataType -> parseAgentUiAction(content)
             // MessageAppData-shaped dataTypes — caller deserializes content
@@ -172,6 +174,19 @@ object MessageContentParser {
     } catch (e: Exception) {
         Logger.w(tag = TAG, throwable = e) { "Poll parse failed; rendering chip" }
         MessageContent.Poll(null)
+    }
+
+    private fun parseAlbumShare(content: String): MessageContent.AlbumShare = try {
+        val descriptor = OdinSystemSerializer.deserialize<AlbumShareDescriptor>(content)
+        if (descriptor.isValid()) {
+            MessageContent.AlbumShare(descriptor)
+        } else {
+            Logger.w(tag = TAG) { "AlbumShare descriptor failed validation" }
+            MessageContent.AlbumShare(null)
+        }
+    } catch (e: Exception) {
+        Logger.w(tag = TAG, throwable = e) { "AlbumShare parse failed; rendering chip" }
+        MessageContent.AlbumShare(null)
     }
 
     private fun parseFileShare(content: String): MessageContent.FileShare = try {
@@ -293,6 +308,10 @@ object MessageContentParser {
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "FileShare descriptor must be non-null on send" }
             )
+        is MessageContent.AlbumShare ->
+            OdinSystemSerializer.serialize(
+                requireNotNull(content.descriptor) { "AlbumShare descriptor must be non-null on send" }
+            )
         is MessageContent.Location ->
             OdinSystemSerializer.serialize(
                 requireNotNull(content.descriptor) { "Location descriptor must be non-null on send" }
@@ -318,6 +337,7 @@ object MessageContentParser {
         is MessageContent.CallEvent -> ChatProtocol.ChatCallEventMessageDataType
         is MessageContent.ViewOnce -> ChatProtocol.ChatViewOnceMessageDataType
         is MessageContent.FileShare -> ChatProtocol.ChatFileShareMessageDataType
+        is MessageContent.AlbumShare -> ChatProtocol.ChatAlbumShareMessageDataType
         is MessageContent.Location -> ChatProtocol.ChatLocationMessageDataType
         is MessageContent.AgentUi -> ChatProtocol.ChatAgentUiMessageDataType
         is MessageContent.AgentUiAction -> ChatProtocol.ChatAgentUiActionMessageDataType
@@ -345,6 +365,7 @@ object MessageContentParser {
         is MessageContent.ContactCard,
         is MessageContent.ViewOnce,
         is MessageContent.FileShare,
+        is MessageContent.AlbumShare,
         is MessageContent.AgentUi,
         is MessageContent.AgentUiAction,
         is MessageContent.Location -> true

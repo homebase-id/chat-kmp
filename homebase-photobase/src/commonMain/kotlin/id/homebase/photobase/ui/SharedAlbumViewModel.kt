@@ -1,0 +1,232 @@
+package id.homebase.photobase.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
+import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.common.OdinId
+import id.homebase.photobase.gallery.PhotoGalleryItem
+import id.homebase.photobase.gallery.toGalleryItem
+import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.photobase.sharing.PhotoAddOutcome
+import id.homebase.photobase.sharing.PhotoMemberWrites
+import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.contentType
+import id.homebase.core.files.materializeForUpload
+import id.homebase.core.files.modifiedAtMs
+import id.homebase.core.files.toUploadPath
+import id.homebase.core.util.isDesktop
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.name
+import kotlin.time.Clock
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.emptyFlow
+import id.homebase.photobase.social.PhotoActionService
+import id.homebase.photobase.social.PhotoComment
+import id.homebase.photobase.social.PhotoCommentsService
+import id.homebase.photobase.social.PhotoReactions
+import id.homebase.photobase.social.PhotoTarget
+import id.homebase.photobase.sharing.SharedAlbum
+import kotlin.uuid.Uuid
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** A photo in someone's shared album, as their drive holds it; [addedBy] when a member, not the owner, added it. */
+data class SharedPhoto(val file: HomebaseFile, val item: PhotoGalleryItem, val addedBy: OdinId?)
+
+data class SharedAlbumUiState(
+    val album: SharedAlbum? = null,
+    val photos: List<SharedPhoto> = emptyList(),
+    val loading: Boolean = true,
+    val allRead: Boolean = false,
+    /** In [photos]. */
+    val openedIndex: Int? = null,
+)
+
+sealed interface SharedAlbumEvent {
+    data object Failed : SharedAlbumEvent
+    data object SocialFailed : SharedAlbumEvent
+    /** A photo picked here wasn't even queued. */
+    data object AddFailed : SharedAlbumEvent
+    data class Add(val outcome: PhotoAddOutcome) : SharedAlbumEvent
+}
+
+/** An album [owner] shares with this identity, read over peer a page at a time and kept in memory. */
+class SharedAlbumViewModel(
+    val owner: OdinId,
+    val albumId: Uuid,
+    private val sharing: PhotoAlbumSharing,
+    private val memberWrites: PhotoMemberWrites,
+    private val fileOps: FileOperationsProvider,
+    private val comments: PhotoCommentsService,
+    private val actions: PhotoActionService,
+    /** The app's: a comment sent as the screen closes must still be sent. */
+    private val appScope: CoroutineScope,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(SharedAlbumUiState())
+    val uiState: StateFlow<SharedAlbumUiState> = _uiState.asStateFlow()
+
+    private val _events = Channel<SharedAlbumEvent>(Channel.BUFFERED)
+    val events: Flow<SharedAlbumEvent> = _events.receiveAsFlow()
+
+    private var cursor: String? = null
+    private var page: Job? = null
+    private var sharerKept = false
+
+    init {
+        reload()
+        viewModelScope.launch {
+            memberWrites.outcomes.filter { it.add.owner == owner && it.add.albumId == albumId }.collect { outcome ->
+                _events.send(SharedAlbumEvent.Add(outcome))
+                if (outcome is PhotoAddOutcome.Delivered) showAdded(outcome.add.globalTransitId)
+            }
+        }
+    }
+
+    /** Adds [files], picked on this device, to the album; each one's outcome comes as an event. */
+    fun addPhotos(files: List<PlatformFile>) {
+        val album = _uiState.value.album?.takeIf { it.canAdd } ?: return
+        // The app's scope: building a photo takes a while, and leaving the screen mustn't drop the rest.
+        appScope.launch {
+            // Every one copied first, while the picker's grant is live: Android and iOS revoke it later.
+            val copied = !isDesktop()
+            val picked = files.mapNotNull { file ->
+                // Read off the pick itself, before the copy.
+                val modifiedMs = file.modifiedAtMs() ?: Clock.System.now().toEpochMilliseconds()
+                attempt { (if (copied) file.materializeForUpload(fileOps) else file).toUploadPath(fileOps) }?.let { path -> Triple(file, path, modifiedMs) }
+            }
+            for ((file, path, modifiedMs) in picked) {
+                attempt { memberWrites.add(album, path, file.contentType(), file.name, modifiedMs, ownedCopy = copied) }
+            }
+        }
+    }
+
+    private fun reload() {
+        page?.cancel()
+        page = null
+        cursor = null
+        _uiState.update { it.copy(photos = emptyList(), allRead = false, loading = true) }
+        viewModelScope.launch {
+            val album = guarded { sharing.sharedAlbum(owner, albumId) }
+            _uiState.update { it.copy(album = album, loading = false, allRead = album == null) }
+            if (album != null) {
+                loadMore()
+                if (!sharerKept) keepSharer()
+            }
+        }
+    }
+
+    /** The next page, when there's more and none is being read. */
+    fun loadMore() {
+        val album = _uiState.value.album ?: return
+        if (page?.isActive == true || _uiState.value.allRead) return
+        _uiState.update { it.copy(loading = true) }
+        page = viewModelScope.launch {
+            try {
+                val (files, next) = guarded { sharing.sharedPhotos(album, cursor) } ?: return@launch
+                cursor = next
+                val photos = files.mapNotNull { it.toSharedPhoto() }
+                _uiState.update { state ->
+                    val known = state.photos.mapTo(HashSet()) { it.file.fileId }
+                    state.copy(photos = state.photos + photos.filter { it.file.fileId !in known }, allRead = next == null)
+                }
+            } finally {
+                _uiState.update { it.copy(loading = false) }
+            }
+        }
+    }
+
+    // A photo this identity added, put where the newest-first list has it; one older than the pages read comes with them.
+    private suspend fun showAdded(globalTransitId: Uuid) {
+        val album = _uiState.value.album ?: return
+        val added = guarded { sharing.sharedPhoto(album, globalTransitId) }?.toSharedPhoto() ?: return
+        _uiState.update { state ->
+            if (state.photos.any { it.file.fileId == added.file.fileId }) return@update state
+            val at = state.photos.indexOfFirst { it.item.capturedAtMs < added.item.capturedAtMs }.takeIf { it >= 0 }
+                ?: if (state.allRead) state.photos.size else return@update state
+            val opened = state.openedIndex?.let { if (it >= at) it + 1 else it }
+            state.copy(photos = state.photos.toMutableList().apply { add(at, added) }, openedIndex = opened)
+        }
+    }
+
+    private fun HomebaseFile.toSharedPhoto(): SharedPhoto? = toGalleryItem()?.let { SharedPhoto(this, it, addedBy()) }
+
+    // Opened from a chat message, the sharer is kept so the Library finds the album again; the album itself showed either way.
+    private suspend fun keepSharer() {
+        try {
+            sharing.keepSharer(owner)
+            sharerKept = true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$owner not kept as a sharer" }
+        }
+    }
+
+    fun open(index: Int?) = _uiState.update { it.copy(openedIndex = index) }
+
+    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = targetOf(photoId)?.let { comments.commentsOf(it) } ?: emptyFlow()
+
+    fun reactionsOf(photoId: Uuid): Flow<PhotoReactions> = targetOf(photoId)?.let { actions.reactionsOf(it) } ?: emptyFlow()
+
+    fun commentReactionsOf(photoId: Uuid, comment: PhotoComment): Flow<PhotoReactions> =
+        targetOf(photoId)?.forComment(comment)?.let { actions.reactionsOf(it) } ?: emptyFlow()
+
+    /** A comment or reaction on one of the album's photos, sent to its owner. */
+    fun onSocial(action: PhotoGalleryUiAction) {
+        if (action !is PhotoSocialAction) return
+        val target = targetOf(action.photoId) ?: return
+        appScope.launch {
+            try {
+                action.write(target, comments, actions)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "comment or reaction on $owner's photo not written" }
+                _events.send(SharedAlbumEvent.SocialFailed)
+            }
+        }
+    }
+
+    // The photo's own key, as its share opened it: comments are encrypted with it.
+    private fun targetOf(photoId: Uuid): PhotoTarget? =
+        _uiState.value.photos.firstOrNull { it.file.fileMetadata.globalTransitId == photoId }
+            ?.let { PhotoTarget(owner = owner, fileId = it.file.fileId, globalTransitId = photoId, keyHeader = it.file.keyHeader) }
+
+    private fun HomebaseFile.addedBy(): OdinId? = fileMetadata.senderOdinId?.takeIf { !it.domainName.equals(owner.domainName, ignoreCase = true) }
+
+    private suspend fun <T> attempt(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "a photo for $owner's album $albumId wasn't queued" }
+            _events.send(SharedAlbumEvent.AddFailed)
+            null
+        }
+
+    private suspend fun <T> guarded(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$owner's album $albumId not read" }
+            _events.send(SharedAlbumEvent.Failed)
+            null
+        }
+
+    private companion object {
+        const val TAG = "SharedAlbumViewModel"
+    }
+}

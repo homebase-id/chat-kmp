@@ -19,6 +19,7 @@ import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.ExternalFileKey
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asHeader
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -115,9 +116,7 @@ class DriveQueryProvider(
             token = creds.accessToken,
             jsonBody = jsonRequest,
             secret = creds.secret,
-            extraHeaders = fileSystemType
-                ?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }
-                ?: emptyMap(),
+            extraHeaders = fileSystemType.asHeader(),
         )
 
         throwForFailure(apiResponse)

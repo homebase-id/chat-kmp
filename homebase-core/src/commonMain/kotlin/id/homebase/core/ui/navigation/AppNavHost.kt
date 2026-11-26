@@ -59,6 +59,10 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ShortNavigationBar
@@ -114,6 +118,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.DatabaseUpgradeState
 import id.homebase.api.youauth.YouAuthFlowManager
+import id.homebase.core.ui.screens.privatedrive.rememberSignInAgainLauncher
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.auth.login.LoginScreen
 import id.homebase.chat.addgroupmembers.AddGroupMembersScreen
@@ -240,6 +245,11 @@ import androidx.compose.material.icons.outlined.PhotoLibrary
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.ui.PhotoLibraryScreen
+import id.homebase.photobase.ui.AlbumShareScreen
+import id.homebase.photobase.ui.SharedAlbumScreen
+import id.homebase.photobase.ui.SharedAlbumViewModel
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import id.homebase.resources.photobase_shared_album_add
 import id.homebase.photobase.ui.PhotoGalleryScreen
 import id.homebase.resources.photobase_label
 import id.homebase.photobase.backup.PhotoBackupController
@@ -331,6 +341,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.nav_moments
 import org.jetbrains.compose.resources.StringResource
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -1596,6 +1607,13 @@ fun AppNavHost(
                                                 filesyncToDo = FilesyncUiAction.OpenFromChat(sharer, circleId)
                                                 openFilesync()
                                             },
+                                            onOpenAlbumShare = { sharer, albumId ->
+                                                // Our own message opens our album; theirs, the album on their drive.
+                                                navController.navigate(
+                                                    if (sharer == null) Route.PhotoGalleryView(PhotoGallery.Album(albumId).key)
+                                                    else Route.PhotoSharedAlbum(sharer.domainName, albumId.toString())
+                                                )
+                                            },
                                             newConversationPane = { onDismiss, onConversationOpened ->
                                                 NewConversationPaneHost(
                                                     onDismiss = onDismiss,
@@ -2473,6 +2491,8 @@ fun AppNavHost(
                                         viewModel = koinViewModel(),
                                         onOpen = { navController.navigate(Route.PhotoGalleryView(it.key)) },
                                         onBack = { navController.popBackStack() },
+                                        sharedWithMe = koinViewModel(),
+                                        onOpenShared = { owner, albumId -> navController.navigate(Route.PhotoSharedAlbum(owner.domainName, albumId.toString())) },
                                     )
                                 }
                             }
@@ -2487,6 +2507,47 @@ fun AppNavHost(
                                         onOpenBackupSettings = null,
                                         backupIndicator = {},
                                         onBack = { navController.popBackStack() },
+                                        onShareAlbum = { navController.navigate(Route.PhotoAlbumShare(it.toString())) },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoSharedAlbum> { backStackEntry ->
+                                if (isAuthenticated) {
+                                    val route = backStackEntry.toRoute<Route.PhotoSharedAlbum>()
+                                    val owner = OdinId(route.owner)
+                                    val albumId = Uuid.parse(route.albumId)
+                                    val sharedAlbum: SharedAlbumViewModel = koinViewModel(key = "shared-album-${route.owner}-$albumId", parameters = { parametersOf(owner, albumId) })
+                                    // Images only: a pick is built as a still photo, and a video needs the backup's video path.
+                                    val picker = rememberFilePickerLauncher(type = FileKitType.Image, mode = FileKitMode.Multiple()) { files ->
+                                        if (!files.isNullOrEmpty()) sharedAlbum.addPhotos(files)
+                                    }
+                                    SharedAlbumScreen(
+                                        viewModel = sharedAlbum,
+                                        onBack = { navController.popBackStack() },
+                                        addAction = {
+                                            IconButton(onClick = { picker.launch() }) {
+                                                Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = stringResource(MR.string.photobase_shared_album_add))
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+
+                            composable<Route.PhotoAlbumShare> { backStackEntry ->
+                                if (isAuthenticated) {
+                                    val albumId = Uuid.parse(backStackEntry.toRoute<Route.PhotoAlbumShare>().albumId)
+                                    val youAuth = koinInject<YouAuthFlowManager>()
+                                    // The app's scope: the browser's answer may come after this screen has gone.
+                                    val appScope = koinInject<kotlinx.coroutines.CoroutineScope>()
+                                    // On desktop and web the browser's answer only comes back through the launcher.
+                                    val signIn = rememberSignInAgainLauncher { url -> appScope.launch { youAuth.handleCallback(url) } }
+                                    AlbumShareScreen(
+                                        viewModel = koinViewModel(key = "album-share-$albumId", parameters = { parametersOf(albumId) }),
+                                        onOpenSignIn = signIn::open,
+                                        onBack = { navController.popBackStack() },
+                                        signInBlocked = signIn.blockedUrl != null,
+                                        onContinueSignIn = { signIn.blockedUrl?.let(signIn::open) },
                                     )
                                 }
                             }

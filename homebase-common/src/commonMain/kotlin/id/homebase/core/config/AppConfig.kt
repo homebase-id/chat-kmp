@@ -622,8 +622,8 @@ private val photosDrive = TargetDriveAccessRequest(
     type = photosLabeledDrive.drive.type.toString(),
     name = photosLabeledDrive.label,
     description = "Photos and videos backed up by Homebase Photos",
-    // React: the server gates the reaction toggle on it.
-    permissions = listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React),
+    // React and Comment: a circle grants only what the app holds, and a share row only what its circle grants.
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React, DrivePermission.Comment),
     driveSlug = PhotobaseProtocol.DriveSlug,
     driveTypeSlug = PhotobaseProtocol.DriveTypeSlug,
     sharingModel = DriveSharingModel.SelectiveShare,
@@ -644,7 +644,12 @@ val photobaseAppRegistration = AppRegistrationParams(
             description = "People who can see the photos you share through Homebase Photos",
             emoji = "📷",
             drives = listOf(
-                photosDrive.copy(permissions = listOf(DrivePermission.Read), driveTypeSlug = null, grantOnly = true),
+                // No Write: drive Write lets a member add photos anywhere; the editors circle grants it.
+                photosDrive.copy(
+                    permissions = listOf(DrivePermission.Read, DrivePermission.React, DrivePermission.Comment),
+                    driveTypeSlug = null,
+                    grantOnly = true,
+                ),
             ),
         )
     ),

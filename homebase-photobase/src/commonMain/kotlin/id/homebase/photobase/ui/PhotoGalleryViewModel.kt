@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.stateIn
 import id.homebase.photobase.social.PhotoActionService
 import id.homebase.photobase.social.PhotoComment
 import id.homebase.photobase.social.PhotoCommentsService
+import id.homebase.photobase.social.PhotoTarget
 import id.homebase.photobase.social.PhotoReactions
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -127,11 +128,26 @@ sealed interface PhotoGalleryUiAction {
     data object RemoveSelectedFromAlbum : PhotoGalleryUiAction
     data class RenameAlbum(val name: String) : PhotoGalleryUiAction
     data object DeleteAlbum : PhotoGalleryUiAction
-    /** On a photo or a comment, by unique id. */
-    data class ToggleReaction(val targetId: Uuid, val emoji: String) : PhotoGalleryUiAction
-    data class PostComment(val photoId: Uuid, val body: String) : PhotoGalleryUiAction
-    data class EditComment(val commentId: Uuid, val versionTag: Uuid, val body: String) : PhotoGalleryUiAction
-    data class DeleteComment(val commentId: Uuid) : PhotoGalleryUiAction
+    data class ToggleReaction(override val photoId: Uuid, val emoji: String) : PhotoSocialAction
+    data class PostComment(override val photoId: Uuid, val body: String) : PhotoSocialAction
+    data class DeleteComment(override val photoId: Uuid, val comment: PhotoComment) : PhotoSocialAction
+    data class EditComment(override val photoId: Uuid, val comment: PhotoComment, val body: String) : PhotoSocialAction
+    data class ToggleCommentReaction(override val photoId: Uuid, val comment: PhotoComment, val emoji: String) : PhotoSocialAction
+}
+
+/** A comment or reaction on a photo, named by its global transit id. */
+sealed interface PhotoSocialAction : PhotoGalleryUiAction {
+    val photoId: Uuid
+}
+
+internal suspend fun PhotoSocialAction.write(photo: PhotoTarget, comments: PhotoCommentsService, actions: PhotoActionService) {
+    when (this) {
+        is PhotoGalleryUiAction.PostComment -> comments.post(photo, body.trim())
+        is PhotoGalleryUiAction.EditComment -> comments.edit(photo, comment, body.trim())
+        is PhotoGalleryUiAction.DeleteComment -> comments.delete(photo, comment)
+        is PhotoGalleryUiAction.ToggleReaction -> actions.toggleReaction(photo, emoji)
+        is PhotoGalleryUiAction.ToggleCommentReaction -> photo.forComment(comment)?.let { actions.toggleReaction(it, emoji) }
+    }
 }
 
 /**
@@ -168,9 +184,19 @@ class PhotoGalleryViewModel(
     } ?: MutableStateFlow(null)
     val canComment: Boolean get() = comments != null && actions != null
 
-    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> = comments?.commentsOf(photoId)?.flowOn(Dispatchers.Default) ?: emptyFlow()
+    fun commentsOf(photoId: Uuid): Flow<List<PhotoComment>> =
+        targetOf(photoId)?.let { target -> comments?.commentsOf(target)?.flowOn(Dispatchers.Default) } ?: emptyFlow()
 
-    fun reactionsOf(targetId: Uuid): Flow<PhotoReactions> = actions?.reactionsOf(targetId)?.flowOn(Dispatchers.Default) ?: emptyFlow()
+    fun reactionsOf(photoId: Uuid): Flow<PhotoReactions> =
+        targetOf(photoId)?.let { target -> actions?.reactionsOf(target)?.flowOn(Dispatchers.Default) } ?: emptyFlow()
+
+    fun commentReactionsOf(photoId: Uuid, comment: PhotoComment): Flow<PhotoReactions> =
+        targetOf(photoId)?.forComment(comment)?.let { target -> actions?.reactionsOf(target)?.flowOn(Dispatchers.Default) } ?: emptyFlow()
+
+    // Comments and reactions are on the photo where it is, by its global transit id; only shown photos have them.
+    private fun targetOf(photoId: Uuid): PhotoTarget? =
+        _uiState.value.loaded.values.firstNotNullOfOrNull { items -> items.firstOrNull { it.globalTransitId == photoId } }
+            ?.let { PhotoTarget(owner = null, fileId = it.fileId, globalTransitId = photoId, keyHeader = it.keyHeader) }
 
     private var counted: LibraryDays? = null
     private val stale = mutableSetOf<Int>()
@@ -294,18 +320,18 @@ class PhotoGalleryViewModel(
             // The new name shows when the sync brings the album back.
             is PhotoGalleryUiAction.RenameAlbum -> albumWrite(leave = false) { rename(it, action.name) }
             PhotoGalleryUiAction.DeleteAlbum -> albumWrite(leave = true) { delete(it) }
-            is PhotoGalleryUiAction.ToggleReaction -> actions?.let { social { it.toggleReaction(action.targetId, action.emoji) } }
-            is PhotoGalleryUiAction.PostComment -> comments?.let { social { it.post(action.photoId, action.body.trim()) } }
-            is PhotoGalleryUiAction.EditComment -> comments?.let { social { it.edit(action.commentId, action.versionTag, action.body.trim()) } }
-            is PhotoGalleryUiAction.DeleteComment -> comments?.let { social { it.delete(action.commentId) } }
+            is PhotoSocialAction -> social(action)
         }
     }
 
-    // The app's scope, like a move: a comment sent as the screen closes must still be queued.
-    private fun social(write: suspend () -> Unit) {
+    // The app's scope, like a move: a comment sent as the screen closes must still be sent.
+    private fun social(action: PhotoSocialAction) {
+        val comments = comments ?: return
+        val actions = actions ?: return
+        val target = targetOf(action.photoId) ?: return
         (moveScope ?: viewModelScope).launch {
             try {
-                write()
+                action.write(target, comments, actions)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

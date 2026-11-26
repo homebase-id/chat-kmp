@@ -33,6 +33,14 @@ class ExistingFileIsSuccessTest {
     }
 
     @Test
+    fun aDepositThatCollidesFailsRatherThanBecomeAnUpdateWithoutItsSealAndShares() {
+        val existing = failure(OdinClientErrorCode.ExistingFileWithUniqueId)
+        assertTrue(request(existingFileIsSuccess = false).retriesAsUpdate(existing))
+        assertFalse(request(existingFileIsSuccess = false).copy(sealedTo = ByteArray(97)).retriesAsUpdate(existing))
+        assertFalse(request(existingFileIsSuccess = false).retriesAsUpdate(failure(OdinClientErrorCode.UnhandledScenario)))
+    }
+
+    @Test
     fun otherRefusalsStayFailures() {
         assertFalse(request(existingFileIsSuccess = true).countsAsSent(failure(OdinClientErrorCode.UnhandledScenario)))
     }

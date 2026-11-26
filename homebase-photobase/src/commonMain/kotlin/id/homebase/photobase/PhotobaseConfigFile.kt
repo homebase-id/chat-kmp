@@ -138,18 +138,18 @@ class PhotobaseRecord(
                         generatePayloadIv = false,
                     ),
                 ),
-                metadata = metadata(uniqueId, fileType, content, existing.serverFileIsEncrypted, existing.fileMetadata.versionTag)
+                metadata = metadata(uniqueId, fileType, content, existing.serverFileIsEncrypted, existing.fileMetadata.versionTag, existing.serverMetadata.accessControlList)
                     .encryptContent(keyHeader),
             ),
         )
     }
 
-    private fun metadata(uniqueId: Uuid, fileType: Int, content: String, encrypted: Boolean, versionTag: Uuid?) = UploadFileMetadata(
+    private fun metadata(uniqueId: Uuid, fileType: Int, content: String, encrypted: Boolean, versionTag: Uuid?, acl: AccessControlList? = null) = UploadFileMetadata(
         allowDistribution = false,
         isEncrypted = encrypted,
         versionTag = versionTag,
-        // The drive is shared by circle, and a circle member has no business reading this.
-        accessControlList = AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
+        // Owner's own until shared: a shared album's record is meant to be read, and its share lifted the ACL it keeps.
+        accessControlList = acl ?: AccessControlList(requiredSecurityGroup = SecurityGroupType.Owner.value),
         appData = UploadAppFileMetaData(
             uniqueId = uniqueId,
             fileType = fileType,

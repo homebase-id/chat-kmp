@@ -18,6 +18,7 @@ import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.OdinErrorResponse
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asQuery
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.client.drives.files.ThumbnailFile
@@ -109,6 +110,8 @@ data class UpdateFileByUniqueIdRequest(
     val fileSystemType: FileSystemType? = null,
     /** As [UploadFileRequest.sealDescriptorContent]. */
     val sealDescriptorContent: Boolean = false,
+    /** As [UploadFileRequest.withCommentedFileKey]. */
+    val withCommentedFileKey: Boolean = false,
 )
 
 
@@ -341,7 +344,8 @@ class DriveUploadProvider(
                 request.metadata,
                 sharedSecret,
                 request.instructions.transferIv,
-                request.driveId
+                request.driveId,
+                request.withCommentedFileKey,
             )
 
         val data =
@@ -354,7 +358,7 @@ class DriveUploadProvider(
             )
 
         val path = "/drives/${request.driveId}/files/by-uid/${request.uniqueId}" +
-            (request.fileSystemType?.let { "?xfst=$it" } ?: "")
+            request.fileSystemType.asQuery()
 
         val result = pureUpdate(data, path, onProgress, onVersionConflict)
 
@@ -379,6 +383,7 @@ class DriveUploadProvider(
         metadata: UploadFileMetadata,
         payloads: List<PayloadFile>,
         onProgress: UploadProgress? = null,
+        fileSystemType: FileSystemType? = null,
     ): UpdateFileResult {
         preflightStagedPayloads(payloads, "updateFileOverPeerByGlobalTransitId gtid=$globalTransitId")
         // Only the encrypted key header is at hand here, so descriptor content couldn't be sealed: refuse it rather than leak it.
@@ -395,7 +400,7 @@ class DriveUploadProvider(
         val data = buildUpdateFormData(instructions, descriptor, payloads, fileOperationsProvider = fileOperationsProvider)
         val total = calculateUploadSize(payloads, emptyList(), descriptor, fileOperationsProvider)
         val progress = onProgress?.let { report -> suspend { sent: Long, _: Long? -> report(sent, total) } }
-        val result = requireNotNull(pureUpdate(data, "/peer/$owner/drives/$driveId/files/by-gtid/$globalTransitId", progress))
+        val result = requireNotNull(pureUpdate(data, "/peer/$owner/drives/$driveId/files/by-gtid/$globalTransitId" + fileSystemType.asQuery(), progress))
         cleanupPayloadTempFiles(payloads)
         return result
     }
@@ -527,8 +532,7 @@ class DriveUploadProvider(
 
 
     private fun uploadUrl(domain: id.homebase.api.common.OdinId, driveId: Uuid, fileSystemType: FileSystemType?): String {
-        val query = if (fileSystemType != null) "?xfst=$fileSystemType" else ""
-        return apiUrl(domain, "/drives/$driveId/files$query")
+        return apiUrl(domain, "/drives/$driveId/files" + fileSystemType.asQuery())
     }
 
     /** Performs a raw update to an existing file on the drive. */
@@ -562,9 +566,10 @@ class DriveUploadProvider(
         metadata: UploadFileMetadata,
         sharedSecret: ByteArray,
         transferIv: ByteArray,
-        driveId: Uuid
+        driveId: Uuid,
+        withCommentedFileKey: Boolean = false,
     ): ByteArray =
-        buildSharedSecretEncryptedUpdateDescriptor(lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv), metadata, sharedSecret, transferIv)
+        buildSharedSecretEncryptedUpdateDescriptor(lockKeyHeader(keyHeader, driveId, sharedSecret, transferIv, withCommentedFileKey), metadata, sharedSecret, transferIv)
 
     private suspend fun <T> handleErrorResponse(
         response: ApiResponse,

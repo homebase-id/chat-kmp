@@ -1,21 +1,28 @@
 package id.homebase.photobase.social
 
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.HomebaseFile
+import id.homebase.api.client.drives.files.ReactionEntry
 import id.homebase.api.client.drives.files.ReactionSummary
+import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
+import id.homebase.api.client.drives.files.reactions.GetGroupReactionCountsResponse
+import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
-import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
-import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
-import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.util.codePointCount
 import id.homebase.chat.services.decodeReactionCode
-import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 data class PhotoReactions(
@@ -24,41 +31,76 @@ data class PhotoReactions(
 )
 
 /**
- * Reactions on photos and their comments, as moments have them: the server's group reactions on the local file,
- * sent to the photo's [audience].
+ * Reactions on photos and their comments: the server's group reactions on the file where it lives, on this identity's
+ * drive or, for a guest, on its owner's over peer by global transit id (which finds a comment too).
  */
 class PhotoActionService(
-    private val optimisticWriter: OptimisticWriter,
+    private val reactionProvider: DriveFileGroupReactionProvider,
+    private val peerReactions: PeerReactionProvider,
     private val credentialsManager: CredentialsManager,
-    private val databaseManager: DatabaseManager,
-    private val eventBus: EventBus,
-    private val audience: PhotoAudience = PhotoAudience.OwnerOnly,
 ) {
     private val drive = PhotobaseProtocol.DriveAlias
+    private val toggled = MutableSharedFlow<Uuid>(extraBufferCapacity = 8)
+    // One toggle at a time: a quick second tap must see the first one's result.
+    private val toggling = Mutex()
 
-    /** Toggles our [emoji] on a photo or a comment, both by unique id. */
-    suspend fun toggleReaction(targetId: Uuid, emoji: String): ToggleReactionResultType {
-        if (!isReactionEmoji(emoji)) return ToggleReactionResultType.None
+    /** Adds our [emoji] to the photo, or takes it away when it's ours already. */
+    suspend fun toggleReaction(photo: PhotoTarget, emoji: String) = toggling.withLock {
+        if (!isReactionEmoji(emoji)) return@withLock
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
-        return optimisticWriter.toggleReaction(drive, targetId, reaction) { original ->
-            val photoId = if (original.fileMetadata.appData.fileType == PhotobaseProtocol.CommentFileType) {
-                original.fileMetadata.appData.groupId ?: error("comment $targetId has no photo")
-            } else {
-                targetId
+        val on = on(photo)
+        // Read now, not from the last read: another device may have reacted since.
+        if (emoji in on.own(credentialsManager.getActiveCredentials()?.domain ?: return@withLock).mapNotNull(::decodeReactionCode)) {
+            on.delete(reaction)
+        } else {
+            on.add(reaction)
+        }
+        toggled.emit(photo.globalTransitId)
+    }
+
+    /** The photo's reactions, read again after each toggle from here. */
+    fun reactionsOf(photo: PhotoTarget): Flow<PhotoReactions> = flow {
+        emit(read(photo))
+        toggled.filter { it == photo.globalTransitId }.collect { emit(read(photo)) }
+    }
+
+    private suspend fun read(photo: PhotoTarget): PhotoReactions = coroutineScope {
+        val self = credentialsManager.getActiveCredentials()?.domain ?: return@coroutineScope PhotoReactions()
+        val on = on(photo)
+        val summary = async { on.summary() }
+        val own = async { on.own(self) }
+        PhotoReactions(summary.await().toSummary(), own.await().mapNotNull(::decodeReactionCode).distinct().toImmutableList())
+    }
+
+    // Where the target's reactions are: here by file id, or on its owner's drive over peer by global transit id.
+    private fun on(photo: PhotoTarget): ReactionsOn {
+        val owner = photo.owner
+        return if (owner == null) {
+            val fileSystem = photo.fileSystemType
+            object : ReactionsOn {
+                override suspend fun add(reaction: String) = reactionProvider.addReaction(drive, photo.fileId, reaction, recipients = emptyList(), fileSystem)
+                override suspend fun delete(reaction: String) = reactionProvider.deleteReaction(drive, photo.fileId, reaction, recipients = emptyList(), fileSystem)
+                override suspend fun summary() = reactionProvider.getReactionSummary(drive, photo.fileId, fileSystem)
+                override suspend fun own(self: OdinId) = reactionProvider.listReactionsByIdentity(drive, photo.fileId, self, fileSystem)
             }
-            audience.of(photoId)
-        }.first
+        } else {
+            val gtid = photo.globalTransitId
+            object : ReactionsOn {
+                override suspend fun add(reaction: String) = peerReactions.addReaction(owner, drive, gtid, reaction)
+                override suspend fun delete(reaction: String) = peerReactions.deleteReaction(owner, drive, gtid, reaction)
+                override suspend fun summary() = peerReactions.getReactionSummary(owner, drive, gtid)
+                override suspend fun own(self: OdinId) = peerReactions.listReactionsByIdentity(owner, drive, gtid, self)
+            }
+        }
     }
 
-    /** The photo's or comment's reactions as held locally, again on every change to it. */
-    fun reactionsOf(targetId: Uuid): Flow<PhotoReactions> =
-        eventBus.rereadOn(drive, { it.fileMetadata.appData.uniqueId == targetId }) { read(targetId) }
-
-    private suspend fun read(targetId: Uuid): PhotoReactions {
-        val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return PhotoReactions()
-        val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(identityId, drive, targetId) ?: return PhotoReactions()
-        return file.toPhotoReactions()
+    private interface ReactionsOn {
+        suspend fun add(reaction: String)
+        suspend fun delete(reaction: String)
+        suspend fun summary(): GetGroupReactionCountsResponse
+        suspend fun own(self: OdinId): List<String>
     }
+
 }
 
 // A family or a flag is several code points; the feed allows as many.
@@ -66,8 +108,6 @@ private const val MAX_EMOJI_CODE_POINTS = 12
 
 internal fun isReactionEmoji(emoji: String): Boolean = emoji.isNotBlank() && emoji.codePointCount() <= MAX_EMOJI_CODE_POINTS
 
-internal fun HomebaseFile.toPhotoReactions() = PhotoReactions(
-    fileMetadata.reactionPreview,
-    // Stored as ReactionContent JSON; the list compares bare emoji.
-    fileMetadata.localAppData?.localReactions.orEmpty().mapNotNull(::decodeReactionCode).toImmutableList(),
-)
+internal fun GetGroupReactionCountsResponse.toSummary(): ReactionSummary? =
+    reactions.filter { it.count > 0 }.takeIf { it.isNotEmpty() }
+        ?.let { counts -> ReactionSummary(reactions = counts.associate { it.reactionContent to ReactionEntry(it.reactionContent, it.count, it.reactionContent) }) }

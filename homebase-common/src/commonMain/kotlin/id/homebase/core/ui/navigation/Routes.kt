@@ -175,6 +175,14 @@ sealed class Route {
     @SerialName("photo-gallery")
     data class PhotoGalleryView(val key: String) : Route()
 
+    @Serializable
+    @SerialName("photo-album-share")
+    data class PhotoAlbumShare(val albumId: String) : Route()
+
+    @Serializable
+    @SerialName("photo-shared-album")
+    data class PhotoSharedAlbum(val owner: String, val albumId: String) : Route()
+
     // Not a tab: pushed over the screen that needs Filesync, and pops back to it once set up.
     @Serializable
     @SerialName("filesync-setup")

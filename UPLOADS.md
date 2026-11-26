@@ -309,6 +309,7 @@ photo_live   the clip to play, SDR H.264            {"v":1,"k":"v","o":0,"w":...
 | Feed posts / comments | `pst_mdi_` / `cmmnt_md` | its photo setting and video setting (defaults HD, HD) | STRIP | per audience | `UploadService` (a public one staged, not encrypted) |
 | Stickers (saved) | `sticker_` | ORIGINAL | STRIP | yes | `UploadService` |
 | Photos | `photo_main`, `photo_live`, `video_main` (+ `vcp_0000` for a video, or `vcp_0001` for an iPhone Live Photo, at Original) | its photo setting (default ORIGINAL) and video setting (default HD), each STANDARD, HD or ORIGINAL | KEEP | yes | `UploadService` (keeps its hashing, dedupe and `uniqueId`); photos on iOS: its request, sent by a background session |
+| Photos, added to someone's shared album | as Photos | as Photos (the adding member's settings) | KEEP | yes | `UploadService`, from the transient drive to the album owner's Photos drive: built by `BackupRequestBuilder.buildPicked`, its key sealed to the owner's drive key (`sealedTo`), with the album's share rows and a `globalTransitId` picked on the device |
 | Vault | `vlt_pg_` (existing 2-digit index) | ORIGINAL (photos), HD (videos) | KEEP | yes | `UploadService` |
 | Filesync | `sync_data` | none (bytes unchanged) | KEEP | yes | its own direct upload |
 | WebDrop | existing | none | KEEP | link key | its own outbox path |

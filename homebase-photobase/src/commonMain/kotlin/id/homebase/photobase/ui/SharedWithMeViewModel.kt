@@ -1,0 +1,175 @@
+package id.homebase.photobase.ui
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import co.touchlab.kermit.Logger
+import id.homebase.api.common.OdinId
+import id.homebase.photobase.gallery.toGalleryItem
+import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.photobase.sharing.PhotoSharingException
+import id.homebase.photobase.sharing.SharedAlbum
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
+import kotlin.time.Clock
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import id.homebase.api.client.drives.shares.SelectiveShareCircles
+import id.homebase.chat.widget.typedIdentityOrNull
+import kotlin.uuid.Uuid
+
+/** Why a sharer's albums didn't open. */
+enum class SharedProblem { NotReviewed, NotSealedYet, Failed }
+
+/** [albums] null while read, and when [problem] says why they couldn't be; [covers] by album id, each its newest photo. */
+data class SharerAlbums(
+    val owner: OdinId,
+    val albums: List<SharedAlbum>? = null,
+    val problem: SharedProblem? = null,
+    val covers: Map<Uuid, SharedPhoto> = emptyMap(),
+    /** When [albums] were read, epoch ms; 0 until they are. */
+    val readAtMs: Long = 0,
+)
+
+data class SharedWithMeUiState(
+    /** Null until the sharers are read. */
+    val sharers: List<SharerAlbums>? = null,
+    val identityInvalid: Boolean = false,
+    /** Typed in, but not kept: offline, say. */
+    val notKept: OdinId? = null,
+)
+
+/**
+ * The sharers to show, in [sharers]' order, each kept as [shown] has it; and the ones to read: new, not read yet or
+ * failed (albums null), or read more than [maxAgeMs] before [nowMs], since a sharer may have shared another album since.
+ */
+internal fun mergeSharers(shown: List<SharerAlbums>?, sharers: List<OdinId>, nowMs: Long, maxAgeMs: Long): Pair<List<SharerAlbums>, List<OdinId>> {
+    val known = shown.orEmpty().associateBy { it.owner }
+    val merged = sharers.map { known[it] ?: SharerAlbums(it) }
+    return merged to merged.filter { it.albums == null || nowMs - it.readAtMs > maxAgeMs }.map { it.owner }
+}
+
+// Reads of what's already shown stop at this, so a window regaining focus doesn't read every sharer again each time.
+private const val SHARER_MAX_AGE_MS = 5 * 60_000L
+
+/** The albums others share with this identity: one section per sharer kept, each read from their drive. */
+class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel() {
+    private val _uiState = MutableStateFlow(SharedWithMeUiState())
+    val uiState: StateFlow<SharedWithMeUiState> = _uiState.asStateFlow()
+
+    private var refreshing: Job? = null
+    // A refresh asked for while one runs: that one read the sharers before, so it runs again once it's done.
+    private var again = false
+
+    /**
+     * Reads the sharers again, each time the list is shown, since one may have been kept meanwhile: what's been read of
+     * the ones already shown stays, and only the new ones, a failed one, or one read a while ago are read over peer. A
+     * refresh still running is left to finish, and one asked for meanwhile runs after it.
+     */
+    fun refresh() {
+        if (refreshing?.isActive == true) {
+            again = true
+            return
+        }
+        // One job reads again while asked to: a new one launched from its end could start inside it, and be dropped.
+        refreshing = viewModelScope.launch {
+            do {
+                again = false
+                readAll()
+            } while (again)
+        }
+    }
+
+    private suspend fun readAll() = coroutineScope {
+        run {
+            val sharers = guarded { sharing.sharers() } ?: return@run
+            val (shown, toRead) = mergeSharers(_uiState.value.sharers, sharers, Clock.System.now().toEpochMilliseconds(), SHARER_MAX_AGE_MS)
+            _uiState.update { it.copy(sharers = shown) }
+            // Every read goes through this identity's server to another's: a few at a time.
+            val reads = Semaphore(SelectiveShareCircles.PARALLEL)
+            toRead.map { owner ->
+                async {
+                    val read = reads.withPermit { read(owner) }
+                    // Covers shown already stay until the new ones come, so a re-read doesn't blank them.
+                    show(read, keepCovers = true)
+                    // The names first: a cover is one more read over peer per album.
+                    val albums = read.albums ?: return@async
+                    val covers = albums.map { album -> async { reads.withPermit { coverOf(album) }?.let { album.id to it } } }.awaitAll().filterNotNull().toMap()
+                    show(read.copy(covers = covers))
+                }
+            }.awaitAll()
+        }
+    }
+
+    /** Keeps someone who shares with this identity, typed in, and reads their albums. */
+    fun addSharer(text: String) {
+        val owner = typedIdentityOrNull(text) ?: return _uiState.update { it.copy(identityInvalid = true) }
+        _uiState.update { it.copy(identityInvalid = false, notKept = null) }
+        viewModelScope.launch {
+            guarded { sharing.keepSharer(owner) } ?: return@launch _uiState.update { it.copy(notKept = owner) }
+            // One running mustn't swallow this: it read the sharers before this one was kept.
+            refreshing?.join()
+            refresh()
+        }
+    }
+
+    private fun show(sharer: SharerAlbums, keepCovers: Boolean = false) =
+        _uiState.update { state ->
+            state.copy(
+                sharers = state.sharers?.map { shown ->
+                    when {
+                        shown.owner != sharer.owner -> shown
+                        keepCovers -> sharer.copy(covers = shown.covers.filterKeys { id -> sharer.albums.orEmpty().any { it.id == id } })
+                        else -> sharer
+                    }
+                }
+            )
+        }
+
+    // An album with no cover shows its icon, as an empty one of this identity's does.
+    private suspend fun coverOf(album: SharedAlbum): SharedPhoto? =
+        try {
+            sharing.sharedPhotos(album, cursor = null, pageSize = 1).first.firstOrNull()
+                ?.let { file -> file.toGalleryItem()?.let { SharedPhoto(file, it, addedBy = null) } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "${album.owner}'s album ${album.id} cover not read" }
+            null
+        }
+
+    private suspend fun read(owner: OdinId): SharerAlbums =
+        try {
+            SharerAlbums(owner, albums = sharing.sharedAlbums(owner).sortedBy { it.name.lowercase() }, readAtMs = Clock.System.now().toEpochMilliseconds())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: PhotoSharingException.NotReviewedByOwner) {
+            SharerAlbums(owner, problem = SharedProblem.NotReviewed)
+        } catch (e: PhotoSharingException.NotSealedYet) {
+            SharerAlbums(owner, problem = SharedProblem.NotSealedYet)
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$owner's albums not read" }
+            SharerAlbums(owner, problem = SharedProblem.Failed)
+        }
+
+    private suspend fun <T> guarded(block: suspend () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "sharers not read" }
+            null
+        }
+
+    private companion object {
+        const val TAG = "SharedWithMeViewModel"
+    }
+}

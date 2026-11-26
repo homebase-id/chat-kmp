@@ -83,6 +83,9 @@ class UploadService(
                 existingFileIsSuccess = spec.existingFileIsSuccess,
                 fileSystemType = spec.requestFileSystemType,
                 sealDescriptorContent = spec.sealDescriptorContent,
+                sealedTo = spec.sealedTo,
+                shares = spec.shares,
+                globalTransitId = spec.globalTransitId,
             )
             return PreparedUpload(spec, request, sent, encryptor)
         } catch (e: Throwable) {

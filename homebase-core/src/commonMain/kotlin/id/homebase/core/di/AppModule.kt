@@ -45,6 +45,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
 import id.homebase.api.sync.DriveSyncManager
 import id.homebase.core.config.photosLabeledDrive
+import id.homebase.core.config.returnUrl
 import id.homebase.api.sync.DriveSyncPolicy
 import kotlin.time.Duration.Companion.days
 import id.homebase.api.youauth.YouAuthFlowManager
@@ -189,7 +190,6 @@ import id.homebase.core.ui.screens.filesync.FilesyncDiscussions
 import id.homebase.api.client.connections.CircleShareKeyProvider
 import id.homebase.core.ui.screens.filesync.FilesyncSharingSetup
 import id.homebase.core.ui.screens.filesync.FilesyncSharing
-import id.homebase.core.ui.screens.filesync.FilesyncShareMessages
 import id.homebase.core.ui.screens.filesync.FilesyncShareUpkeep
 import id.homebase.core.ui.screens.filesync.FilesyncUploader
 import id.homebase.core.ui.screens.filesync.FilesyncUploadQueue
@@ -223,6 +223,17 @@ import id.homebase.photobase.social.PhotoCommentsService
 import id.homebase.photobase.gallery.PhotoAlbumSource
 import id.homebase.photobase.gallery.PhotoAlbums
 import id.homebase.photobase.gallery.photosTagged
+import id.homebase.photobase.gallery.photosWithTagsApart
+import id.homebase.photobase.sharing.PhotoAlbumSharing
+import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
+import id.homebase.photobase.sharing.PhotoMemberWrites
+import id.homebase.photobase.sharing.PhotobaseSession
+import id.homebase.photobase.ui.AlbumShareViewModel
+import id.homebase.chat.services.ShareMessages
+import id.homebase.photobase.sharing.albumShareInvite
+import id.homebase.photobase.ui.SharedAlbumViewModel
+import id.homebase.photobase.ui.SharedWithMeViewModel
+import id.homebase.photobase.sharing.PhotoShareUpkeep
 import id.homebase.photobase.gallery.OpenGallery
 import id.homebase.photobase.gallery.PhotoGalleries
 import id.homebase.photobase.backup.AssetHasher
@@ -248,6 +259,7 @@ import id.homebase.core.ui.screens.vault.note.VaultNoteEditorViewModel
 import kotlin.time.Clock
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import id.homebase.api.common.OdinId
 import id.homebase.core.config.getFeedPermissionExtensionConfig
 import id.homebase.core.config.getMomentsPermissionExtensionConfig
 import id.homebase.core.config.getPermissionExtensionConfig
@@ -837,6 +849,7 @@ val appModule = module {
                 // Notify peers when our emergency-location circle membership changes (grant/revoke).
                 get<EmergencyCircleNotifier>().start()
                 get<FilesyncShareUpkeep>().start()
+                get<PhotoShareUpkeep>().start()
 
                 get<FeedTimelineService>().reset()
                 get<PostCommentsService>().reset()
@@ -1165,7 +1178,7 @@ val appModule = module {
     single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { CircleShareKeyProvider(get(), get()) }
     single { FilesyncSharing(get(), get(), get(), get(), get(), get(), get()) }
-    single { FilesyncShareMessages(get(), get()) }
+    single { ShareMessages(get(), get()) }
     single { FilesyncShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
     single { FilesyncSharingSetup(get(), get(), get()) }
     single { FilesyncMemberWrites(get<FilesyncSharing>(), get(), get()) }
@@ -1569,7 +1582,24 @@ val appModule = module {
     }
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
-    single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get()) }
+    viewModel { SharedWithMeViewModel(get()) }
+    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get(), get()) }
+    viewModel { (albumId: Uuid) ->
+        val credentials = get<CredentialsManager>()
+        AlbumShareViewModel(
+            albumId = albumId,
+            sharing = get(),
+            signedIn = PhotobaseSession.signedIn,
+            restore = { PhotobaseSession.restoreFor(credentials) },
+            signInUrl = { onDone -> PhotobaseSession.signInUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, onDone) },
+            missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
+            // An invite without the album's name would show every recipient "update the app": they aren't told.
+            tell = { people, shared, access ->
+                if (shared.albumName.isBlank()) people else get<ShareMessages>().send(people, albumShareInvite(shared.albumId, shared.albumName, access))
+            },
+        )
+    }
+    single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
     single {
         val store = get<PhotoGalleryStore>()
         PhotoMover(
@@ -1577,6 +1607,8 @@ val appModule = module {
             filesOf = store::filesOf,
             binned = { store.filesOn(PhotoShelf.Bin) },
             sync = { syncPhotos() },
+            albumChanged = { album, on, fileIds -> get<PhotoAlbumSharing>().albumTagChanged(album, on, fileIds) },
+            binChanged = { photosByAlbum, binned -> get<PhotoAlbumSharing>().photosBinned(photosByAlbum, binned) },
         )
     }
     single {
@@ -1593,7 +1625,7 @@ val appModule = module {
             },
         )
     }
-    single<PhotoAlbumSource> {
+    single {
         PhotoAlbums(
             store = get(),
             record = get(),
@@ -1602,10 +1634,24 @@ val appModule = module {
             changes = get<EventBus>().events.newPhotoRecords(),
             scope = get(),
             sync = { syncPhotos() },
+            tagsApart = { get<DriveQueryProvider>().photosWithTagsApart(it) },
+            beforeDelete = { get<PhotoAlbumSharing>().withdrawAll(it) },
         )
     }
-    single { PhotoCommentsService(get(), get(), get(), get(), get(), get()) }
-    single { PhotoActionService(get(), get(), get(), get()) }
+    single<PhotoAlbumSource> { get<PhotoAlbums>() }
+    single {
+        val store = get<PhotoGalleryStore>()
+        PhotoAlbumSharing(get(), get(), get(), get(), get(), get(), get(), get(), store::filesOf)
+    }
+    single { PhotoShareUpkeep(get(), get(), get<AuthConnectionCoordinator>().isOnline, get(), get()) }
+    single {
+        // The backup's own settings, so a change on the settings screen reaches a photo added to someone's album.
+        val backup = get<PhotoBackupController>()
+        PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get(), get())
+    }
+    single { PhotoCommentsService(get(), get(), get(), get(), get()) }
+    single { PeerReactionProvider(get(), get()) }
+    single { PhotoActionService(get(), get(), get()) }
     // The tab's own gallery has no parameter.
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {

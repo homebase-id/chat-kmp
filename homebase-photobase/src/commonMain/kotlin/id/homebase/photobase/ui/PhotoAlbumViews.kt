@@ -31,7 +31,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import id.homebase.api.common.OdinId
 import id.homebase.core.image.HomebaseImage
+import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
 import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.core.widget.NameDialog
@@ -48,7 +50,11 @@ import kotlin.uuid.Uuid
 
 /** The album's newest photo, or its icon while it has none. */
 @Composable
-internal fun AlbumCover(album: PhotoAlbum, modifier: Modifier = Modifier) {
+internal fun AlbumCover(album: PhotoAlbum, modifier: Modifier = Modifier) =
+    AlbumCover(remember(album.cover) { album.cover?.tileImageData()?.forGridTile() }, modifier)
+
+@Composable
+internal fun AlbumCover(imageData: HomebaseImageData?, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .aspectRatio(1f)
@@ -56,7 +62,6 @@ internal fun AlbumCover(album: PhotoAlbum, modifier: Modifier = Modifier) {
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         contentAlignment = Alignment.Center,
     ) {
-        val imageData = remember(album.cover) { album.cover?.tileImageData()?.forGridTile() }
         if (imageData != null) {
             HomebaseImage(imageData = imageData, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
@@ -76,6 +81,15 @@ internal fun AlbumCard(album: PhotoAlbum, onOpen: () -> Unit, modifier: Modifier
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** An album someone shares with this identity: its cover read from their drive, and its name. Unlike [AlbumCard], no count. */
+@Composable
+internal fun SharedAlbumCard(name: String, cover: SharedPhoto?, owner: OdinId, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onOpen).padding(4.dp)) {
+        AlbumCover(remember(cover) { cover?.imageData(owner)?.forGridTile() }, Modifier.fillMaxWidth())
+        Text(name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
     }
 }
 

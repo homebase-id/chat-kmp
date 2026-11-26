@@ -69,25 +69,26 @@ internal fun CommentsButton(onClick: () -> Unit) {
     }
 }
 
-/** The photo's reactions and comments, and a field to add one. */
+/** The photo's reactions and comments, and a field to add one or edit one of this identity's own. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun PhotoCommentsSheet(
     photoId: Uuid,
     comments: Flow<List<PhotoComment>>,
     reactionsOf: (Uuid) -> Flow<PhotoReactions>,
+    commentReactionsOf: (PhotoComment) -> Flow<PhotoReactions>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val shown by comments.collectAsStateWithLifecycle(null)
-    // The comment or photo whose emoji menu is open.
-    var reactingTo by remember { mutableStateOf<Uuid?>(null) }
+    // The reaction the open emoji menu makes: on the photo or on one comment.
+    var reactWith by remember { mutableStateOf<((String) -> PhotoGalleryUiAction)?>(null) }
     var pickingAll by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<PhotoComment?>(null) }
     var draft by remember { mutableStateOf("") }
-    val react = { target: Uuid, emoji: String ->
-        onAction(PhotoGalleryUiAction.ToggleReaction(target, emoji))
-        reactingTo = null
+    val react = { emoji: String ->
+        reactWith?.let { onAction(it(emoji)) }
+        reactWith = null
         pickingAll = false
     }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), sheetMaxWidth = 640.dp) {
@@ -97,12 +98,12 @@ internal fun PhotoCommentsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
-            Reactions(photoId, reactionsOf, onReact = { reactingTo = photoId }, modifier = Modifier.padding(horizontal = 12.dp))
-            reactingTo?.let { target ->
+            Reactions(remember(photoId) { reactionsOf(photoId) }, onReact = { reactWith = { PhotoGalleryUiAction.ToggleReaction(photoId, it) } }, modifier = Modifier.padding(horizontal = 12.dp))
+            if (reactWith != null) {
                 if (pickingAll) {
-                    Box(Modifier.heightIn(max = 320.dp)) { EmojiSelection(onEmojiSelected = { react(target, it) }) }
+                    Box(Modifier.heightIn(max = 320.dp)) { EmojiSelection(onEmojiSelected = { react(it) }) }
                 } else {
-                    ReactionMenu(onSelect = { react(target, it) }, onShowAllEmojis = { pickingAll = true }, modifier = Modifier.padding(8.dp))
+                    ReactionMenu(onSelect = { react(it) }, onShowAllEmojis = { pickingAll = true }, modifier = Modifier.padding(8.dp))
                 }
             }
             val list = shown
@@ -116,12 +117,13 @@ internal fun PhotoCommentsSheet(
                 )
                 else -> LazyColumn(Modifier.weight(1f, fill = false)) {
                     items(list, key = { it.id.toString() }) { comment ->
+                        val own = comment.senderOdinId == null
                         CommentRow(
                             comment,
-                            reactionsOf,
-                            onReact = { reactingTo = comment.id; pickingAll = false },
-                            onEdit = { editing = comment; draft = comment.body }.takeIf { comment.senderOdinId == null && comment.versionTag != null },
-                            onDelete = { onAction(PhotoGalleryUiAction.DeleteComment(comment.id)) }.takeIf { comment.senderOdinId == null },
+                            reactions = remember(comment.id, comment.versionTag) { commentReactionsOf(comment) },
+                            onReact = { reactWith = { PhotoGalleryUiAction.ToggleCommentReaction(photoId, comment, it) }; pickingAll = false },
+                            onEdit = { editing = comment; draft = comment.body }.takeIf { own },
+                            onDelete = { onAction(PhotoGalleryUiAction.DeleteComment(photoId, comment)) }.takeIf { own },
                         )
                     }
                 }
@@ -135,8 +137,7 @@ internal fun PhotoCommentsSheet(
                     val body = draft.trim()
                     if (body.isNotEmpty()) {
                         val edited = editing
-                        val tag = edited?.versionTag
-                        onAction(if (edited != null && tag != null) PhotoGalleryUiAction.EditComment(edited.id, tag, body) else PhotoGalleryUiAction.PostComment(photoId, body))
+                        onAction(if (edited != null) PhotoGalleryUiAction.EditComment(photoId, edited, body) else PhotoGalleryUiAction.PostComment(photoId, body))
                         editing = null
                         draft = ""
                     }
@@ -147,8 +148,8 @@ internal fun PhotoCommentsSheet(
 }
 
 @Composable
-private fun Reactions(targetId: Uuid, reactionsOf: (Uuid) -> Flow<PhotoReactions>, onReact: () -> Unit, modifier: Modifier = Modifier) {
-    val reactions by remember(targetId) { reactionsOf(targetId) }.collectAsStateWithLifecycle(PhotoReactions())
+private fun Reactions(source: Flow<PhotoReactions>, onReact: () -> Unit, modifier: Modifier = Modifier) {
+    val reactions by source.collectAsStateWithLifecycle(PhotoReactions())
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         reactions.summary?.let { summary ->
             ReactionList(reactionSummary = summary, onReactionClick = onReact, ownReactions = reactions.own)
@@ -160,7 +161,7 @@ private fun Reactions(targetId: Uuid, reactionsOf: (Uuid) -> Flow<PhotoReactions
 @Composable
 private fun CommentRow(
     comment: PhotoComment,
-    reactionsOf: (Uuid) -> Flow<PhotoReactions>,
+    reactions: Flow<PhotoReactions>,
     onReact: () -> Unit,
     onEdit: (() -> Unit)?,
     onDelete: (() -> Unit)?,
@@ -172,7 +173,7 @@ private fun CommentRow(
             val byline = stringResource(MR.string.photobase_comments_byline, who, formatMomentDate(Instant.fromEpochMilliseconds(comment.userDateMs)))
             Text(byline, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(comment.body, style = MaterialTheme.typography.bodyMedium)
-            Reactions(comment.id, reactionsOf, onReact)
+            Reactions(reactions, onReact)
         }
         if (onEdit != null || onDelete != null) {
             Box {

@@ -182,5 +182,6 @@ private object NoServer : PhotoMoveServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) = emptyList<PerFileResult>()
     override suspend fun softDelete(files: List<FileVersionTag>) = emptyList<PerFileResult>()
     override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>) = emptyList<PerFileResult>()
+    override suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>) = emptyList<PerFileResult>()
     override suspend fun header(fileId: Uuid): HomebaseFile? = null
 }

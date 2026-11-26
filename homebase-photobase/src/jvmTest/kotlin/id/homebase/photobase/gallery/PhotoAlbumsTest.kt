@@ -41,6 +41,9 @@ class PhotoAlbumsTest {
     private val uploads = mutableListOf<UploadFileRequest>()
     private val updates = mutableListOf<UpdateFileByUniqueIdRequest>()
     private val untagged = mutableListOf<Pair<Uuid, List<Uuid>>>()
+    private val tagged = mutableListOf<Pair<Uuid, List<Uuid>>>()
+    private val appTagged = mutableListOf<Triple<Uuid, Boolean, List<Uuid>>>()
+    private val apart = mutableMapOf<Uuid, Pair<List<Uuid>, List<AppTagged>>>()
     private val deleted = mutableListOf<FileVersionTag>()
     private val scope = CoroutineScope(Dispatchers.Unconfined)
     private var syncs = 0
@@ -53,9 +56,13 @@ class PhotoAlbumsTest {
         override suspend fun softDelete(files: List<FileVersionTag>) = error("no photo deletes")
 
         override suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
-            check(!on)
-            untagged += tag to fileIds
+            (if (on) tagged else untagged) += tag to fileIds
             return fileIds.map { PerFileResult(it, OdinClientErrorCode.ArgumentError.takeIf { refuseTags }) }
+        }
+
+        override suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+            appTagged += Triple(tag, on, fileIds)
+            return fileIds.map { PerFileResult(it) }
         }
 
         override suspend fun header(fileId: Uuid): HomebaseFile? = null
@@ -72,6 +79,7 @@ class PhotoAlbumsTest {
         changes = emptyFlow(),
         scope = scope,
         sync = { syncs++ },
+        tagsApart = { apart[it] ?: (emptyList<Uuid>() to emptyList()) },
     )
 
     @AfterTest
@@ -167,4 +175,31 @@ class PhotoAlbumsTest {
 
         assertEquals(emptyList(), deleted)
     }
+
+    @Test
+    fun anAlbumsPhotosGetTheTagTheyLackOnTheHeaderOrOnTheDevice() = runTest {
+        val album = Uuid.random()
+        val (madeBeforeSharing, addedByAMember, removalNotMirrored) = List(3) { Uuid.random() }
+        apart[album] = listOf(madeBeforeSharing) to listOf(AppTagged(addedByAMember, byMember = true), AppTagged(removalNotMirrored, byMember = false))
+
+        assertEquals(3, albums.bringTagsTogether(album))
+
+        assertEquals(
+            listOf(
+                Triple(album, true, listOf(madeBeforeSharing)),
+                Triple(album, false, listOf(removalNotMirrored)),
+                Triple(album, true, listOf(addedByAMember)),
+            ),
+            appTagged,
+            "one of our own with the app tag alone was taken out: the tag comes off, it isn't put back",
+        )
+        assertEquals(listOf(album to listOf(addedByAMember)), tagged)
+    }
+
+    @Test
+    fun anAlbumWhoseTagsAgreeIsLeftAlone() = runTest {
+        assertEquals(0, albums.bringTagsTogether(Uuid.random()))
+        assertEquals(emptyList(), appTagged)
+    }
+
 }

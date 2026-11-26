@@ -5,12 +5,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.common.OdinId
 import id.homebase.api.util.truncateToCodePoints
 import id.homebase.chat.fileshare.FileShareDescriptor
-import id.homebase.api.youauth.PermissionCheckResult
-import id.homebase.api.youauth.PermissionExtensionConfig
-import id.homebase.api.youauth.PermissionExtensionManager
-import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
-import id.homebase.core.config.filesyncAppRegistration
 import io.ktor.client.HttpClient
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -35,22 +30,8 @@ class FilesyncSharingSetup(
         FilesyncSession.signInUrl(flow, checkNotNull(identity()) { "signed out" }, onDone)
 
     /** The owner's page granting Filesync what sharing needs, or null once it has it. */
-    suspend fun missingPermissionsUrl(returnUrl: () -> String): String? {
-        val identity = checkNotNull(identity()) { "signed out" }
-        val config = PermissionExtensionConfig(
-            appId = filesyncAppRegistration.appId,
-            appName = filesyncAppRegistration.name,
-            drives = emptyList(),
-            permissions = FilesyncSession.sharingPermissions,
-            returnUrl = returnUrl,
-            requester = "filesync",
-        )
-        return when (val result = PermissionExtensionManager(SecurityContextProvider(httpClient, FilesyncSession.credentials), identity.domainName).getMissingPermissions(config)) {
-            PermissionCheckResult.AllGranted -> null
-            is PermissionCheckResult.Missing -> result.details.buildExtendPermissionUrl()
-            PermissionCheckResult.Unknown -> error("couldn't read Filesync's permissions")
-        }
-    }
+    suspend fun missingPermissionsUrl(returnUrl: () -> String): String? =
+        FilesyncSession.missingPermissionsUrl(httpClient, checkNotNull(identity()) { "signed out" }, returnUrl)
 }
 
 /** A screen's sharing: turning it on, sharing with a person, who a file is shared with, and what others share. */

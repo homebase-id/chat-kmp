@@ -44,6 +44,10 @@ import kotlin.uuid.Uuid
 internal fun UploadFileRequest.countsAsSent(failure: ClientException): Boolean =
     existingFileIsSuccess && failure.isExistingFileWithUniqueId()
 
+// A deposit is sealed to another drive and carries its shares; an update by uniqueId would send neither.
+internal fun UploadFileRequest.retriesAsUpdate(failure: ClientException): Boolean =
+    failure.isExistingFileWithUniqueId() && sealedTo == null
+
 class DriveOutboxUploader(
     private val driveUploadProvider: DriveUploadProvider,
     private val fileProvider: DriveFileProvider,
@@ -162,7 +166,7 @@ class DriveOutboxUploader(
                 Logger.i("$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} already on the server, counts as sent")
                 return
             }
-            if (e.isExistingFileWithUniqueId()) {
+            if (request.retriesAsUpdate(e)) {
                 Logger.w(
                     "$TAG uploadNewFile: uniqueId=${request.metadata.appData.uniqueId} " +
                             "got ExistingFileWithUniqueId (server already has this file) — " +

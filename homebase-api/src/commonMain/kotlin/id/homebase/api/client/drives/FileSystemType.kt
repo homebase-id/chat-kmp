@@ -23,3 +23,9 @@ enum class FileSystemType(val value: Int) {
         }
     }
 }
+
+/** A route's file system, as a query string to append to its path; Standard without it. */
+fun FileSystemType?.asQuery(): String = this?.let { "?xfst=$it" }.orEmpty()
+
+/** A route's file system, as the header a JSON route reads it from; Standard without it. */
+fun FileSystemType?.asHeader(): Map<String, String> = this?.let { mapOf("X-ODIN-FILE-SYSTEM-TYPE" to it.name) }.orEmpty()

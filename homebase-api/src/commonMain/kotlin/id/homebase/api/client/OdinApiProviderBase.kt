@@ -377,7 +377,8 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         secret: SecureByteArray,
-        queryString: String? = null
+        queryString: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): ApiResponse {
 
         requireHostInUrl(url)
@@ -387,6 +388,7 @@ abstract class OdinApiProviderBase(
                 httpClient.get(url) {
                     bearerAuth(token)
                     accept(ContentType.Application.Json)
+                    extraHeaders.forEach { (name, value) -> header(name, value) }
 
                     if (!queryString.isNullOrBlank()) {
                         val encrypted = OdinSystemSerializer.serialize(
@@ -440,7 +442,8 @@ abstract class OdinApiProviderBase(
         url: String,
         token: String,
         secret: SecureByteArray,
-        jsonBody: String? = null
+        jsonBody: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): ApiResponse {
         requireHostInUrl(url)
 
@@ -449,6 +452,7 @@ abstract class OdinApiProviderBase(
                 httpClient.delete(url) {
                     bearerAuth(token)
                     accept(ContentType.Application.Json)
+                    extraHeaders.forEach { (name, value) -> header(name, value) }
 
                     if (jsonBody != null) {
                         contentType(ContentType.Application.Json)

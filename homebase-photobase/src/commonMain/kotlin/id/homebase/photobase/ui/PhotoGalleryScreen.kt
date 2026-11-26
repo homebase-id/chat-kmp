@@ -37,6 +37,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.MoreVert
+import id.homebase.resources.photobase_share_open
 import id.homebase.resources.photobase_gallery_more
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -140,6 +141,7 @@ import id.homebase.core.widget.SelectionTopBar
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
 import androidx.compose.material.icons.outlined.PhotoAlbum
+import androidx.compose.material.icons.outlined.Share
 import id.homebase.resources.photobase_library_title
 import id.homebase.resources.menu_back
 import id.homebase.resources.photobase_bin_delete_confirm_title
@@ -175,6 +177,7 @@ fun PhotoGalleryScreen(
     onOpenLibrary: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
     haptics: Haptics = rememberHaptics(),
+    onShareAlbum: ((Uuid) -> Unit)? = null,
 ) {
     val state = viewModel.uiState.collectAsStateWithLifecycle()
     val uiState by state
@@ -293,6 +296,7 @@ fun PhotoGalleryScreen(
             photoId = photoId,
             comments = remember(photoId) { viewModel.commentsOf(photoId) },
             reactionsOf = viewModel::reactionsOf,
+            commentReactionsOf = { viewModel.commentReactionsOf(photoId, it) },
             onAction = onAction,
             onDismiss = { commentsOn = null },
         )
@@ -321,6 +325,7 @@ fun PhotoGalleryScreen(
                     GalleryGrid(
                         uiState, gallery, title, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
                         { asking = it }, { picking = AlbumPick(null) }, { naming = AlbumNaming.Rename }.takeIf { albumName != null }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        onShareAlbum = (gallery as? PhotoGallery.Album)?.let { album -> onShareAlbum?.let { share -> { share(album.id) } } },
                     )
                 }
             }
@@ -452,7 +457,7 @@ private fun PhotoActions(
         FavoriteButton(item.favorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
         AlbumButton(enabled) { onAddToAlbum(item.fileId) }
     }
-    val photoId = item.uniqueId
+    val photoId = item.globalTransitId
     if (onComments != null && photoId != null) CommentsButton { onComments(photoId) }
 }
 
@@ -507,6 +512,7 @@ private fun GalleryGrid(
     haptics: Haptics,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
+    onShareAlbum: (() -> Unit)? = null,
 ) {
     val hasPhotos = (layout?.photoCount ?: 0) > 0
     ScreenBackHandler(enabled = uiState.selecting) { onAction(PhotoGalleryUiAction.ClearSelection) }
@@ -530,7 +536,14 @@ private fun GalleryGrid(
                                 Text(stringResource(MR.string.photobase_bin_empty))
                             }
                         }
-                        if (gallery is PhotoGallery.Album) AlbumMenu(enabled = !uiState.busy, onRename = onRenameAlbum, onDelete = { onConfirm(PhotoGalleryUiAction.DeleteAlbum) })
+                        if (gallery is PhotoGallery.Album) {
+                            if (onShareAlbum != null) {
+                                IconButton(onClick = onShareAlbum, enabled = !uiState.busy) {
+                                    Icon(Icons.Outlined.Share, contentDescription = stringResource(MR.string.photobase_share_open))
+                                }
+                            }
+                            AlbumMenu(enabled = !uiState.busy, onRename = onRenameAlbum, onDelete = { onConfirm(PhotoGalleryUiAction.DeleteAlbum) })
+                        }
                     },
                 )
             }

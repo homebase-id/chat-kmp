@@ -4,6 +4,10 @@
         <item quantity="one">Expires in %1$d day</item>
         <item quantity="other">Expires in %1$d days</item>
     </plurals>
+    <plurals name="audience_group_people">
+        <item quantity="one">%1$d person</item>
+        <item quantity="other">%1$d people</item>
+    </plurals>
     <plurals name="chat_group_selected_members">
         <item quantity="one">%1$d member</item>
         <item quantity="other">%1$d members</item>

@@ -3,7 +3,7 @@ package id.homebase.photobase.gallery
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.FileState
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.QueryBatchRequest
+import id.homebase.api.client.drives.query.forEachPage
 import id.homebase.api.client.drives.QueryBatchResultOptionsRequest
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -63,6 +63,10 @@ class PhotoAlbums(
     changes: Flow<PhotoChange>,
     scope: CoroutineScope,
     private val sync: () -> Unit,
+    /** Photos on the server with one tag of the album's but not the other: (local only, app only). */
+    private val tagsApart: suspend (tag: Uuid) -> Pair<List<Uuid>, List<AppTagged>> = { emptyList<Uuid>() to emptyList() },
+    /** Before an album is deleted: whoever it's shared with stops seeing it. */
+    private val beforeDelete: suspend (id: Uuid) -> Unit = {},
 ) : PhotoAlbumSource {
     private val forgotten = MutableStateFlow(0)
     // Read on the one collector stateIn runs.
@@ -107,6 +111,7 @@ class PhotoAlbums(
     override suspend fun rename(id: Uuid, name: String) = write(id, name, create = false)
 
     override suspend fun delete(id: Uuid) {
+        beforeDelete(id)
         val tagged = (store.taggedFileIds(id) + taggedOnServer(id)).distinct()
         // A record gone first would leave tags no album names, and nothing to delete again to clear them.
         if (tagged.isNotEmpty() && mover.setTag(id, on = false, tagged).failed > 0) throw IllegalStateException("album $id: tags not all taken off")
@@ -115,6 +120,20 @@ class PhotoAlbums(
         } finally {
             sync()
         }
+    }
+
+    /**
+     * Brings album [id]'s two tags together on every photo: an album made before albums could be shared has its local
+     * tag alone, and a photo a member added has its app tag alone. One of this identity's own with the app tag alone
+     * is a removal whose header rewrite failed: the tag comes off. The number of photos changed.
+     */
+    suspend fun bringTagsTogether(id: Uuid): Int {
+        val (localOnly, appOnly) = tagsApart(id)
+        val (added, removed) = appOnly.partition { it.byMember }
+        if (localOnly.isNotEmpty()) mover.mirrorAppTag(id, on = true, localOnly)
+        if (removed.isNotEmpty()) mover.mirrorAppTag(id, on = false, removed.map { it.fileId })
+        if (added.isNotEmpty()) mover.setTag(id, on = true, added.map { it.fileId })
+        return localOnly.size + appOnly.size
     }
 
     private suspend fun write(id: Uuid, name: String, create: Boolean) {
@@ -155,19 +174,33 @@ private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
 }
 
 /** Every file on the Photos drive carrying [tag], as the server has them. */
-suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> = buildList {
-    var cursor: String? = null
-    do {
-        val page = queryBatch(
-            PhotobaseProtocol.DriveAlias,
-            QueryBatchRequest(
-                queryParams = FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted)),
-                resultOptionsRequest = QueryBatchResultOptionsRequest(cursorState = cursor, maxRecords = DriveFileHttpProvider.FILE_BATCH),
-            ),
-            // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
-            skipUnreadable = true,
-        )
-        page.searchResults.mapTo(this) { it.fileId }
-        cursor = page.cursorState?.takeIf { page.hasMoreRows && it != cursor }
-    } while (cursor != null)
+suspend fun DriveQueryProvider.photosTagged(tag: Uuid): List<Uuid> =
+    photosWhere(FileQueryParams(localTagsMatchAtLeastOne = listOf(tag), fileState = listOf(FileState.Active, FileState.Deleted))).map { it.fileId }
+
+/** A photo with an album's app tag and not its local tag; [byMember] when someone it's shared with added it. */
+data class AppTagged(val fileId: Uuid, val byMember: Boolean)
+
+/** The live photos with album [tag] as a local tag and not an app tag, then the ones with it as an app tag alone. */
+suspend fun DriveQueryProvider.photosWithTagsApart(tag: Uuid): Pair<List<Uuid>, List<AppTagged>> {
+    val photos = listOf(PhotobaseProtocol.PhotoFileType)
+    val localOnly = photosWhere(FileQueryParams(fileType = photos, localTagsMatchAtLeastOne = listOf(tag)))
+        .filter { tag !in it.fileMetadata.appData.tags.orEmpty() }.map { it.fileId }
+    val appOnly = photosWhere(FileQueryParams(fileType = photos, tagsMatchAtLeastOne = listOf(tag)))
+        .filter { tag !in it.fileMetadata.localAppData?.tags.orEmpty() }
+        // A member's deposit comes in over peer, sent by them.
+        .map { AppTagged(it.fileId, byMember = it.fileMetadata.senderOdinId != null) }
+    return localOnly to appOnly
+}
+
+private suspend fun DriveQueryProvider.photosWhere(params: FileQueryParams): List<HomebaseFile> = buildList {
+    forEachPage(
+        PhotobaseProtocol.DriveAlias,
+        params,
+        QueryBatchResultOptionsRequest(maxRecords = DriveFileHttpProvider.FILE_BATCH),
+        // A tag left on a file the drive key can't open does no harm; failing the delete for it would.
+        skipUnreadable = true,
+    ) { page ->
+        addAll(page.searchResults)
+        true
+    }
 }

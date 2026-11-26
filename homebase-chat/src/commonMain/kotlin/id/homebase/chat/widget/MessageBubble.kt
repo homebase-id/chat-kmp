@@ -75,6 +75,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.albumshare.AlbumShareDescriptor
 import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.conversationlist.MessageClusterPosition
@@ -213,6 +214,7 @@ fun SentMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onOpenFileShare: ((share: FileShareDescriptor, sharer: OdinId?) -> Unit)? = null,
+    onOpenAlbumShare: ((share: AlbumShareDescriptor, sharer: OdinId?) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
     onCopyImage: ((payloadKey: String) -> Unit)? = null,
@@ -436,6 +438,7 @@ fun SentMessageBubble(
                         chainCap = chainCap,
                         onSaveContactCard = onSaveContactCard,
                         onOpenFileShare = onOpenFileShare,
+                        onOpenAlbumShare = onOpenAlbumShare,
                         onMessageIdentity = onMessageIdentity,
                     )
                     AnimatedReactionPill(
@@ -568,6 +571,7 @@ fun ReceivedMessageBubble(
     chainCap: Int? = null,
     onSaveContactCard: ((card: ContactCardDescriptor, alreadySaved: Boolean) -> Unit)? = null,
     onOpenFileShare: ((share: FileShareDescriptor, sharer: OdinId?) -> Unit)? = null,
+    onOpenAlbumShare: ((share: AlbumShareDescriptor, sharer: OdinId?) -> Unit)? = null,
     onMessageIdentity: ((String) -> Unit)? = null,
     onCopyText: (String) -> Unit = {},
     onCopyImage: ((payloadKey: String) -> Unit)? = null,
@@ -718,6 +722,7 @@ fun ReceivedMessageBubble(
                             chainCap = chainCap,
                             onSaveContactCard = onSaveContactCard,
                             onOpenFileShare = onOpenFileShare,
+                            onOpenAlbumShare = onOpenAlbumShare,
                             onMessageIdentity = onMessageIdentity,
                         )
                         AnimatedReactionPill(

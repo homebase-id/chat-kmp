@@ -18,7 +18,19 @@ import id.homebase.api.client.drives.upload.calculateUploadSize
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.asQuery
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
+import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
+import kotlinx.serialization.Serializable
+
+@Serializable
+private data class SendDeleteRequest(
+    val globalTransitIdFileIdentifier: GlobalTransitIdFileIdentifier,
+    val fileSystemType: FileSystemType,
+    val recipients: List<String>,
+)
 
 /**
  * Writes a file straight onto a **peer's** drive (a community owner's collaborative drive) over
@@ -108,7 +120,7 @@ class PeerDriveUploadProvider(
         // body is the same V1 transit bundle (TransitInstructionSet with remoteTargetDrive +
         // recipients, then metadata, then payload/thumbnail parts).
         val owner = recipients.first()
-        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + (request.fileSystemType?.let { "?xfst=$it" } ?: ""))
+        val url = apiUrl(creds.domain, "/peer/$owner/drives/${remoteTargetDrive.alias}/files/send" + request.fileSystemType.asQuery())
         Logger.i(tag = TAG) {
             "uploadFileOverPeer: POST $url recipients=${recipients.map { it.domainName }} " +
                 "remoteDrive=$remoteTargetDrive"
@@ -139,6 +151,22 @@ class PeerDriveUploadProvider(
                 "status=${result.recipientStatus}"
         }
         return result
+    }
+
+    /**
+     * Asks [owner] to delete the file this identity sent them, by its global transit id; no copy here is needed. The
+     * owner's server lets its original sender delete a file that has no shares (a comment, say).
+     */
+    suspend fun sendDeleteRequest(owner: OdinId, file: GlobalTransitIdFileIdentifier, fileSystemType: FileSystemType) {
+        val creds = requireCreds()
+        val response = plainPostJson(
+            url = apiUrl(creds.domain, "/peer/$owner/drives/${file.targetDrive.alias}/files/senddeleterequest"),
+            token = creds.accessToken,
+            jsonBody = OdinSystemSerializer.serialize(SendDeleteRequest(file, fileSystemType, listOf(owner.domainName))),
+        )
+        throwForFailure(response)
+        val status: Map<String, String> = OdinSystemSerializer.deserialize(response.body)
+        check(status.values.none { it.equals("EnqueueFailed", ignoreCase = true) }) { "delete of ${file.globalTransitId} not queued for $owner: $status" }
     }
 
     companion object {

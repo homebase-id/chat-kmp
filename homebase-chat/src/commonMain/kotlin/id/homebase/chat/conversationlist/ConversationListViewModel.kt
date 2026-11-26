@@ -1774,6 +1774,9 @@ class ConversationListViewModel(
             is ConversationListUiAction.OpenFileShare ->
                 sendEvent(ConversationListUiEvent.NavigateToFileShare(action.sharer, action.circleId))
 
+            is ConversationListUiAction.OpenAlbumShare ->
+                sendEvent(ConversationListUiEvent.NavigateToAlbumShare(action.sharer, action.albumId))
+
             is ConversationListUiAction.SaveContactCard -> {
                 sendEvent(
                     ConversationListUiEvent.NavigateToSaveContactCard(

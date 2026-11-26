@@ -1,6 +1,7 @@
 package id.homebase.chat.widget
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
@@ -73,6 +74,7 @@ fun typedMessageContentLabel(messageContent: MessageContent?): ContentLabel? = w
     is MessageContent.Location -> ContentLabel(messageContent.displayLabel, Icons.Default.LocationOn)
     is MessageContent.ViewOnce -> null
     is MessageContent.FileShare -> ContentLabel(messageContent.displayLabel, HomebaseIcons.Filesync)
+    is MessageContent.AlbumShare -> ContentLabel(messageContent.displayLabel, Icons.Outlined.PhotoAlbum)
     is MessageContent.AgentUi -> ContentLabel(messageContent.displayLabel, Icons.Default.SmartToy)
     is MessageContent.AgentUiAction -> ContentLabel(messageContent.displayLabel, Icons.Default.TouchApp)
     is MessageContent.Unknown -> ContentLabel(messageContent.displayLabel, Icons.AutoMirrored.Outlined.HelpOutline)

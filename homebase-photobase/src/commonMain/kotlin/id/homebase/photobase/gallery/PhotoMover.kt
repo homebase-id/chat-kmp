@@ -10,6 +10,10 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PerFileResult
 import id.homebase.api.client.drives.files.TombstoneOptions
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.headerUpdate
+import id.homebase.api.client.drives.upload.withTag
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -34,6 +38,9 @@ interface PhotoMoveServer {
     /** Adds or removes [tag] in each file's local tags, on top of the ones it has. */
     suspend fun setLocalTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult>
 
+    /** Adds or removes [tag] in each file's app tags, which a guest's query can see; done for a file already as asked. */
+    suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult>
+
     /** Null when the server hasn't the file. */
     suspend fun header(fileId: Uuid): HomebaseFile?
 }
@@ -41,6 +48,7 @@ interface PhotoMoveServer {
 class HttpPhotoMoveServer(
     private val files: DriveFileHttpProvider,
     private val headers: DriveFileProvider,
+    private val uploads: DriveUploadProvider,
     private val driveId: Uuid = PhotobaseProtocol.DriveAlias,
 ) : PhotoMoveServer {
     override suspend fun setArchivalStatus(status: ArchivalStatus, files: List<FileVersionTag>) =
@@ -55,6 +63,33 @@ class HttpPhotoMoveServer(
     }
 
     override suspend fun header(fileId: Uuid): HomebaseFile? = headers.getFileHeader(driveId, fileId)
+
+    // The header is the file's own, so a tag is written by rewriting it; one changed meanwhile is read again once.
+    override suspend fun setAppTag(tag: Uuid, on: Boolean, fileIds: List<Uuid>): List<PerFileResult> {
+        val permits = Semaphore(HEADER_WRITES)
+        return coroutineScope {
+            fileIds.map { fileId -> async { permits.withPermit { appTag(tag, on, fileId) } } }.awaitAll()
+        }
+    }
+
+    private suspend fun appTag(tag: Uuid, on: Boolean, fileId: Uuid): PerFileResult {
+        repeat(2) {
+            val file = header(fileId)?.takeIf { it.fileState == FileState.Active } ?: return PerFileResult(fileId, OdinClientErrorCode.FileNotFound)
+            if ((tag in file.fileMetadata.appData.tags.orEmpty()) == on) return PerFileResult(fileId)
+            try {
+                if (uploads.updateFileByFileId(file.headerUpdate { it.copy(tags = it.tags.withTag(tag, on)) }, onVersionConflict = { null }) != null) {
+                    return PerFileResult(fileId)
+                }
+            } catch (e: ClientException) {
+                if (e.errorCode != OdinClientErrorCode.VersionTagMismatch) return PerFileResult(fileId, e.errorCode)
+            }
+        }
+        return PerFileResult(fileId, OdinClientErrorCode.VersionTagMismatch)
+    }
+
+    private companion object {
+        const val HEADER_WRITES = 8
+    }
 }
 
 /**
@@ -70,16 +105,43 @@ class PhotoMover(
     private val binned: suspend () -> List<HomebaseFile>,
     /** Asks the drive to sync, so the device's copy catches up with the writes. */
     private val sync: () -> Unit,
+    /** Photos put in an album or taken out: a shared album's shares follow. */
+    private val albumChanged: suspend (album: Uuid, on: Boolean, fileIds: Set<Uuid>) -> Unit = { _, _, _ -> },
+    /** Photos went to the Bin, or came out of it, each album's own: their shares follow. */
+    private val binChanged: suspend (photosByAlbum: Map<Uuid, Set<Uuid>>, binned: Boolean) -> Unit = { _, _ -> },
 ) {
-    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult =
-        write(fileIds, filesOf(fileIds), from.status, to.status)
+    suspend fun move(fileIds: Collection<Uuid>, from: PhotoShelf, to: PhotoShelf): PhotoMoveResult {
+        val files = filesOf(fileIds)
+        val result = write(fileIds, files, from.status, to.status)
+        val binned = to == PhotoShelf.Bin
+        if (binned != (from == PhotoShelf.Bin)) followTheBin(files.filter { it.fileId in result.written }, binned)
+        return result
+    }
+
+    // The move itself is done; shares that didn't follow are caught up by the album's next share or upkeep.
+    private suspend fun followTheBin(moved: List<HomebaseFile>, binned: Boolean) {
+        val byAlbum = HashMap<Uuid, MutableSet<Uuid>>()
+        for (photo in moved) {
+            val albums = photo.fileMetadata.appData.tags.orEmpty() + photo.fileMetadata.localAppData?.tags.orEmpty() - PhotobaseProtocol.FavoriteTag
+            albums.forEach { byAlbum.getOrPut(it) { HashSet() } += photo.fileId }
+        }
+        if (byAlbum.isEmpty()) return
+        try {
+            binChanged(byAlbum, binned)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "${moved.size} photos' shares didn't follow them ${if (binned) "into" else "out of"} the Bin" }
+        }
+    }
 
     suspend fun deleteForGood(fileIds: Collection<Uuid>): PhotoMoveResult =
         write(fileIds, filesOf(fileIds), from = ArchivalStatus.Removed, to = null)
 
     /**
      * Puts [tag] on [fileIds], a heart or an album, or takes it off, wherever each is. No version is checked: a tag is
-     * the same whoever set it, and another device's tags on the same photo stand beside this one.
+     * the same whoever set it, and another device's tags on the same photo stand beside this one. An album's tag goes
+     * on the photos' headers too ([mirrorAppTag]), which is how a guest's query finds them.
      */
     suspend fun setTag(tag: Uuid, on: Boolean, fileIds: Collection<Uuid>): PhotoMoveResult {
         val tally = Tally(to = null)
@@ -97,11 +159,47 @@ class PhotoMover(
                     }
                 }
             }
+            if (tag != PhotobaseProtocol.FavoriteTag) {
+                mirrorAppTag(tag, on, tally.written)
+                shareAsTheAlbum(tag, on, tally.written)
+            }
         } finally {
             sync()
         }
         return tally.result().also {
             Logger.i(tag = TAG) { "tag $tag ${if (on) "on" else "off"}: ${it.done} done, ${it.changedElsewhere} changed elsewhere, ${it.failed} failed" }
+        }
+    }
+
+    /**
+     * Puts album [tag] on [fileIds]' headers, or takes it off; the number that didn't take. The local tag is what this
+     * app shows, so one that fails is logged and left for the album's next share or upkeep to put on again.
+     */
+    suspend fun mirrorAppTag(tag: Uuid, on: Boolean, fileIds: Collection<Uuid>): Int {
+        var failed = 0
+        for (batch in fileIds.distinct().chunked(DriveFileHttpProvider.FILE_BATCH)) {
+            failed += try {
+                server.setAppTag(tag, on, batch).count { it.errorCode != null && it.errorCode != OdinClientErrorCode.FileNotFound }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Logger.w(tag = TAG, throwable = e) { "album tag $tag not mirrored on ${batch.size} photos" }
+                batch.size
+            }
+        }
+        if (failed > 0) Logger.w(tag = TAG) { "album tag $tag ${if (on) "on" else "off"}: $failed photos' headers not written" }
+        return failed
+    }
+
+    // The move itself is done; a share that didn't follow is caught up by the album's next upkeep.
+    private suspend fun shareAsTheAlbum(album: Uuid, on: Boolean, fileIds: Set<Uuid>) {
+        if (fileIds.isEmpty()) return
+        try {
+            albumChanged(album, on, fileIds)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "album $album's shares didn't follow ${fileIds.size} photos" }
         }
     }
 

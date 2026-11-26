@@ -3,12 +3,20 @@ package id.homebase.api.client.peer
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.FileSystemType
+import id.homebase.api.client.drives.GlobalTransitIdFileIdentifier
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.drives.TargetDrive
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.commentedFileKeyHeader
+import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.keepFileKeyHeader
 import id.homebase.api.client.drives.shares.ShareRequest
 import id.homebase.api.client.drives.upload.DriveUploadProvider
+import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
+import id.homebase.api.client.drives.upload.UpdateFileByUniqueIdRequest
+import id.homebase.api.client.drives.upload.UpdateLocale
+import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
@@ -20,6 +28,8 @@ import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.file.JvmFileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandleScope
+import io.ktor.client.request.HttpRequestData
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpHeaders
@@ -140,6 +150,102 @@ class MemberWritesWireTest {
         assertEquals("share", keyHeader["type"]!!.jsonPrimitive.content)
         assertEquals(Base64.encode(newIv), keyHeader["iv"]!!.jsonPrimitive.content)
         assertEquals("", keyHeader["encryptedAesKey"]!!.jsonPrimitive.content, "the file's key is kept, not sent")
+    }
+
+    @Test
+    fun aCommentEditOverPeerNamesTheCommentFileSystemAndKeepsThePhotosKey() = runTest {
+        val sent = Captured()
+        val provider = DriveUploadProvider(sent.client(updated), credentials, JvmFileOperationsProvider())
+        val newIv = ByteArray(16) { 5 }
+
+        provider.updateFileOverPeerByGlobalTransitId(
+            frodo, Uuid.random(), Uuid.random(), commentedFileKeyHeader(newIv),
+            UploadFileMetadata(allowDistribution = true, isEncrypted = true, appData = UploadAppFileMetaData(uniqueId = Uuid.random())),
+            payloads = emptyList(),
+            fileSystemType = FileSystemType.Comment,
+        )
+
+        assertEquals("Comment", sent.request.url.parameters["xfst"])
+        val keyHeader = sent.descriptor()["encryptedKeyHeader"]!!.jsonObject
+        assertEquals("fileKey", keyHeader["type"]!!.jsonPrimitive.content)
+        assertEquals(Base64.encode(newIv), keyHeader["iv"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun anOwnersCommentEditIsOnItsFilesKeyToo() = runTest {
+        val sent = Captured()
+        val provider = DriveUploadProvider(sent.client(updated), credentials, JvmFileOperationsProvider())
+        val uniqueId = Uuid.random()
+        val keyHeader = KeyHeader.newRandom16()
+
+        provider.updateFileByUniqueId(
+            UpdateFileByUniqueIdRequest(
+                driveId = Uuid.random(),
+                uniqueId = uniqueId,
+                keyHeader = keyHeader,
+                instructions = FileUpdateInstructionSet(ByteArray(16) { 2 }, UpdateLocale.Local, emptyList(), UpdateManifest.build()),
+                metadata = UploadFileMetadata(allowDistribution = false, isEncrypted = true, appData = UploadAppFileMetaData(uniqueId = uniqueId)),
+                fileSystemType = FileSystemType.Comment,
+                withCommentedFileKey = true,
+            )
+        )
+
+        assertTrue(sent.request.url.encodedPath.endsWith("/files/by-uid/$uniqueId"), sent.request.url.encodedPath)
+        assertEquals("Comment", sent.request.url.parameters["xfst"])
+        val locked = sent.descriptor()["encryptedKeyHeader"]!!.jsonObject
+        assertEquals("fileKey", locked["type"]!!.jsonPrimitive.content)
+        assertEquals(Base64.encode(keyHeader.iv), locked["iv"]!!.jsonPrimitive.content)
+        assertEquals("", locked["encryptedAesKey"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aGuestDeletesItsCommentByAskingTheOwnerByGlobalTransitId() = runTest {
+        val sent = Captured()
+        val provider = PeerDriveUploadProvider(sent.client { respondJson("""{"frodo.dotyou.cloud":"enqueued"}""") }, credentials, JvmFileOperationsProvider())
+        val drive = TargetDrive(Uuid.random(), Uuid.random())
+        val gtid = Uuid.random()
+
+        provider.sendDeleteRequest(frodo, GlobalTransitIdFileIdentifier(gtid, drive), FileSystemType.Comment)
+
+        assertEquals(HttpMethod.Post, sent.request.method)
+        assertTrue(sent.request.url.encodedPath.endsWith("/api/v2/peer/frodo.dotyou.cloud/drives/${drive.alias}/files/senddeleterequest"), sent.request.url.encodedPath)
+        val body = Json.parseToJsonElement(sent.body.decodeToString()).jsonObject
+        assertEquals("comment", body["fileSystemType"]!!.jsonPrimitive.content)
+        assertEquals(gtid.toString(), body["globalTransitIdFileIdentifier"]!!.jsonObject["globalTransitId"]!!.jsonPrimitive.content)
+        assertEquals(listOf("frodo.dotyou.cloud"), body["recipients"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    @Test
+    fun aReactionOnACommentNamesTheCommentFileSystem() = runTest {
+        val sent = Captured()
+        val provider = DriveFileGroupReactionProvider(sent.client { respondJson("{}") }, credentials)
+
+        provider.addReaction(Uuid.random(), Uuid.random(), "{}", recipients = emptyList(), fileSystemType = FileSystemType.Comment)
+
+        assertEquals("Comment", sent.request.headers["X-ODIN-FILE-SYSTEM-TYPE"])
+    }
+
+    private val updated: suspend MockRequestHandleScope.() -> io.ktor.client.request.HttpResponseData = {
+        respondJson("""{"fileId":"${Uuid.NIL}","driveId":"${Uuid.NIL}","newVersionTag":"${Uuid.random()}"}""")
+    }
+
+    private fun MockRequestHandleScope.respondJson(json: String) = respond(json, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+
+    // The one request a test sends, and its body.
+    private inner class Captured {
+        lateinit var request: HttpRequestData
+        var body = ByteArray(0)
+
+        fun client(answer: suspend MockRequestHandleScope.() -> io.ktor.client.request.HttpResponseData) = HttpClient(MockEngine { request ->
+            this@Captured.request = request
+            body = request.body.toByteArray()
+            answer()
+        })
+
+        suspend fun descriptor(): JsonObject {
+            val parts = parts(body, request.body.contentType.toString())
+            return descriptor(parts, Json.parseToJsonElement(parts.getValue("instructions").decodeToString()).jsonObject)
+        }
     }
 
     private suspend fun descriptor(parts: Map<String, ByteArray>, instructions: JsonObject): JsonObject {

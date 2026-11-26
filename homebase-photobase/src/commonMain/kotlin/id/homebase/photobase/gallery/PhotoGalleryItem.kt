@@ -18,8 +18,9 @@ data class PhotoGalleryItem(
     val motion: PayloadDescriptor? = null,
     /** Its local tags: the favourites' and its albums'. */
     val tags: Set<Uuid> = emptySet(),
-    /** What its comments and reactions point at. */
     val uniqueId: Uuid? = null,
+    /** What its comments and reactions point at. */
+    val globalTransitId: Uuid? = null,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
 
@@ -49,5 +50,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         motion = live?.playableIn(payloads),
         tags = localTags().toSet(),
         uniqueId = appData.uniqueId,
+        globalTransitId = fileMetadata.globalTransitId,
     )
 }
