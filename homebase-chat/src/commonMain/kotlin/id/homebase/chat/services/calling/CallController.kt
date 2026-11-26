@@ -212,8 +212,8 @@ class CallController(
 
     private suspend fun send(peer: String, signal: CallSignal) {
         // The relay keeps only each sender's last blob: no candidate may follow the hangup, and the chosen device must
-        // still get the whole list after the caller tells its siblings the call was answered elsewhere. An answer or
-        // restart rides in every later list, which is posted again after it so that the list, carrying both, is kept.
+        // still get the whole list after the caller tells its siblings the call was answered elsewhere, and the list that
+        // carries an answer or restart must be posted after it.
         val ice = iceSender?.takeIf { it.peer == peer }
         if (ice?.closed == true) ice.join()
         val carried = signal is CallSignal.Answer || signal is CallSignal.Restart
