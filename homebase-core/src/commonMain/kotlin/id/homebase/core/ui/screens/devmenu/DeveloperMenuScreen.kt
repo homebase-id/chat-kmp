@@ -20,7 +20,8 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.ContactPage
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.PhotosOutlined
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.NetworkCheck
@@ -305,7 +306,7 @@ fun DeveloperMenuUi(
 
             SettingsRow(
                 modifier = Modifier.testTag("photobaseDeveloperToggle"),
-                icon = Icons.Outlined.PhotoLibrary,
+                icon = HomebaseIcons.PhotosOutlined,
                 title = stringResource(MR.string.dev_menu_photobase),
                 supportingText = stringResource(MR.string.dev_menu_photobase_desc),
                 action = SettingsRowAction.Toggle(

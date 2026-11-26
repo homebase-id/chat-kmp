@@ -5,7 +5,8 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.PhotoAlbum
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.PhotosOutlined
 import androidx.compose.ui.graphics.vector.ImageVector
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.gallery.PhotoShelf
@@ -27,7 +28,7 @@ internal class GalleryLook(val title: StringResource, val emptyText: StringResou
 internal val PhotoGallery.look: GalleryLook
     get() = when (this) {
         is PhotoGallery.OnShelf -> when (shelf) {
-            PhotoShelf.Library -> GalleryLook(MR.string.photobase_label, MR.string.photobase_gallery_empty, Icons.Outlined.PhotoLibrary)
+            PhotoShelf.Library -> GalleryLook(MR.string.photobase_label, MR.string.photobase_gallery_empty, HomebaseIcons.PhotosOutlined)
             PhotoShelf.Archive -> GalleryLook(MR.string.photobase_archive_title, MR.string.photobase_archive_empty_state, Icons.Outlined.Archive)
             PhotoShelf.Bin -> GalleryLook(MR.string.photobase_bin_title, MR.string.photobase_bin_empty_state, Icons.Outlined.Delete)
         }
