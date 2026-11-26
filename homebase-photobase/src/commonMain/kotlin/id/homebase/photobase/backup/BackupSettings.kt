@@ -42,10 +42,10 @@ class BackupSettingsUnreadable : IllegalStateException("backup settings couldn't
 class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     private val keyValue get() = databaseManager.keyValue
 
-    // Before the first read, which sets it.
+    // Declared before _settings: read() sets it during init.
     private val _unreadable = MutableStateFlow(false)
 
-    /** The stored settings couldn't be read: [settings] holds the defaults, so backup is off and nothing saves over them. */
+    /** The stored settings couldn't be read, so [settings] holds the defaults. */
     val unreadable: StateFlow<Boolean> = _unreadable.asStateFlow()
 
     private val _settings = MutableStateFlow(read())
@@ -55,9 +55,9 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
         _settings.value = read()
     }
 
-    /** A failed read may have been a moment's lock: read again. */
-    fun retryIfUnreadable() {
-        if (_unreadable.value) reset()
+    /** A failed read may have been a moment's lock: read again, on the read lane. */
+    suspend fun retryIfUnreadable() {
+        if (_unreadable.value) _settings.value = parse(runCatching { keyValue.selectByKey(SETTINGS_KEY) { _, data -> data } })
     }
 
     /** Throws [BackupSettingsUnreadable] while the stored settings can't be read: saving the defaults would replace them. */
@@ -72,8 +72,9 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     }
 
     // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
-    private fun read(): BackupSettings {
-        val read = runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }
+    private fun read(): BackupSettings = parse(runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } })
+
+    private fun parse(read: Result<ByteArray?>): BackupSettings {
         _unreadable.value = read.isFailure
         val bytes = read.getOrNull()
         if (bytes == null || bytes.isEmpty()) return BackupSettings()

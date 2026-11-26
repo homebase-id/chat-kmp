@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.client.eventbus.BackendEvent
@@ -18,8 +19,8 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
-internal fun testDatabase(): DatabaseManager = DatabaseManager(
-    driverProvider = { JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY) },
+internal fun testDatabase(driver: SqlDriver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)): DatabaseManager = DatabaseManager(
+    driverProvider = { driver },
     dispatcher = Dispatchers.Unconfined,
     readDispatcher = Dispatchers.Unconfined,
 )

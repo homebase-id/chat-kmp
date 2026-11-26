@@ -40,11 +40,16 @@ class PhotoBackupController(
 
     val settingsUnreadable: StateFlow<Boolean> get() = settingsStore.unreadable
 
-    fun retrySettings() = settingsStore.retryIfUnreadable()
+    fun retrySettings() {
+        scope.launch { settingsStore.retryIfUnreadable() }
+    }
 
     fun onAppForeground() {
         inForeground = true
-        settingsStore.retryIfUnreadable()
+        if (settingsStore.unreadable.value) {
+            scope.launch { settingsStore.retryIfUnreadable(); if (!settingsStore.unreadable.value && inForeground) onAppForeground() }
+            return
+        }
         val run = run ?: return
         if (foregroundJob?.isActive == true) return
         val settings = settingsStore.settings.value
@@ -112,7 +117,6 @@ class PhotoBackupController(
 
     /** Re-arms what a process death can lose. */
     fun onProcessStart() {
-        settingsStore.retryIfUnreadable()
         val settings = settingsStore.settings.value
         if (settings.enabled) triggers?.rearm(settings)
     }
@@ -147,7 +151,7 @@ class PhotoBackupController(
             try {
                 settingsStore.update(transform)
             } catch (e: BackupSettingsUnreadable) {
-                // The settings screen says so; the user's change isn't kept.
+                // The settings screen shows why.
                 Logger.w(tag = TAG, throwable = e) { "not saved" }
                 return@launch
             }
@@ -175,6 +179,9 @@ class PhotoBackupController(
     /** Off the caller's scope: leaving the page must not abandon a save between the file and the schedule. */
     suspend fun setPushInterval(intervalMs: Long) = scope.async {
         val clamped = intervalMs.coerceAtLeast(BackupSettings.MIN_PUSH_INTERVAL.inWholeMilliseconds)
+        // Before the shared file: it and this phone's settings must not disagree.
+        settingsStore.retryIfUnreadable()
+        if (settingsStore.unreadable.value) throw BackupSettingsUnreadable()
         configFile.update { it.copy(pushIntervalMs = clamped) }
         adopt(clamped)
         pushSchedule.correctIfScheduled(settingsStore.settings.value)
@@ -201,6 +208,7 @@ class PhotoBackupController(
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
+        settingsStore.retryIfUnreadable()
         foregroundJob?.cancel()
         run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))

@@ -21,8 +21,6 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpStatusCode
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import id.homebase.api.sync.database.DatabaseManager
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -123,7 +121,7 @@ class BackupPolicyTest {
     @Test
     fun aFailedReadKeepsBackupOffAndSavesNothingOverTheStoredSettingsUntilARetryReadsThem() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        val db = DatabaseManager({ driver }, dispatcher = Dispatchers.Unconfined, readDispatcher = Dispatchers.Unconfined)
+        val db = testDatabase(driver)
         BackupSettingsStore(db).update { it.copy(enabled = true, albumIds = setOf("camera")) }
         // The read fails, as a locked database would, and then works again.
         driver.execute(null, "ALTER TABLE KeyValue RENAME TO KeyValueAway", 0)

@@ -3445,7 +3445,6 @@
     <string name="photobase_library_allow">Allow access</string>
     <string name="photobase_library_allow_all">Allow all photos</string>
     <string name="photobase_backup_settings_unreadable">Your backup settings couldn't be read, so backup is paused and changes aren't saved.</string>
-    <string name="photobase_backup_settings_retry">Try again</string>
     <string name="photobase_location_withheld">Backups don't include where your photos were taken.</string>
     <string name="photobase_location_allow">Include locations</string>
     <string name="photobase_status_title">Backup status</string>

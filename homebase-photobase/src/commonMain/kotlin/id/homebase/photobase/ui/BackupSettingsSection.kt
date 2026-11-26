@@ -2,6 +2,7 @@ package id.homebase.photobase.ui
 
 import id.homebase.core.settings.photoDescription
 import id.homebase.core.settings.videoDescription
+import id.homebase.resources.action_retry
 import id.homebase.resources.photobase_backup_quality_note
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.SendQuality
@@ -63,6 +64,7 @@ import id.homebase.resources.photobase_backup_newest_first
 import id.homebase.resources.photobase_backup_newest_first_desc
 import id.homebase.resources.photobase_backup_only_new
 import id.homebase.resources.photobase_backup_only_new_desc
+import id.homebase.resources.photobase_backup_settings_unreadable
 import id.homebase.resources.photobase_backup_status
 import id.homebase.resources.photobase_backup_videos_cellular
 import id.homebase.resources.photobase_backup_wifi_only
@@ -76,11 +78,10 @@ import id.homebase.resources.photobase_library_allow_all
 import id.homebase.resources.photobase_library_limited
 import id.homebase.resources.photobase_library_none
 import id.homebase.resources.photobase_location_allow
-import id.homebase.resources.photobase_backup_settings_retry
-import id.homebase.resources.photobase_backup_settings_unreadable
 import id.homebase.resources.photobase_location_withheld
 import id.homebase.resources.photobase_refresh_status
 import id.homebase.resources.photobase_refresh_status_desc
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -101,9 +102,13 @@ fun BackupSettingsSection(
     val rowColor = MaterialTheme.colorScheme.surfaceContainer
     val onPermissionChanged = { onAction(BackupSettingsUiAction.PermissionChanged) }
     val requestPhotoLocations = rememberPhotoLocationAccess(onPermissionChanged)
-    if (uiState.settingsUnreadable) SettingsUnreadableRow { onAction(BackupSettingsUiAction.RetrySettings) }
+    if (uiState.settingsUnreadable) {
+        NoticeRow(MR.string.photobase_backup_settings_unreadable, MR.string.action_retry) { onAction(BackupSettingsUiAction.RetrySettings) }
+    }
     LibraryAccessRow(uiState.status.libraryAccess, onPermissionChanged)
-    if (settings.enabled && uiState.status.photoLocationsWithheld) PhotoLocationRow(requestPhotoLocations)
+    if (settings.enabled && uiState.status.photoLocationsWithheld) {
+        NoticeRow(MR.string.photobase_location_withheld, MR.string.photobase_location_allow, requestPhotoLocations)
+    }
     RowGroup {
         SettingsRow(
             icon = Icons.Outlined.CloudUpload,
@@ -283,19 +288,10 @@ private fun LibraryAccessRow(access: LibraryAccess, onChanged: () -> Unit) {
 }
 
 @Composable
-private fun SettingsUnreadableRow(onRetry: () -> Unit) {
+private fun NoticeRow(text: StringResource, action: StringResource, onClick: () -> Unit) {
     ListItem(
-        supportingContent = { Button(onClick = onRetry) { Text(stringResource(MR.string.photobase_backup_settings_retry)) } },
-    ) { Text(stringResource(MR.string.photobase_backup_settings_unreadable)) }
-}
-
-@Composable
-private fun PhotoLocationRow(onAllow: () -> Unit) {
-    ListItem(
-        supportingContent = {
-            Button(onClick = onAllow) { Text(stringResource(MR.string.photobase_location_allow)) }
-        },
-    ) { Text(stringResource(MR.string.photobase_location_withheld)) }
+        supportingContent = { Button(onClick = onClick) { Text(stringResource(action)) } },
+    ) { Text(stringResource(text)) }
 }
 
 @Composable
