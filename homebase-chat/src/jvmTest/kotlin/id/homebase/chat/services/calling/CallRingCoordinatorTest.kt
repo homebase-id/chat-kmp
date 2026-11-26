@@ -1,5 +1,7 @@
 package id.homebase.chat.services.calling
 
+import kotlinx.coroutines.flow.emptyFlow
+import id.homebase.core.util.NetworkMonitor
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.eventbus.EventBus
@@ -146,6 +148,10 @@ class CallRingCoordinatorTest {
             iceServers = { CallIceServers.None },
             scope = scope.backgroundScope,
             ringback = SilentRingbackTone,
+            networkMonitor = object : NetworkMonitor {
+                override fun isUnmetered() = true
+                override val defaultNetworkChanges = emptyFlow<Unit>()
+            },
         )
         val coordinator = CallRingCoordinator(service, service.transitions, sink, { null }, scope.backgroundScope)
             .also { it.start(); CallPushRouter.handler = it }

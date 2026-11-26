@@ -10,6 +10,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -29,9 +31,16 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class CallController(
     selfOdinId: String,
     private val signaling: CallSignaling,
@@ -42,6 +51,7 @@ class CallController(
     private val ringTimeoutMs: Long = RING_TIMEOUT_MS,
     private val offerRepublishMs: Long = OFFER_REPUBLISH_MS,
     private val deviceId: String = Uuid.random().toString(),
+    private val networkChanges: Flow<Unit> = emptyFlow(),
 ) : CallSession {
     private val log = Logger.withTag(TAG)
     private val machine = CallStateMachine(selfOdinId, deviceId)
@@ -128,7 +138,16 @@ class CallController(
                 }
             }
         }
-        collectors = listOf(signals, inboxLoop)
+        // Seeded with the network the call connected on; a failing watcher must not take the call down with it.
+        val network = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            _state.map { it.phase.isEstablished }.distinctUntilChanged()
+                .flatMapLatest { established ->
+                    if (!established) return@flatMapLatest emptyFlow()
+                    networkChanges.catch { log.w(it) { "network watch stopped for this call" } }.debounce(NETWORK_SETTLE_MS)
+                }
+                .collect { post(CallEvent.NetworkChanged) }
+        }
+        collectors = listOf(signals, inboxLoop, network)
     }
 
     fun close() {

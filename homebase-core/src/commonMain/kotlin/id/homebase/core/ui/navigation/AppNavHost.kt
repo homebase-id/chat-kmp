@@ -235,8 +235,8 @@ import id.homebase.core.ui.screens.webdrop.WebDropViewModel
 import id.homebase.core.ui.screens.webdrop.onboarding.WebDropOnboardingScreen
 import id.homebase.core.feed.FeedPreferences
 import id.homebase.core.filesync.FilesyncPreferences
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.Photos
+import id.homebase.core.ui.assets.PhotosOutlined
 import id.homebase.core.photobase.PhotobasePreferences
 import id.homebase.photobase.gallery.PhotoGallery
 import id.homebase.photobase.ui.PhotoLibraryScreen
@@ -2873,7 +2873,7 @@ sealed class TopLevelRoute(
     data object Apps : TopLevelRoute(Route.Home, MR.string.nav_apps, HomebaseIcons.Apps, HomebaseIcons.AppsOutlined)
     data object Vault : TopLevelRoute(Route.Vault, MR.string.vault_label, Icons.Filled.Lock, Icons.Outlined.Lock)
     data object Filesync : TopLevelRoute(Route.Filesync, MR.string.filesync_label, HomebaseIcons.Filesync)
-    data object Photobase : TopLevelRoute(Route.Photobase, MR.string.photobase_label, Icons.Filled.PhotoLibrary, Icons.Outlined.PhotoLibrary)
+    data object Photobase : TopLevelRoute(Route.Photobase, MR.string.photobase_label, HomebaseIcons.Photos, HomebaseIcons.PhotosOutlined)
     data object Email : TopLevelRoute(Route.Email, MR.string.email_label, Icons.Filled.Mail, Icons.Outlined.MailOutline)
     data object Location : TopLevelRoute(Route.Location, MR.string.location_label, Icons.Filled.LocationOn, Icons.Outlined.LocationOn)
     data object ContactBook : TopLevelRoute(Route.ContactBook, MR.string.contactbook_label, Icons.Filled.People, Icons.Outlined.People)

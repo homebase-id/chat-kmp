@@ -83,7 +83,7 @@ class MomentsHeicOriginalScrubTest {
         val mediaInfo = picked.toMediaInfo()
         try {
             sender.postMomentAsync(
-                attachments = listOf(picked.toAttachmentInput()),
+                attachments = listOf(picked.toAttachmentInput(fileOps)),
                 description = "",
                 recipients = emptyList(),
                 mediaInfoByAttachment = listOf(mediaInfo),

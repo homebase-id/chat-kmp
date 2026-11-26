@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.HomebaseIcons
+import id.homebase.core.ui.assets.Photos
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -83,7 +83,7 @@ fun PhotobaseOnboardingScreen(viewModel: PhotobaseSetupViewModel, onDismiss: () 
             verticalArrangement = Arrangement.Top,
         ) {
             Icon(
-                imageVector = Icons.Outlined.PhotoLibrary,
+                imageVector = HomebaseIcons.Photos,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(96.dp),

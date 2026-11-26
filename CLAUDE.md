@@ -348,13 +348,16 @@ line added or removed; `<base>` is `origin/` and the PR's base branch: `origin/m
 the branch below. Real code is source, build and config files, not docs, tests, translations, resources or
 comments. A PR that changes none skips both passes, and its description says so in one line.
 
+## Issues
+
+Read [`ISSUES.md`](ISSUES.md) before working on an issue or filing one: how to read one, what to write
+on screen, how to stay with the problem, how its PR starts, and how to file one.
+
 ## Opening a PR
 
 One PR solves one problem. Unrelated fixes are separate PRs, however small; no "Small fixes: …"
 grab-bags. If the title needs "and" or a list to say what the PR does, it is probably two PRs.
 Two issues share a PR only when the same change fixes both.
-
-Start the description with a `Core change:` line: the `file:line` and the one line of code that makes the change work, plus why, in one sentence. After opening the PR, print two bullets on screen: the PR title followed by its bare full URL, then that same core change line.
 
 When you open a PR, before handing it over:
 
@@ -378,13 +381,6 @@ When you open a PR, before handing it over:
   Leave out `Part of` when there is no tracking issue, and `Fixes a problem from` unless the PR
   fixes something a merged PR got wrong. `Verified` names what actually ran: a UI change says
   whether it ran on a phone and on desktop.
-
-## Filing issues
-
-- An issue about something a merged PR got wrong starts with "Found after #<PR>" and gets the
-  `post-merge` label.
-- When a fix doesn't hold, reopen its issue with "Still broken on <platform>: …" instead of
-  filing a new one.
 
 ## Comments
 

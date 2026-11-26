@@ -77,7 +77,7 @@ import id.homebase.resources.vault_label
 import id.homebase.resources.webdrop_home_subtitle
 import id.homebase.resources.webdrop_label
 import androidx.compose.material.icons.outlined.MailOutline
-import androidx.compose.material.icons.outlined.PhotoLibrary
+import id.homebase.core.ui.assets.PhotosOutlined
 import id.homebase.resources.filesync_label
 import id.homebase.resources.photobase_home_subtitle
 import id.homebase.resources.photobase_label
@@ -233,7 +233,7 @@ fun HomeUi(
             Spacer(modifier = Modifier.height(12.dp))
 
             FeatureCard(
-                icon = Icons.Outlined.PhotoLibrary,
+                icon = HomebaseIcons.PhotosOutlined,
                 label = stringResource(MR.string.photobase_label),
                 subtitle = stringResource(MR.string.photobase_home_subtitle),
                 onClick = onNavigateToPhotobase,

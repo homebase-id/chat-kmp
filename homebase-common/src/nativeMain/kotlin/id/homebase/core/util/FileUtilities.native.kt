@@ -25,7 +25,7 @@ actual fun getUriHandler(): FileSystemHandler {
         private val saver = FileSaver(IosAlbumSaver, fileOps, ShareSheetFallback(fileOps) { path, onError -> shareFile(path, onError) })
 
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
-            val nsUrl = NSURL.URLWithString(url) ?: return
+            val nsUrl = NSURL.URLWithString(url) ?: return onError(IllegalArgumentException("Not a URL: $url"))
             UIApplication.sharedApplication.openURL(nsUrl, emptyMap<Any?, String>()) { success ->
                 if (!success) {
                     onError(Exception("Failed to open URL: $url"))
