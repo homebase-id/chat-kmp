@@ -76,8 +76,17 @@ sealed interface AlbumAudience {
         override val members get() = listOf(odinId)
     }
 
-    /** [missing]: what a share needs that its circle doesn't grant on the drive; it can't be shared with until updated. */
-    data class Group(val circleId: Uuid, val name: String, override val members: List<OdinId>, val missing: List<DrivePermission> = emptyList()) : AlbumAudience
+    /**
+     * [pending]: added, their grant held until their identity next calls this one. [missing]: what a share needs that its
+     * circle doesn't grant on the drive; it can't be shared with until updated.
+     */
+    data class Group(
+        val circleId: Uuid,
+        val name: String,
+        override val members: List<OdinId>,
+        val missing: List<DrivePermission> = emptyList(),
+        val pending: List<OdinId> = emptyList(),
+    ) : AlbumAudience
 }
 
 /** Unique among an album's audiences, as a label isn't: two groups may share a name. */
@@ -89,14 +98,22 @@ val AlbumAudience.key: String
 
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
-/**
- * A share made: the circle it went to, the members whose key waits for them to set up Photos, and the [pending] ones,
- * whose grant odin-core holds until their identity next calls this one.
- */
 /** A group's members changed: [joined] see what's shared with it, [pending] will once their identity next calls this one. */
-data class GroupEdit(val joined: List<OdinId>, val pending: List<OdinId>, val refused: List<OdinId>)
+data class GroupEdit(val joined: List<OdinId>, val pending: List<OdinId>, val refused: List<OdinId>, val removed: List<OdinId>) {
+    val changed: Boolean get() = joined.isNotEmpty() || pending.isNotEmpty() || removed.isNotEmpty()
+}
 
-data class AlbumShared(val circleId: Uuid, val albumName: String, val waiting: List<OdinId>, val pending: List<OdinId> = emptyList())
+/**
+ * A share made: the circle it went to, the members whose key waits for them to set up Photos, the [pending] ones, whose
+ * grant odin-core holds until their identity next calls this one, and the [refused] ones, which a group's share left out.
+ */
+data class AlbumShared(
+    val circleId: Uuid,
+    val albumName: String,
+    val waiting: List<OdinId>,
+    val pending: List<OdinId> = emptyList(),
+    val refused: List<OdinId> = emptyList(),
+)
 
 /** An album [owner] shares with this identity, as their drive holds it. */
 data class SharedAlbum(
@@ -181,10 +198,11 @@ class PhotoAlbumSharing(
 
     /** Shares album [albumId] with a new group of [members] called [name]; the group goes again if nothing reached it. */
     suspend fun shareWithNewGroup(albumId: Uuid, name: String, members: List<OdinId>, access: PhotoAlbumAccess, expiresAt: Long?): Pair<AlbumAudience.Group, AlbumShared> {
-        val group = createGroup(name, members)
+        val (group, pendingInGroup) = createGroup(name, members)
         var writing = false
         try {
-            return group to shareTo(albumId, group, access, expiresAt, onWriting = { writing = true })
+            val shared = shareTo(albumId, group, access, expiresAt, onWriting = { writing = true })
+            return group to shared.copy(pending = (shared.pending + pendingInGroup).distinct(), waiting = shared.waiting - pendingInGroup.toSet())
         } catch (e: Throwable) {
             // Once a row may be written it points at the group, so it stays; before that a retry would make a second one.
             if (!writing) withContext(NonCancellable) { runCatching { deleteGroup(group) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${group.circleId} not deleted" } } }
@@ -203,8 +221,11 @@ class PhotoAlbumSharing(
 
         val recipients = recipientsCircle()
         assertGrantsAShare(listOfNotNull(recipients, (audience as? AlbumAudience.Group)?.circleId))
-        // Their individual shares then don't depend on a group they might leave.
-        val pending = enrollOrRefuse(recipients, members).toMutableSet()
+        // Their individual shares then don't depend on a group they might leave. A group's member refused here is left
+        // out and named; the rest still get it.
+        val toRecipients = enrollAll(recipients, members)
+        if (audience is AlbumAudience.Person && toRecipients.refused.isNotEmpty()) throw PhotoSharingException.RecipientNotAdded(toRecipients.refused.toList())
+        val pending = toRecipients.pending.toMutableSet()
         val circleId = when (audience) {
             is AlbumAudience.Group -> audience.circleId
             is AlbumAudience.Person -> circles.asApp.createCircle(
@@ -232,8 +253,9 @@ class PhotoAlbumSharing(
         else editorsMayHaveChanged(removalsOnly = true)
         return AlbumShared(
             circleId, recordFile.albumName().orEmpty(),
-            waiting = members.filter { keys[it] == RecipientKey.NoDrive && it !in pending },
+            waiting = members.filter { keys[it] == RecipientKey.NoDrive && it !in pending && it !in toRecipients.refused },
             pending = members.filter { it in pending },
+            refused = members.filter { it in toRecipients.refused },
         )
     }
 
@@ -273,16 +295,18 @@ class PhotoAlbumSharing(
     }
 
     /** Makes a group called [name] of [members]: a circle of the app's granting the drive what the recipients' circle grants. */
-    suspend fun createGroup(name: String, members: List<OdinId>): AlbumAudience.Group {
+    // The group, and its members whose grant odin-core deposited.
+    private suspend fun createGroup(name: String, members: List<OdinId>): Pair<AlbumAudience.Group, List<OdinId>> {
         circles.requireSignedIn()
         assertMayJoin(members)
         val circleId = circles.asApp.createCircle(CreateAppCircleRequest(name = name, slug = SelectiveShareCircles.groupSlug(), driveGrants = recipientsDriveGrants()))
-        val refused = circles.enroll(circleId, members)
-        if (refused.isNotEmpty()) {
+        val enrolment = enrollAll(circleId, members)
+        if (enrolment.refused.isNotEmpty()) {
             circles.asApp.deleteCircle(circleId, removeMembers = true)
-            throw PhotoSharingException.RecipientNotAdded(refused.toList())
+            throw PhotoSharingException.RecipientNotAdded(enrolment.refused.toList())
         }
-        return AlbumAudience.Group(circleId, name, members.sortedBy { it.domainName })
+        val pending = members.filter { it in enrolment.pending }
+        return AlbumAudience.Group(circleId, name, (members - pending.toSet()).sortedBy { it.domainName }, pending = pending) to pending
     }
 
     /** The albums shared with [group], and with what access: what someone added to it is told about. */
@@ -303,7 +327,8 @@ class PhotoAlbumSharing(
     /** Makes [group]'s members [members]: who joined, to be told; who is pending; who couldn't be added. */
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): GroupEdit {
         circles.requireSignedIn()
-        val joining = members.filter { it !in group.members }
+        val current = (group.members + group.pending).toSet()
+        val joining = members.filter { it !in current }
         assertMayJoin(joining)
         val keys = circles.keysOf(joining)
         val added = keys.keys.filter { it !in keys.unsupported() }
@@ -312,9 +337,16 @@ class PhotoAlbumSharing(
         val refused = toRecipients.refused + toGroup.refused + keys.unsupported()
         val pending = toRecipients.pending + toGroup.pending
         circles.sealCircleKey(group.circleId, keys.points().filterKeys { it in added && it !in refused })
-        group.members.filter { it !in members }.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
+        // Revoking takes a deposited grant too, so someone pending is removed the same way.
+        val removed = current.filter { it !in members }
+        removed.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
         editorsMayHaveChanged()
-        return GroupEdit(joined = added.filter { it !in refused && it !in pending }, pending = added.filter { it in pending }, refused = refused.toList())
+        return GroupEdit(
+            joined = added.filter { it !in refused && it !in pending },
+            pending = added.filter { it in pending },
+            refused = refused.toList(),
+            removed = removed,
+        )
     }
 
     /**
@@ -713,7 +745,10 @@ class PhotoAlbumSharing(
                 when {
                     c.circle.designation == CircleDesignation.Individual -> c.members.singleOrNull()?.let { id to AlbumAudience.Person(it) }
                     !c.circle.disabled && c.circle.slug?.matches(SelectiveShareCircles.GROUP_SLUG) == true ->
-                        id to AlbumAudience.Group(id, c.circle.name, c.members.sortedBy { it.domainName }, missingForAShare(c.circle))
+                        id to AlbumAudience.Group(
+                            id, c.circle.name, c.members.sortedBy { it.domainName }, missingForAShare(c.circle),
+                            pending = c.pendingMembers.map { it.odinId }.filter { it !in c.members }.sortedBy { it.domainName },
+                        )
                     else -> null
                 }
             }.toMap()

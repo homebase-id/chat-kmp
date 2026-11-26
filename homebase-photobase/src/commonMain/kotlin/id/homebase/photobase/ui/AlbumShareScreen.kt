@@ -44,7 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import id.homebase.photobase.sharing.AlbumShareRecipient
 import id.homebase.resources.audience_group_people
+import id.homebase.resources.photobase_group_gone
+import id.homebase.resources.photobase_group_pending
 import id.homebase.resources.photobase_group_saved
+import id.homebase.resources.photobase_share_left_out
 import id.homebase.resources.photobase_group_short_of_access
 import id.homebase.resources.photobase_share_failed_group
 import id.homebase.resources.photobase_share_recipient_detail
@@ -183,7 +186,9 @@ fun AlbumShareScreen(
     val picker = rememberAudiencePickerState()
     val shortOfAccess = stringResource(MR.string.photobase_group_short_of_access)
     val groups = remember(uiState.groups, shortOfAccess) {
-        uiState.groups.map { AudienceGroup(it.circleId.toString(), it.name, it.members, unavailable = shortOfAccess.takeIf { _ -> it.missing.isNotEmpty() }) }
+        uiState.groups.map {
+            AudienceGroup(it.circleId.toString(), it.name, it.members, unavailable = shortOfAccess.takeIf { _ -> it.missing.isNotEmpty() }, pending = it.pending)
+        }
     }
     // The group whose members are shown, by id, so a save's reload shows it as it is now.
     var sheetGroup by rememberSaveable { mutableStateOf<String?>(null) }
@@ -224,6 +229,9 @@ fun AlbumShareScreen(
                     sheetGroup = null
                     snackbar.showSnackbar(getString(MR.string.photobase_group_saved, event.name))
                 }
+                is AlbumShareEvent.GroupPending -> snackbar.showSnackbar(getString(MR.string.photobase_group_pending, event.who, event.group))
+                AlbumShareEvent.GroupGone -> snackbar.showSnackbar(getString(MR.string.photobase_group_gone))
+                is AlbumShareEvent.LeftOut -> snackbar.showSnackbar(getString(MR.string.photobase_share_left_out, event.who))
                 is AlbumShareEvent.Shared -> {
                     picker.clear()
                     snackbar.showSnackbar(getString(MR.string.photobase_share_done, event.who))

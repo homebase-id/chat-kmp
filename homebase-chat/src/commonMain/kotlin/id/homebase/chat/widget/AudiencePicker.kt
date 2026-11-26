@@ -75,8 +75,17 @@ import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
-/** A group an app has made of the people it shares with; [id] is its circle's. [unavailable] says why it can't be picked. */
-data class AudienceGroup(val id: String, val name: String, val members: List<OdinId>, val unavailable: String? = null)
+/**
+ * A group an app has made of the people it shares with; [id] is its circle's. [pending] were added and join once their
+ * identity next calls this one. [unavailable] says why it can't be picked.
+ */
+data class AudienceGroup(
+    val id: String,
+    val name: String,
+    val members: List<OdinId>,
+    val unavailable: String? = null,
+    val pending: List<OdinId> = emptyList(),
+)
 
 sealed interface AudienceChoice {
     data class Group(val id: String) : AudienceChoice

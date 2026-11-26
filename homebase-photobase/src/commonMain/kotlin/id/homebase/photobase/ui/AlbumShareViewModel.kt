@@ -46,6 +46,11 @@ sealed interface AlbumShareEvent {
     data class CircleTooNarrow(val circleName: String, val circleId: Uuid, val granted: List<DrivePermission>, val missing: List<DrivePermission>) : AlbumShareEvent
     data class Shared(val who: String) : AlbumShareEvent
     data class GroupSaved(val name: String) : AlbumShareEvent
+    /** Added to [group]; their grant lands on its own when their identity next calls this one. */
+    data class GroupPending(val who: String, val group: String) : AlbumShareEvent
+    data object GroupGone : AlbumShareEvent
+    /** A group's share went to all but these, refused by odin-core. */
+    data class LeftOut(val who: String) : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
     data class NotConnected(val who: String) : AlbumShareEvent
@@ -127,9 +132,9 @@ class AlbumShareViewModel(
             is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
             is AlbumShareUiAction.EditGroup -> busy(AlbumShareStep.EditGroup) {
                 val edit = sharing.setMembers(action.group, action.members)
-                _events.send(AlbumShareEvent.GroupSaved(action.group.name))
+                if (edit.changed) _events.send(AlbumShareEvent.GroupSaved(action.group.name))
                 if (edit.refused.isNotEmpty()) _events.send(AlbumShareEvent.NotAdded(edit.refused.joinToString { it.domainName }))
-                if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(edit.pending.joinToString { it.domainName }))
+                if (edit.pending.isNotEmpty()) _events.send(AlbumShareEvent.GroupPending(edit.pending.joinToString { it.domainName }, action.group.name))
                 if (edit.joined.isEmpty()) return@busy
                 val untold = sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(edit.joined, shared, access) }.distinct()
                 if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
@@ -179,7 +184,7 @@ class AlbumShareViewModel(
         busy(AlbumShareStep.Share) {
             val (audience, shared) = when (choice) {
                 is AudienceChoice.Group -> {
-                    val group = state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy
+                    val group = state.groups.firstOrNull { it.circleId.toString() == choice.id } ?: return@busy _events.send(AlbumShareEvent.GroupGone)
                     group to sharing.share(albumId, group, state.access, expiresAt = null)
                 }
                 is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId).let { it to sharing.share(albumId, it, state.access, expiresAt = null) }
@@ -187,7 +192,8 @@ class AlbumShareViewModel(
             }
             _events.send(AlbumShareEvent.Shared(audience.label))
             if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(shared.pending.joinToString { it.domainName }))
-            val untold = tell(audience.members - shared.pending.toSet(), shared, state.access)
+            if (shared.refused.isNotEmpty()) _events.send(AlbumShareEvent.LeftOut(shared.refused.joinToString { it.domainName }))
+            val untold = tell(audience.members - shared.pending.toSet() - shared.refused.toSet(), shared, state.access)
             if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }

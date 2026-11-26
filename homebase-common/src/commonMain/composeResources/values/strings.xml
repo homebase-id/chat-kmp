@@ -3300,6 +3300,7 @@
     <string name="audience_group_see_members">See who's in %1$s</string>
     <string name="audience_group_edit">Edit members</string>
     <string name="audience_group_saving">Saving…</string>
+    <string name="audience_group_waiting">Joins once they're next online</string>
     <string name="audience_group_id">Group ID: %1$s</string>
     <string name="audience_picker_no_people">No connections match.</string>
     <string name="filesync_share_access_view">Can view and comment</string>
@@ -3575,6 +3576,9 @@
     <string name="photobase_share_failed_withdraw">Couldn't stop sharing: %1$s</string>
     <string name="photobase_share_failed_group">Couldn't change the group: %1$s</string>
     <string name="photobase_group_saved">Saved %1$s.</string>
+    <string name="photobase_group_pending">Will join %2$s once they're next online: %1$s. You don't need to do anything.</string>
+    <string name="photobase_group_gone">That group isn't there any more. Pick who to share with again.</string>
+    <string name="photobase_share_left_out">Shared, but not with: %1$s. They're no longer connected with you.</string>
     <string name="photobase_group_short_of_access">Doesn't give the access a shared album needs. Update this group in your owner console.</string>
     <string name="photobase_share_recipient_detail">%1$s · %2$s</string>
     <string name="photobase_share_server_status">your Homebase answered with an error (%1$d)</string>

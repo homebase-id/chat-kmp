@@ -37,6 +37,7 @@ import id.homebase.resources.audience_group_id
 import id.homebase.resources.audience_group_members_body
 import id.homebase.resources.audience_group_members_title
 import id.homebase.resources.audience_group_saving
+import id.homebase.resources.audience_group_waiting
 import id.homebase.resources.audience_picker_search
 import id.homebase.resources.cancel
 import id.homebase.resources.close
@@ -74,8 +75,10 @@ private fun Members(group: AudienceGroup, onDismiss: () -> Unit, onEdit: (() -> 
         Text(reason, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         Text(stringResource(MR.string.audience_group_id, group.id), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    val waiting = stringResource(MR.string.audience_group_waiting)
     LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
         items(group.members, key = { it.domainName }) { PersonRow(it) }
+        items(group.pending, key = { "pending-${it.domainName}" }) { PersonRow(it, supporting = waiting) }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
         TextButton(onClick = onDismiss) { Text(stringResource(MR.string.close)) }
@@ -98,10 +101,11 @@ fun PersonRow(person: OdinId, supporting: String? = null, trailing: (@Composable
 @Composable
 private fun EditMembers(group: AudienceGroup, saving: Boolean, onCancel: () -> Unit, onSave: (List<OdinId>) -> Unit) {
     val search = rememberTextFieldState()
-    val current = remember(group.members) { group.members.mapTo(HashSet()) { it.domainName } }
+    // The pending are in it too: unticking one takes them out before they join.
+    val current = remember(group.members, group.pending) { (group.members + group.pending).mapTo(HashSet()) { it.domainName } }
     var chosen by rememberSaveable(group.id) { mutableStateOf(current.toList()) }
     val chosenSet = remember(chosen) { chosen.toSet() }
-    val people = rememberPeople(search.text.toString().trim(), first = current, extra = group.members)
+    val people = rememberPeople(search.text.toString().trim(), first = current, extra = group.members + group.pending)
     Text(stringResource(MR.string.audience_group_members_title, group.name), style = MaterialTheme.typography.titleMedium)
     Text(stringResource(MR.string.audience_group_members_body, group.name), style = MaterialTheme.typography.bodyMedium)
     MinimalSearchTextField(textFieldState = search, placeHolderText = stringResource(MR.string.audience_picker_search), modifier = Modifier.fillMaxWidth())
