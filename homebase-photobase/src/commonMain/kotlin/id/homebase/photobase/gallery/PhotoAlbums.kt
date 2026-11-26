@@ -144,14 +144,9 @@ class PhotoAlbums(
     }
 }
 
-// A photo whose local metadata was never written has never had a tag to change an album: a backup brings one a second.
 private fun PhotoChange.mayTouchAlbums(): Boolean = when (this) {
     PhotoChange.RoundFinished -> true
-    is PhotoChange.FilesArrived -> files.any {
-        // A deleted photo's tombstone keeps no local metadata.
-        it.fileMetadata.appData.fileType == PhotobaseProtocol.AlbumFileType || it.fileMetadata.localAppData?.versionTag != null ||
-            it.fileState != FileState.Active
-    }
+    is PhotoChange.FilesArrived -> files.any { it.fileMetadata.appData.fileType == PhotobaseProtocol.AlbumFileType || it.mayChangeTags() }
 }
 
 /** Every file on the Photos drive carrying [tag], as the server has them. */

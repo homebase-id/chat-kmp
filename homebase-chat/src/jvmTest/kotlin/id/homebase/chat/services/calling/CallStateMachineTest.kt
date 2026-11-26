@@ -490,7 +490,7 @@ class CallStateMachineTest {
         val out = samMachine.step(idle, CallEvent.UserCall("c-sam", frodo, false)).state
         val yielded = samMachine.step(out, signal(frodo, CallSignal.Offer(c, "sdp", true)))
         val hangup = yielded.effects.filterIsInstance<CallEffect.SendSignal>().map { it.signal }.filterIsInstance<CallSignal.Hangup>().single()
-        assertEquals(CallPushKind.Hangup, CallChannel.outbound(frodo, hangup).push?.kind)
+        assertEquals(CallPushKind.Handled, CallChannel.outbound(frodo, hangup).push?.kind)
         assertNull(CallChannel.outbound(frodo, CallSignal.Hangup("c-sam", HangupReason.Busy)).push)
     }
 

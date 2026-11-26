@@ -202,6 +202,6 @@ fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: C
     dayOf = store::dayOf,
     photosOn = store::photosOn,
     countedFor = store::daysCountedFor,
-    changes = changes,
+    changes = changes.heardBy(store.gallery),
     scope = scope,
 )

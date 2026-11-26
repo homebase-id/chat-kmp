@@ -138,8 +138,10 @@ class LiveRelayCallSignalingTest {
             CallSignal.Hangup(id, HangupReason.Missed) to """{"type":"hangup","callId":"$id","reason":"Missed"}""",
             CallSignal.Hangup(id, HangupReason.Declined) to """{"type":"hangup","callId":"$id","reason":"Declined"}""",
             CallSignal.Hangup(id) to """{"type":"hangup","callId":"$id"}""",
+            CallSignal.Hangup(id, HangupReason.AnsweredElsewhere) to """{"type":"hangup","callId":"$id","reason":"AnsweredElsewhere"}""",
+            CallSignal.Hangup(id, HangupReason.DeclinedElsewhere) to """{"type":"hangup","callId":"$id","reason":"DeclinedElsewhere"}""",
         )
-        val pushKinds = listOf("ring", null, null, null, null, "hangup", "hangup", null, null)
+        val pushKinds = listOf("ring", null, null, null, null, "hangup", "hangup", null, null, "handled", "handled")
 
         cases.forEach { (signal, _) -> s.send(CallChannel.outbound(sam, signal)) }
 
