@@ -351,12 +351,6 @@ class PhotoAlbumSharing(
         }
     }
 
-    /** Deletes [group], which a share it was made for didn't reach: nothing is shared with it yet. */
-    suspend fun deleteGroup(group: AlbumAudience.Group) {
-        circles.requireSignedIn()
-        circles.asApp.deleteCircle(group.circleId, removeMembers = true)
-    }
-
     /** Makes [group]'s members [members]: who joined, to be told; who is pending; who couldn't be added. */
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): GroupEdit {
         circles.requireSignedIn()
@@ -365,10 +359,12 @@ class PhotoAlbumSharing(
         val (eligible, notConnected, notReviewed) = mayJoin(members.filter { it !in current })
         // Leniently: one whose server can't be read now joins all the same, and the upkeep seals to them later.
         val keys = circles.keysOf(eligible, lenient = true)
-        // Removals first: once someone has joined, a later failure must not leave them in and untold.
         // Revoking takes a deposited grant too, so someone pending is removed the same way.
-        val removed = current.filter { it !in members }
-        removed.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
+        val leaving = current.filter { it !in members }
+        // Removals first, so a later failure can't leave someone added in and untold; unless no one stays, when they
+        // wait for someone to be added, so the group is never left with no one.
+        val nobodyStays = leaving.size == current.size
+        if (!nobodyStays) leaving.forEach { circles.asApp.removeFromCircle(group.circleId, it) }
         val added = keys.keys.filter { it !in keys.unsupported() }
         val toRecipients = if (added.isEmpty()) Enrolment() else enrollAll(recipientsCircle(), added)
         val toGroup = enrollAll(group.circleId, added - toRecipients.refused)
@@ -381,6 +377,11 @@ class PhotoAlbumSharing(
         } catch (e: Exception) {
             // They're in: the upkeep seals the key to them (sealPending), and they're still told.
             Logger.w(tag = TAG, throwable = e) { "group ${group.circleId}: key not sealed to the new members yet" }
+        }
+        val removed = when {
+            !nobodyStays -> leaving
+            added.any { it !in refused } -> leaving.onEach { circles.asApp.removeFromCircle(group.circleId, it) }
+            else -> emptyList()
         }
         editorsMayHaveChanged()
         return GroupEdit(

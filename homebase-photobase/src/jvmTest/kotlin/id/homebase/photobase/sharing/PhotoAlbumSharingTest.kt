@@ -554,6 +554,34 @@ class PhotoAlbumSharingTest {
         assertEquals(listOf(bilbo, sam), group.members)
     }
 
+    @Test
+    fun anEditThatWouldLeaveAGroupWithNoOneKeepsItsMembers() = runTest {
+        reviewed()
+        statuses[rosie.domainName] = samsConnection.replace(",\"reviewedAt\":1", "").replace("sam.test", rosie.domainName)
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam))
+
+        val edit = sharing.setMembers(group, listOf(rosie))
+
+        assertEquals(emptyList(), edit.removed, "rosie can't join yet, so sam stays")
+        assertEquals(emptyList(), revoked)
+        assertEquals(listOf(rosie), edit.notReviewed)
+    }
+
+    @Test
+    fun anEditReplacingEveryoneAddsBeforeItRemoves() = runTest {
+        reviewed()
+        kinds[rosie.domainName] = "enrolled"
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam))
+
+        val edit = sharing.setMembers(group, listOf(rosie))
+
+        assertEquals(listOf(sam), edit.removed)
+        assertEquals(listOf(rosie), edit.joined)
+        val addedAt = calls.indexOfFirst { it.path.endsWith("/circles/add-many") && decrypted(it).jsonObject["circleId"]!!.jsonPrimitive.content.replace("-", "") == groupCircle.toHexString() }
+        val removedAt = calls.indexOfFirst { it.path.endsWith("/circles/revoke") }
+        assertTrue(addedAt in 0 until removedAt, "added at $addedAt, removed at $removedAt")
+    }
+
     private suspend fun decrypted(call: Call) =
         Json.parseToJsonElement(CryptoHelper.decryptContentAsString(call.body.decodeToString(), if (call.asPhotobase) photobaseSecret else appSecret))
 }

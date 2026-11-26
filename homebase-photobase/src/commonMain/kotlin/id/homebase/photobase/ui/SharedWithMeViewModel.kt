@@ -78,13 +78,12 @@ class SharedWithMeViewModel(private val sharing: PhotoAlbumSharing) : ViewModel(
             again = true
             return
         }
-        again = false
+        // One job reads again while asked to: a new one launched from its end could start inside it, and be dropped.
         refreshing = viewModelScope.launch {
-            try {
+            do {
+                again = false
                 readAll()
-            } finally {
-                if (again) viewModelScope.launch { refresh() }
-            }
+            } while (again)
         }
     }
 
