@@ -114,7 +114,7 @@ fun CallSignal.fromDevice(device: String): CallSignal = when (this) {
 
 data class InboundSignal(val from: String, val signal: CallSignal, val receivedAtMs: Long)
 
-enum class CallPushKind(val wire: String) { Ring("ring"), Hangup("hangup") }
+enum class CallPushKind(val wire: String) { Ring("ring"), Hangup("hangup"), Handled("handled") }
 
 data class CallPush(val kind: CallPushKind, val typeId: String, val tagId: String, val message: String)
 
@@ -146,9 +146,11 @@ object CallChannel {
     }
 
     /**
-     * Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup only for a caller-side retraction
-     * (Cancelled/Missed) before the answer. The text is only shown by a client that cannot take calls, which titles it with
-     * the sender's name; like every other push body it is English.
+     * Ring only for the first [CallSignal.Offer] (re-published offers are silent); hangup for a caller-side retraction
+     * (Cancelled/Missed) before the answer, shown as a missed call; handled tells the callee's other devices that one of
+     * them answered or declined, and the relay sends it silent to an iPhone that rang through CallKit. Both share the
+     * hangup typeId, so a receiver stops the ring the same way. Shown text titles with the sender's name; like every other
+     * push body it is English.
      */
     fun outbound(peer: String, signal: CallSignal): OutboundSignal {
         val push = when {
@@ -157,7 +159,7 @@ object CallChannel {
             signal is CallSignal.Hangup && (signal.reason == HangupReason.Cancelled || signal.reason == HangupReason.Missed) ->
                 CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Missed call")
             signal is CallSignal.Hangup && signal.reason.isElsewhere ->
-                CallPush(CallPushKind.Hangup, HANGUP_TYPE_ID, signal.callId, "Call handled on another device")
+                CallPush(CallPushKind.Handled, HANGUP_TYPE_ID, signal.callId, "Call handled on another device")
             else -> null
         }
         return OutboundSignal(peer, keyFor(peer), signal, push)

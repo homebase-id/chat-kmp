@@ -111,6 +111,13 @@ class CallPushAndRestartTest {
         val cancel = CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Cancelled))
         assertEquals(CallPushKind.Hangup, cancel.push?.kind)
         assertEquals(c, cancel.push?.tagId)
+        assertEquals(CallPushKind.Hangup, CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Missed)).push?.kind)
+
+        for (reason in listOf(HangupReason.AnsweredElsewhere, HangupReason.DeclinedElsewhere)) {
+            val push = CallChannel.outbound(sam, CallSignal.Hangup(c, reason)).push
+            assertEquals(CallPushKind.Handled, push?.kind, "$reason")
+            assertEquals(CallChannel.HANGUP_TYPE_ID, push?.typeId, "a receiver stops the ring by typeId, as for a hangup")
+        }
 
         assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Normal)).push)
         assertNull(CallChannel.outbound(sam, CallSignal.Hangup(c, HangupReason.Declined)).push)
