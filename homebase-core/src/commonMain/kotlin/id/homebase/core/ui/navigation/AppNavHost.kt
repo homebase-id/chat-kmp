@@ -729,10 +729,19 @@ fun AppNavHost(
     val openWebDrop: () -> Unit = { navController.openApp(Route.WebDrop, tabRoutes) }
     val openFilesync: () -> Unit = { navController.openApp(Route.Filesync, tabRoutes) }
     val openPhotobase: () -> Unit = { navController.openApp(Route.Photobase, tabRoutes) }
+    // Every user builds backup here, so a failure to build it mustn't take down the first screen.
+    val photoBackupSupported = remember {
+        try {
+            koin.get<PhotoBackupController>().isSupported
+        } catch (e: Exception) {
+            Logger.e(tag = "AppNavHost", throwable = e) { "photo backup could not start" }
+            false
+        }
+    }
     val photoBackupLinks = PhotoBackupLinks(
         onOpenStatus = { navController.navigate(Route.PhotoBackupStatus) },
         onOpenKeepOpen = { navController.navigate(Route.PhotoBackupKeepOpen) },
-    ).takeIf { koinInject<PhotoBackupController>().isSupported }
+    ).takeIf { photoBackupSupported }
     val appsPageLinks = AppsPageLinks(
         onOpenApp = { page -> if (page == AppsPage.Calls) openCalls() else navController.openApp(page.appRoute, tabRoutes) },
         onOpenEmailModeSwitch = { navController.navigate(Route.EmailModeSwitch) },

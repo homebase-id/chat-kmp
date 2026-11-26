@@ -54,7 +54,7 @@ private fun handle(task: BGTask, request: BackupRunRequest) {
         return
     }
     // A task still pending when backup went off: take both requests back, so neither wakes the app again.
-    if (!controller.settings.value.enabled) {
+    if (controller.isSurelyOff) {
         cancelBackupTasks()
         task.setTaskCompletedWithSuccess(true)
         return

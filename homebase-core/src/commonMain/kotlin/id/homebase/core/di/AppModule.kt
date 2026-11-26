@@ -1777,7 +1777,9 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         get<OutboxSync>().holdBulkSends = {
             // Runs inside chat's send loop, which a backup problem must not take down.
             try {
-                settings.settings.value.wifiOnly && !backup.probe.state().isUnmetered
+                // Only backup queues bulk rows: without any, a phone that never backs up skips the device probe.
+                settings.settings.value.wifiOnly && get<DatabaseManager>().outbox.existsByDrive(PhotobaseProtocol.DriveAlias) &&
+                    !backup.probe.state().isUnmetered
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

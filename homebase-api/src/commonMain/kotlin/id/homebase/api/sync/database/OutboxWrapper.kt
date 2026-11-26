@@ -72,6 +72,9 @@ class OutboxWrapper(
             delegate.selectByUniqueId(uniqueId).executeAsOneOrNull()
         }
 
+    suspend fun existsByDrive(driveId: Uuid): Boolean =
+        databaseManager.readValue("outbox.existsByDrive") { delegate.existsByDrive(driveId).executeAsOne() }
+
     suspend fun count(): Long =
         databaseManager.readValue("outbox.count") { delegate.count().executeAsOne() }
 

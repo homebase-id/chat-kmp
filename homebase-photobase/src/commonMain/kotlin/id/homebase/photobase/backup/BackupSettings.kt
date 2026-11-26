@@ -40,6 +40,10 @@ data class BackupSettings(
 class BackupSettingsStore(private val databaseManager: DatabaseManager) {
     private val keyValue get() = databaseManager.keyValue
 
+    /** The last read failed, so [settings] holds defaults rather than what's stored. Declared before the first read. */
+    var readFailed = false
+        private set
+
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<BackupSettings> = _settings.asStateFlow()
 
@@ -57,7 +61,9 @@ class BackupSettingsStore(private val databaseManager: DatabaseManager) {
 
     // Bootstrap-only sync read, as in VaultPreferences: commonMain has no runBlocking on wasmJs.
     private fun read(): BackupSettings {
-        val bytes = runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }.getOrNull()
+        val read = runCatching { keyValue.selectByKeyBootstrapSync(SETTINGS_KEY) { _, data -> data } }
+        readFailed = read.isFailure
+        val bytes = read.getOrNull()
         if (bytes == null || bytes.isEmpty()) return BackupSettings()
         return OdinSystemSerializer.deserialize(bytes.decodeToString())
     }
