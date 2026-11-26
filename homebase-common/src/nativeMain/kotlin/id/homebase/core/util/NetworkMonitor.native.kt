@@ -6,7 +6,9 @@ import kotlinx.cinterop.toKString
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import platform.Network.nw_endpoint_copy_address_string
 import platform.Network.nw_interface_get_name
+import platform.Network.nw_path_enumerate_gateways
 import platform.Network.nw_path_enumerate_interfaces
 import platform.Network.nw_path_get_status
 import platform.Network.nw_path_is_constrained
@@ -21,6 +23,7 @@ import platform.Network.nw_path_t
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
 import platform.darwin.dispatch_get_global_queue
 import platform.darwin.dispatch_queue_create
+import platform.posix.free
 
 /** NWPathMonitor pushes; [isUnmetered] reads the latest push, so it never blocks the caller. */
 @OptIn(ExperimentalForeignApi::class)
@@ -56,7 +59,7 @@ class IosNetworkMonitor : NetworkMonitor {
             awaitClose { nw_path_monitor_cancel(monitor) }
         }.defaultNetworkSwitches()
 
-    // Interfaces come in preference order, so the first one of a satisfied path carries the traffic.
+    // Interfaces come in preference order, so the first carries the traffic; the gateways tell two Wi-Fi networks apart.
     private fun primaryInterface(path: nw_path_t): String? {
         if (path == null || nw_path_get_status(path) != nw_path_status_satisfied) return null
         var name: String? = null
@@ -64,6 +67,11 @@ class IosNetworkMonitor : NetworkMonitor {
             name = nw_interface_get_name(iface)?.toKString()
             false
         }
-        return name
+        val gateways = mutableListOf<String>()
+        nw_path_enumerate_gateways(path) { gateway ->
+            nw_endpoint_copy_address_string(gateway)?.let { gateways += it.toKString(); free(it) }
+            true
+        }
+        return "$name|${gateways.joinToString(",")}"
     }
 }

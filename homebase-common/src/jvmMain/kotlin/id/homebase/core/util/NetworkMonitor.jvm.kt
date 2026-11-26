@@ -2,6 +2,7 @@ package id.homebase.core.util
 
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 import kotlinx.coroutines.Dispatchers
@@ -19,22 +20,24 @@ class JvmNetworkMonitor : NetworkMonitor {
     override val defaultNetworkChanges: Flow<Unit>
         get() = flow {
             while (true) {
-                emit(defaultRoute())
+                emit(ROUTE_PROBES.firstNotNullOfOrNull(::routeTo))
                 delay(POLL_MS)
             }
         }.flowOn(Dispatchers.IO).defaultNetworkSwitches()
 
     // Connecting a UDP socket sends nothing; it only asks the OS which interface and address route to the internet.
-    private fun defaultRoute(): String? = try {
+    // The SocketAddress overload throws SocketException for no route; the InetAddress one throws UncheckedIOException.
+    private fun routeTo(probe: InetAddress): String? = try {
         DatagramSocket().use { socket ->
-            socket.connect(ROUTE_PROBE, 53)
+            socket.connect(InetSocketAddress(probe, 53))
             val local = socket.localAddress
             if (local.isAnyLocalAddress) null else "${NetworkInterface.getByInetAddress(local)?.name}/${local.hostAddress}"
         }
     } catch (_: SocketException) {
-        null // no route: the OS has no default network
+        null
     }
 }
 
 private const val POLL_MS = 2_000L
-private val ROUTE_PROBE: InetAddress = InetAddress.getByAddress(byteArrayOf(8, 8, 8, 8))
+// IPv4 first, then IPv6 for an IPv6-only network.
+private val ROUTE_PROBES = listOf("8.8.8.8", "2001:4860:4860::8888").map(InetAddress::getByName)

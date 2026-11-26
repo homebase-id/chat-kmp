@@ -140,9 +140,9 @@ class CallController(
         val network = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             _state.map { it.phase.isEstablished }.distinctUntilChanged()
                 .flatMapLatest { established ->
-                    if (established) networkChanges.catch { log.w(it) { "network watch stopped for this call" } } else emptyFlow()
+                    if (!established) return@flatMapLatest emptyFlow()
+                    networkChanges.catch { log.w(it) { "network watch stopped for this call" } }.debounce(NETWORK_SETTLE_MS)
                 }
-                .debounce(NETWORK_SETTLE_MS)
                 .collect { post(CallEvent.NetworkChanged) }
         }
         collectors = listOf(signals, inboxLoop, network)
