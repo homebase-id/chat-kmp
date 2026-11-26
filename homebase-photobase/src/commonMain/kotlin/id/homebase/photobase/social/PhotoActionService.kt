@@ -1,19 +1,17 @@
 package id.homebase.photobase.social
 
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ReactionSummary
-import id.homebase.api.client.drives.files.reactions.DriveFileGroupReactionProvider
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.files.reactions.ToggleReactionResultType
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.util.codePointCount
 import id.homebase.chat.services.decodeReactionCode
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.core.photobase.PhotobaseProtocol
-import id.homebase.core.widget.EmojiReaction
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
@@ -30,8 +28,6 @@ data class PhotoReactions(
  * sent to the photo's [audience].
  */
 class PhotoActionService(
-    private val driveFileProvider: DriveFileProvider,
-    private val reactionProvider: DriveFileGroupReactionProvider,
     private val optimisticWriter: OptimisticWriter,
     private val credentialsManager: CredentialsManager,
     private val databaseManager: DatabaseManager,
@@ -42,7 +38,7 @@ class PhotoActionService(
 
     /** Toggles our [emoji] on a photo or a comment, both by unique id. */
     suspend fun toggleReaction(targetId: Uuid, emoji: String): ToggleReactionResultType {
-        if (emoji.isBlank() || emoji.length > MAX_EMOJI_LENGTH) return ToggleReactionResultType.None
+        if (!isReactionEmoji(emoji)) return ToggleReactionResultType.None
         val reaction = OdinSystemSerializer.serialize(ReactionContent(emoji = emoji))
         return optimisticWriter.toggleReaction(drive, targetId, reaction) { original ->
             val photoId = if (original.fileMetadata.appData.fileType == PhotobaseProtocol.CommentFileType) {
@@ -61,23 +57,17 @@ class PhotoActionService(
     private suspend fun read(targetId: Uuid): PhotoReactions {
         val identityId = credentialsManager.getActiveCredentials()?.getIdentityId() ?: return PhotoReactions()
         val file = databaseManager.driveMainIndex.selectHomebaseFileByUnique(identityId, drive, targetId) ?: return PhotoReactions()
-        return PhotoReactions(file.fileMetadata.reactionPreview, file.fileMetadata.localAppData?.localReactions.orEmpty().toImmutableList())
-    }
-
-    /** Who reacted with what, from the server. */
-    suspend fun listReactions(targetId: Uuid): List<EmojiReaction> {
-        val target = driveFileProvider.getFileHeaderByUid(drive, targetId) ?: return emptyList()
-        return reactionProvider.listReactions(drive, target.fileId).reactions.mapNotNull {
-            EmojiReaction(
-                messageId = targetId,
-                odinId = it.odinId,
-                created = UnixTimeUtc(it.created),
-                emoji = decodeReactionCode(it.reactionContent) ?: return@mapNotNull null,
-            )
-        }
-    }
-
-    private companion object {
-        const val MAX_EMOJI_LENGTH = 8
+        return file.toPhotoReactions()
     }
 }
+
+// A family or a flag is several code points; the feed allows as many.
+private const val MAX_EMOJI_CODE_POINTS = 12
+
+internal fun isReactionEmoji(emoji: String): Boolean = emoji.isNotBlank() && emoji.codePointCount() <= MAX_EMOJI_CODE_POINTS
+
+internal fun HomebaseFile.toPhotoReactions() = PhotoReactions(
+    fileMetadata.reactionPreview,
+    // Stored as ReactionContent JSON; the list compares bare emoji.
+    fileMetadata.localAppData?.localReactions.orEmpty().mapNotNull(::decodeReactionCode).toImmutableList(),
+)

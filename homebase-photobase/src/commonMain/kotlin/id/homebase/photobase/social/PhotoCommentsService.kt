@@ -5,7 +5,6 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.upload.SendContents
 import id.homebase.api.client.drives.upload.TransitOptions
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
@@ -44,8 +43,6 @@ data class PhotoComment(
     val userDateMs: Long,
     /** Null until the server has the comment; it can't be edited before then. */
     val versionTag: Uuid?,
-    val reactionPreview: ReactionSummary?,
-    val ownReactions: List<String>,
 )
 
 /** Who a photo's comments and reactions go to, ourselves left out. */
@@ -82,12 +79,13 @@ class PhotoCommentsService(
             dbm = databaseManager,
             driveId = drive,
             noOfItems = MAX_COMMENTS,
-            sortOrder = QueryBatchSortOrder.OldestFirst,
+            // Newest first, so a cap keeps the latest; shown oldest first.
+            sortOrder = QueryBatchSortOrder.NewestFirst,
             sortField = QueryBatchSortField.UserDate,
             fileSystemType = 0,
             filetypesAnyOf = listOf(PhotobaseProtocol.CommentFileType),
             groupIdAnyOf = listOf(photoId),
-        ).records.filterNot { it.isSoftDeleted() }.mapNotNull { it.toPhotoComment() }
+        ).records.filterNot { it.isSoftDeleted() }.mapNotNull { it.toPhotoComment() }.asReversed()
     }
 
     suspend fun post(photoId: Uuid, body: String, commentId: Uuid = Uuid.random()) {
@@ -180,7 +178,5 @@ internal fun HomebaseFile.toPhotoComment(): PhotoComment? {
         body = content?.body.orEmpty(),
         userDateMs = sqlUserDateMs(),
         versionTag = fileMetadata.versionTag,
-        reactionPreview = fileMetadata.reactionPreview,
-        ownReactions = fileMetadata.localAppData?.localReactions.orEmpty(),
     )
 }

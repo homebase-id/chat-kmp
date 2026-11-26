@@ -286,6 +286,8 @@ fun PhotoGalleryScreen(
         }
     }
     var commentsOn by remember { mutableStateOf<Uuid?>(null) }
+    // The sheet goes with its photo, or it opens again over the next one viewed.
+    LaunchedEffect(uiState.openedFileId) { commentsOn = null }
     commentsOn?.takeIf { uiState.openedFileId != null }?.let { photoId ->
         PhotoCommentsSheet(
             photoId = photoId,
