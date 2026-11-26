@@ -206,22 +206,22 @@ fun PhotoGalleryScreen(
             if (event == PhotoGalleryEvent.AlbumDeleted) leave?.invoke() else snackbar.show(event, onAction)
         }
     }
-    var picking by remember { mutableStateOf(false) }
+    var picking by remember { mutableStateOf<AlbumPick?>(null) }
     var naming by remember { mutableStateOf<AlbumNaming?>(null) }
     val albumName = viewModel.albumName.collectAsStateWithLifecycle().value
     val title = albumName ?: stringResource(gallery.look.title)
-    if (picking) {
+    picking?.let { pick ->
         AlbumPickerSheet(
             albums = viewModel.albums,
             leaveOut = (gallery as? PhotoGallery.Album)?.id,
-            onPick = { picking = false; onAction(PhotoGalleryUiAction.AddSelectedToAlbum(it)) },
-            onNew = { picking = false; naming = AlbumNaming.New },
-            onDismiss = { picking = false },
+            onPick = { picking = null; onAction(PhotoGalleryUiAction.AddSelectedToAlbum(it, pick.fileId)) },
+            onNew = { picking = null; naming = AlbumNaming.New(pick.fileId) },
+            onDismiss = { picking = null },
         )
     }
-    when (naming) {
-        AlbumNaming.New -> NewAlbumDialog(
-            onCreate = { naming = null; onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum(it)) },
+    when (val name = naming) {
+        is AlbumNaming.New -> NewAlbumDialog(
+            onCreate = { naming = null; onAction(PhotoGalleryUiAction.AddSelectedToNewAlbum(it, name.fileId)) },
             onDismiss = { naming = null },
         )
         AlbumNaming.Rename -> NameDialog(
@@ -285,6 +285,18 @@ fun PhotoGalleryScreen(
             )
         }
     }
+    var commentsOn by remember { mutableStateOf<Uuid?>(null) }
+    // The sheet goes with its photo, or it opens again over the next one viewed.
+    LaunchedEffect(uiState.openedFileId) { commentsOn = null }
+    commentsOn?.takeIf { uiState.openedFileId != null }?.let { photoId ->
+        PhotoCommentsSheet(
+            photoId = photoId,
+            comments = remember(photoId) { viewModel.commentsOf(photoId) },
+            reactionsOf = viewModel::reactionsOf,
+            onAction = onAction,
+            onDismiss = { commentsOn = null },
+        )
+    }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
     Box(Modifier.fillMaxSize()) {
@@ -297,8 +309,10 @@ fun PhotoGalleryScreen(
                     val moveToBin = { fileId: Uuid -> asking = PhotoGalleryUiAction.MovePhotoToBin(fileId) }.takeIf { gallery == PhotoGallery.Library || gallery == PhotoGallery.Archive }
                     GalleryViewer(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
-                        // A heart waits for the one before it, so a second tap can't send the same again.
-                        heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
+                        // A tap waits for the one before it, so a second can't send the same again.
+                        photoActions = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
+                        onAddToAlbum = { picking = AlbumPick(it) },
+                        onComments = { id: Uuid -> commentsOn = id }.takeIf { viewModel.canComment && gallery != PhotoGallery.Bin },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -306,7 +320,7 @@ fun PhotoGalleryScreen(
                 } else {
                     GalleryGrid(
                         uiState, gallery, title, layout, loaded, selected, onAction, onOpenBackupSettings, backupIndicator, onOpenLibrary, onBack,
-                        { asking = it }, { picking = true }, { naming = AlbumNaming.Rename }.takeIf { albumName != null }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
+                        { asking = it }, { picking = AlbumPick(null) }, { naming = AlbumNaming.Rename }.takeIf { albumName != null }, memory, haptics, this@SharedTransitionLayout, this@AnimatedContent,
                     )
                 }
             }
@@ -335,8 +349,10 @@ private fun GalleryViewer(
     loaded: Map<Int, List<PhotoGalleryItem>>,
     onAction: (PhotoGalleryUiAction) -> Unit,
     onMoveToBin: ((Uuid) -> Unit)?,
-    /** Whether the heart is enabled; null shows none. */
-    heart: Boolean?,
+    /** Whether the heart and the album button are enabled; null shows neither. */
+    photoActions: Boolean?,
+    onAddToAlbum: (Uuid) -> Unit,
+    onComments: ((photoId: Uuid) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -405,9 +421,7 @@ private fun GalleryViewer(
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
                 onDelete = onMoveToBin,
-                extraActions = {
-                    if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
-                },
+                extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments) },
                 onDismiss = close,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -417,13 +431,29 @@ private fun GalleryViewer(
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
-                FullScreenVideoPlayer(data = viewer, onDismiss = close)
+                FullScreenVideoPlayer(data = viewer, onDismiss = close, extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments) })
             } else {
                 VideoStill(item)
             }
             else -> Unit
         }
     }
+}
+
+@Composable
+private fun PhotoActions(
+    item: PhotoGalleryItem,
+    enabled: Boolean?,
+    onAction: (PhotoGalleryUiAction) -> Unit,
+    onAddToAlbum: (Uuid) -> Unit,
+    onComments: ((photoId: Uuid) -> Unit)?,
+) {
+    if (enabled != null) {
+        FavoriteButton(item.favorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+        AlbumButton(enabled) { onAddToAlbum(item.fileId) }
+    }
+    val photoId = item.uniqueId
+    if (onComments != null && photoId != null) CommentsButton { onComments(photoId) }
 }
 
 @Composable
@@ -583,7 +613,13 @@ private fun GalleryGrid(
     }
 }
 
-private enum class AlbumNaming { New, Rename }
+private sealed interface AlbumNaming {
+    data class New(val fileId: Uuid?) : AlbumNaming
+    data object Rename : AlbumNaming
+}
+
+/** [fileId] is the viewer's photo; null adds the selection. */
+private data class AlbumPick(val fileId: Uuid?)
 
 // Null onRename: the album's name isn't read yet, and both dialogs name it.
 @Composable

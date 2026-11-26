@@ -22,6 +22,10 @@ object PhotobaseProtocol {
     /** An album: its unique id is also the local tag on its photos. */
     const val AlbumFileType = 7203
 
+    /** A comment on a photo; its groupId is the photo's unique id. */
+    const val CommentFileType = 7204
+    const val CommentVersion = 1
+
     const val ImageDataType = 1
     const val VideoDataType = 2
     const val LivePhotoDataType = 3

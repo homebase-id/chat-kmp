@@ -622,7 +622,8 @@ private val photosDrive = TargetDriveAccessRequest(
     type = photosLabeledDrive.drive.type.toString(),
     name = photosLabeledDrive.label,
     description = "Photos and videos backed up by Homebase Photos",
-    permissions = listOf(DrivePermission.Read, DrivePermission.Write),
+    // React: the server gates the reaction toggle on it.
+    permissions = listOf(DrivePermission.Read, DrivePermission.Write, DrivePermission.React),
     driveSlug = PhotobaseProtocol.DriveSlug,
     driveTypeSlug = PhotobaseProtocol.DriveTypeSlug,
     sharingModel = DriveSharingModel.SelectiveShare,

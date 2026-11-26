@@ -32,6 +32,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.action_undo
 import id.homebase.resources.photobase_album_add
 import id.homebase.resources.photobase_album_failed
+import id.homebase.resources.photobase_comments_failed
 import id.homebase.resources.photobase_album_added
 import id.homebase.resources.photobase_album_remove
 import id.homebase.resources.photobase_album_removed
@@ -71,7 +72,7 @@ internal fun SelectionToolbar(
     HorizontalFloatingToolbar(expanded = true, modifier = modifier) {
         val moveTo = { to: PhotoShelf -> { onAction(PhotoGalleryUiAction.MoveSelected(to)) } }
         val heart: @Composable () -> Unit = { FavoriteButton(allFavorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!allFavorite)) } }
-        val toAlbum: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.LibraryAdd, MR.string.photobase_album_add, enabled, onAddToAlbum) }
+        val toAlbum: @Composable () -> Unit = { AlbumButton(enabled, onAddToAlbum) }
         val toBin: @Composable () -> Unit = { ToolbarAction(Icons.Outlined.Delete, MR.string.photobase_bin_move, enabled) { onConfirm(PhotoGalleryUiAction.MoveSelected(PhotoShelf.Bin)) } }
         when (gallery) {
             is PhotoGallery.OnShelf -> when (gallery.shelf) {
@@ -115,6 +116,9 @@ internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> 
     )
 }
 
+@Composable
+internal fun AlbumButton(enabled: Boolean, onClick: () -> Unit) = ToolbarAction(Icons.Outlined.LibraryAdd, MR.string.photobase_album_add, enabled, onClick)
+
 // Icons only, so four fit a small phone; a long press says what each does.
 @Composable
 private fun ToolbarAction(icon: ImageVector, label: StringResource, enabled: Boolean, onClick: () -> Unit) {
@@ -142,6 +146,7 @@ internal suspend fun SnackbarHostState.show(event: PhotoGalleryEvent, onAction: 
     val message = when (event) {
         is PhotoGalleryEvent.MoveFailed -> getString(MR.string.photobase_bin_failed)
         PhotoGalleryEvent.AlbumWriteFailed -> getString(MR.string.photobase_album_failed)
+        PhotoGalleryEvent.CommentFailed -> getString(MR.string.photobase_comments_failed)
         // The screen leaves the album.
         PhotoGalleryEvent.AlbumDeleted -> return
         is PhotoGalleryEvent.Moved -> buildList {

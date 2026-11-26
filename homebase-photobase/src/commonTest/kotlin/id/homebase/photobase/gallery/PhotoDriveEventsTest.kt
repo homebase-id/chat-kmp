@@ -38,6 +38,18 @@ class PhotoDriveEventsTest {
     }
 
     @Test
+    fun aCommentIsNoPhotoRecord() = runTest {
+        val photo = galleryTestFile(1)
+        val comment = galleryTestFile(2).let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(fileType = PhotobaseProtocol.CommentFileType))) }
+        val events = flowOf<BackendEvent>(
+            BackendEvent.DataEvent.BatchReceived(photos, listOf(comment)),
+            BackendEvent.DataEvent.BatchReceived(photos, listOf(photo, comment)),
+        )
+
+        assertEquals(listOf(PhotoChange.FilesArrived(listOf(photo))), events.newPhotoRecords().toList())
+    }
+
+    @Test
     fun onlyARunningSyncCountsAsSyncing() {
         assertEquals(0, DriveState.Synchronizing().syncedSoFar())
         assertEquals(1_200, DriveState.Synchronizing(1_200).syncedSoFar())

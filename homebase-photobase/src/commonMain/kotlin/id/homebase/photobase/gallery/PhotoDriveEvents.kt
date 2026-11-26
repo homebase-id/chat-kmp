@@ -23,8 +23,10 @@ sealed interface PhotoChange {
 fun Flow<BackendEvent>.newPhotoRecords(photosDriveId: Uuid = PhotobaseProtocol.DriveAlias): Flow<PhotoChange> = mapNotNull { event ->
     when {
         event is BackendEvent.DriveEvent.Stopped && event.driveId == photosDriveId && event.totalCount > 0 -> PhotoChange.RoundFinished
+        // A comment is no photo's record: let one in and the day it was written on is read again.
         event is BackendEvent.DataEvent.BatchReceived && event.driveId == photosDriveId ->
-            PhotoChange.FilesArrived(event.batchData)
+            event.batchData.filterNot { it.fileMetadata.appData.fileType == PhotobaseProtocol.CommentFileType }
+                .takeIf { it.isNotEmpty() }?.let(PhotoChange::FilesArrived)
         else -> null
     }
 }

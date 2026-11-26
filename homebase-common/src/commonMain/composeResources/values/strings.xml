@@ -3536,6 +3536,14 @@
     <string name="photobase_album_empty_state">Select photos in your library and tap Add to album to put them here.</string>
     <string name="photobase_albums_none">No albums yet.</string>
     <string name="photobase_album_failed">Couldn't save the album. Try again.</string>
+    <string name="photobase_comments_title">Comments</string>
+    <string name="photobase_comments_open">Comments and reactions</string>
+    <string name="photobase_comments_empty">No comments yet</string>
+    <string name="photobase_comments_hint">Add a comment</string>
+    <string name="photobase_comments_editing">Editing your comment</string>
+    <string name="photobase_comments_more">Comment options</string>
+    <string name="photobase_comments_byline">%1$s · %2$s</string>
+    <string name="photobase_comments_failed">Couldn't save your comment or reaction. Try again.</string>
     <string name="photobase_archive_title">Archive</string>
     <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>
     <string name="photobase_archive_move">Archive</string>
