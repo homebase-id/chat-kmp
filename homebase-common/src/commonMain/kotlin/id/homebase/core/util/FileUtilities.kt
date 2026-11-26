@@ -23,6 +23,7 @@ import kotlinx.io.files.Path
 expect fun getUriHandler(): FileSystemHandler
 
 interface FileSystemHandler {
+    /** Every failed open, including a URL the platform can't parse or has no app for, calls [onError]. */
     fun openUrl(url: String, onError: (Throwable) -> Unit = {})
     fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit = {})
     /** Opens [file] in another app; web: downloads the file. iOS has no default app, so it always shows its Open In menu, whatever [showChooser]. */

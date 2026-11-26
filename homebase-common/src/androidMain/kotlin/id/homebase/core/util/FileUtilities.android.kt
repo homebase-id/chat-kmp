@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import androidx.browser.customtabs.CustomTabsIntent
@@ -26,11 +27,14 @@ actual fun getUriHandler(): FileSystemHandler {
             private val saver = FileSaver(AndroidAlbumSaver(context), fileOps, ShareSheetFallback(fileOps) { path, onError -> shareFile(path, onError) })
 
             override fun openUrl(url: String, onError: (Throwable) -> Unit) {
-                val customTabsIntent =
+                try {
                     CustomTabsIntent.Builder().setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
                         .setShowTitle(true).build()
-
-                customTabsIntent.launchUrl(context, url.toUri())
+                        .launchUrl(context, url.toUri())
+                } catch (e: ActivityNotFoundException) {
+                    Logger.e(throwable = e, tag = TAG) { "Failed to open URL: ${e.message}" }
+                    onError(e)
+                }
             }
 
             override fun editFile(file: Path, showChooser: Boolean, onError: (Throwable) -> Unit) {

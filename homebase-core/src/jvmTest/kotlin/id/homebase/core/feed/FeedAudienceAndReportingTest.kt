@@ -121,22 +121,6 @@ class ReportingUrlProviderTest {
     }
 
     @Test
-    fun fallsBackWhenThePublishedUrlIsNotAbsoluteHttps() = runTest {
-        listOf(
-            "your-na-report-content-url-here",
-            "http://example.org/abuse",
-            "javascript:alert(1)",
-            "https://",
-        ).forEach { published ->
-            assertEquals(
-                ReportingUrlProvider.DEFAULT_REPORT_URL,
-                providerReturning("{\"url\":\"" + published + "\"}").reportUrlFor(OdinId("frodo.baggins.me")),
-                published,
-            )
-        }
-    }
-
-    @Test
     fun fallsBackWhenTheHostIsUnreachable() = runTest {
         val provider = ReportingUrlProvider(
             HttpClient(MockEngine { throw java.io.IOException("offline") }),

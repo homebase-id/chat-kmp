@@ -15,7 +15,7 @@ actual fun getUriHandler(): FileSystemHandler {
     val saver = remember { FileSaver(WebAlbumSaver, fileOps) }
     return object : FileSystemHandler {
         override fun openUrl(url: String, onError: (Throwable) -> Unit) {
-            runCatching { window.open(url, "_blank") }.onFailure { onError(it) }
+            runCatching { window.open(url, "_blank") ?: error("The browser blocked opening $url") }.onFailure(onError)
         }
 
         // The browser has no path-based filesystem; file edit/browse aren't supported on web.

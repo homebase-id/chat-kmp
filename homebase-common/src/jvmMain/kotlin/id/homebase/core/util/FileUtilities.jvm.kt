@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import java.awt.Desktop
+import java.net.URI
 import kotlinx.io.files.Path
 
 private const val TAG = "getUriHandler"
@@ -21,6 +22,8 @@ internal class JvmFileSystemHandler(
 
     override fun openUrl(url: String, onError: (Throwable) -> Unit) {
         try {
+            // The OS fallback in openSystemBrowser can't report a failure, so catch a scheme-less URL here.
+            require(URI(url).isAbsolute) { "Not an absolute URL: $url" }
             BrowserUtils.openSystemBrowser(url, enableClipboardFallback = false)
         } catch (e: Exception) {
             Logger.e(throwable = e, tag = TAG) { "Failed to open URL: ${e.message}" }
