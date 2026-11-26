@@ -75,7 +75,7 @@ sealed interface AlbumAudience {
 data class AlbumShareRecipient(val audience: AlbumAudience, val access: PhotoAlbumAccess, val expiresAt: Long?)
 
 /** A share made: the circle it went to, and the members whose key waits for them to set up Photos. */
-data class AlbumShared(val circleId: Uuid, val waiting: List<OdinId>)
+data class AlbumShared(val circleId: Uuid, val albumName: String, val waiting: List<OdinId>)
 
 /** An album [owner] shares with this identity, as their drive holds it. */
 data class SharedAlbum(
@@ -172,7 +172,7 @@ class PhotoAlbumSharing(
         // After the rows and the record, so a concurrent syncEditors that read them before can't take the members out again.
         if (access == PhotoAlbumAccess.Add) editing.withLock { circles.enroll(editorsCircle(), members) }
         else editorsMayHaveChanged(removalsOnly = true)
-        return AlbumShared(circleId, waiting = members.filter { keys[it] == RecipientKey.NoDrive })
+        return AlbumShared(circleId, recordFile.albumName().orEmpty(), waiting = members.filter { keys[it] == RecipientKey.NoDrive })
     }
 
     /** Stops sharing album [albumId] with [audience]; a photo that's also in another album shared with them stays. */
@@ -551,10 +551,12 @@ class PhotoAlbumSharing(
         internal fun HomebaseFile.otherAlbums(albumId: Uuid): List<Uuid> =
             fileMetadata.appData.tags.orEmpty().filter { it != albumId }
 
+        internal fun HomebaseFile.albumName(): String? =
+            contentObject(fileMetadata.appData.content)["name"]?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }
+
         internal fun HomebaseFile.toSharedAlbum(owner: OdinId): SharedAlbum? {
             val id = fileMetadata.appData.uniqueId ?: return null
-            val content = contentObject(fileMetadata.appData.content)
-            val name = content["name"]?.let { runCatching { it.jsonPrimitive.content }.getOrNull() } ?: return null
+            val name = albumName() ?: return null
             val rows = shares.orEmpty()
             val adding = addingCircles(this)
             return SharedAlbum(owner, id, name, rows, canAdd = rows.any { it.circleId in adding })

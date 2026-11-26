@@ -124,7 +124,10 @@ class SharedAlbumViewModel(
         viewModelScope.launch {
             val album = guarded { sharing.sharedAlbums(owner).firstOrNull { it.id == albumId } }
             _uiState.update { it.copy(album = album, loading = false, end = album == null) }
-            if (album != null) loadMore()
+            if (album != null) {
+                loadMore()
+                keepSharer()
+            }
         }
     }
 
@@ -147,6 +150,17 @@ class SharedAlbumViewModel(
                 reading = false
                 _uiState.update { it.copy(loading = false) }
             }
+        }
+    }
+
+    // Opened from a chat message, the sharer is kept so the Library finds the album again; the album itself showed either way.
+    private suspend fun keepSharer() {
+        try {
+            sharing.keepSharer(owner)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Logger.w(tag = TAG, throwable = e) { "$owner not kept as a sharer" }
         }
     }
 

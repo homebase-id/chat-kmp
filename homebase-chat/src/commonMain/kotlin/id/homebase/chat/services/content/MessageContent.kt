@@ -6,6 +6,7 @@ import id.homebase.chat.agentui.AgentUiTreeResult
 import id.homebase.chat.calling.CallEventDescriptor
 import id.homebase.chat.calling.CallOutcome
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.albumshare.AlbumShareDescriptor
 import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.dice.DiceRollDescriptor
 import id.homebase.chat.event.EventDescriptor
@@ -232,6 +233,23 @@ sealed interface MessageContent {
         override val notificationLabel: String get() = UNPARSEABLE_FILE_SHARE_LABEL
     }
 
+    /** An album the sender shared from their Photos. [descriptor] follows the [Event.descriptor] nullability contract. */
+    data class AlbumShare(val descriptor: AlbumShareDescriptor?) : MessageContent {
+        // As FileShare: it describes a share made in Photos, and reaches only the people it was made with.
+        override val actions: ActionPolicy = ActionPolicy(
+            allowEdit = false,
+            allowReply = true,
+            allowForward = false,
+            allowShare = false,
+            allowInlineReactions = true,
+            allowReactionDetails = true,
+        )
+        override val displayLabel: String get() = descriptor?.summaryLine() ?: UNPARSEABLE_ALBUM_SHARE_LABEL
+
+        // Album names stay off the push provider.
+        override val notificationLabel: String get() = UNPARSEABLE_ALBUM_SHARE_LABEL
+    }
+
     /**
      * An agent-composed interactive card (AGENT_UI.md). [descriptor] follows the [Event.descriptor]
      * nullability contract. [inlineTree] is the decoded header tree; null when it rides in the payload or is still raw.
@@ -296,6 +314,7 @@ sealed interface MessageContent {
         const val UNPARSEABLE_AGENT_UI_LABEL = "Agent card"
         const val UNPARSEABLE_AGENT_ACTION_LABEL = "Action"
         const val UNPARSEABLE_FILE_SHARE_LABEL = "Shared files"
+        const val UNPARSEABLE_ALBUM_SHARE_LABEL = "Shared album"
         const val UNKNOWN_LABEL = "Unknown message"
     }
 

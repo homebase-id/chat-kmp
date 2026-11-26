@@ -10,6 +10,7 @@ import id.homebase.core.util.supportsTouchGestures
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.chat.contactcard.ContactCardDescriptor
+import id.homebase.chat.albumshare.AlbumShareDescriptor
 import id.homebase.chat.fileshare.FileShareDescriptor
 import id.homebase.chat.conversationlist.ConversationListUiAction
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -162,6 +163,13 @@ fun MessageItem(
             if (circleId != null) onUiAction(ConversationListUiAction.OpenFileShare(sharer, circleId))
         }
     }
+    // Routed out because Photos lives in :homebase-photobase.
+    val onOpenAlbumShare = remember(message.id) {
+        { share: AlbumShareDescriptor, sharer: OdinId? ->
+            val albumId = share.album()
+            if (albumId != null) onUiAction(ConversationListUiAction.OpenAlbumShare(sharer, albumId))
+        }
+    }
     val onMessageIdentity = remember(message.id) {
         { odinId: String ->
             onUiAction(ConversationListUiAction.MessageIdentity(odinId))
@@ -240,6 +248,7 @@ fun MessageItem(
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
                 onOpenFileShare = onOpenFileShare,
+                onOpenAlbumShare = onOpenAlbumShare,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
                 onCopyImage = onCopyImage,
@@ -305,6 +314,7 @@ fun MessageItem(
                 chainCap = chainCap,
                 onSaveContactCard = onSaveContactCard,
                 onOpenFileShare = onOpenFileShare,
+                onOpenAlbumShare = onOpenAlbumShare,
                 onMessageIdentity = onMessageIdentity,
                 onCopyText = onCopyText,
                 onCopyImage = onCopyImage,

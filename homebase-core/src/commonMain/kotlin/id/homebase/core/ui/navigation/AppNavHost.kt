@@ -1606,6 +1606,13 @@ fun AppNavHost(
                                                 filesyncToDo = FilesyncUiAction.OpenFromChat(sharer, circleId)
                                                 openFilesync()
                                             },
+                                            onOpenAlbumShare = { sharer, albumId ->
+                                                // Our own message opens our album; theirs, the album on their drive.
+                                                navController.navigate(
+                                                    if (sharer == null) Route.PhotoGalleryView(PhotoGallery.Album(albumId).key)
+                                                    else Route.PhotoSharedAlbum(sharer.domainName, albumId.toString())
+                                                )
+                                            },
                                             newConversationPane = { onDismiss, onConversationOpened ->
                                                 NewConversationPaneHost(
                                                     onDismiss = onDismiss,

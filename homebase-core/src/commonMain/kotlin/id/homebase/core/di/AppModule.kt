@@ -230,6 +230,7 @@ import id.homebase.api.client.drives.files.reactions.PeerReactionProvider
 import id.homebase.photobase.sharing.PhotoMemberWrites
 import id.homebase.photobase.sharing.PhotobaseSession
 import id.homebase.photobase.ui.AlbumShareViewModel
+import id.homebase.photobase.sharing.AlbumShareMessages
 import id.homebase.photobase.ui.SharedAlbumViewModel
 import id.homebase.photobase.ui.SharedWithMeViewModel
 import id.homebase.photobase.sharing.PhotoShareUpkeep
@@ -1591,8 +1592,10 @@ val appModule = module {
             restore = { PhotobaseSession.restoreFor(credentials) },
             signInUrl = { onDone -> PhotobaseSession.signInUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, onDone) },
             missingPermissionsUrl = { PhotobaseSession.missingPermissionsUrl(get(), checkNotNull(credentials.getActiveCredentials()).domain, ::returnUrl) },
+            tell = { people, shared, access -> get<AlbumShareMessages>().send(people, albumId, shared.albumName, access) },
         )
     }
+    single { AlbumShareMessages(get(), get()) }
     single<PhotoMoveServer> { HttpPhotoMoveServer(get(), get(), get()) }
     single {
         val store = get<PhotoGalleryStore>()

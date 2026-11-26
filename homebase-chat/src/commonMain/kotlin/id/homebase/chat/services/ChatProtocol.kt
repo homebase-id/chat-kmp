@@ -34,7 +34,7 @@ object ChatProtocol {
     /**
      * Rich-content message kinds that ride on the message header (no payload fetch
      * on scroll). The full JSON object lives in `appData.content`; receivers branch
-     * off `appData.dataType` to choose a renderer. ViewOnce is 216, CallEvent 217, FileShare 218, AgentUi 219 and AgentUiAction 220;
+     * off `appData.dataType` to choose a renderer. ViewOnce is 216, CallEvent 217, FileShare 218, AgentUi 219, AgentUiAction 220 and AlbumShare 221;
      * pick the next free integer when adding one.
      */
     const val ChatEventMessageDataType = 210
@@ -101,6 +101,9 @@ object ChatProtocol {
 
     /** A person's action on an [ChatAgentUiMessageDataType] card, sent back to the agent. See AGENT_UI.md. */
     const val ChatAgentUiActionMessageDataType = 220
+
+    /** An album shared from the sender's Photos; see [id.homebase.chat.albumshare.AlbumShareDescriptor]. */
+    const val ChatAlbumShareMessageDataType = 221
 
     const val MessageFileType = 7878
 

@@ -6,6 +6,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.common.OdinId
 import id.homebase.photobase.sharing.AlbumAudience
 import id.homebase.photobase.sharing.AlbumShareRecipient
+import id.homebase.photobase.sharing.AlbumShared
 import id.homebase.photobase.sharing.PhotoAlbumAccess
 import id.homebase.photobase.sharing.PhotoAlbumSharing
 import id.homebase.photobase.sharing.PhotoSharingException
@@ -35,6 +36,8 @@ sealed interface AlbumShareEvent {
     data object Failed : AlbumShareEvent
     data class Waiting(val who: String) : AlbumShareEvent
     data class NotAdded(val who: String) : AlbumShareEvent
+    /** Shared, but the chat message telling them didn't go. */
+    data class NotTold(val who: String) : AlbumShareEvent
 }
 
 sealed interface AlbumShareUiAction {
@@ -53,8 +56,8 @@ class AlbumShareViewModel(
     private val restore: suspend () -> Boolean,
     private val signInUrl: suspend (onDone: suspend (Boolean) -> Unit) -> String,
     private val missingPermissionsUrl: suspend () -> String?,
-    /** Tells the people a share reaches about it. */
-    private val tell: suspend (List<OdinId>) -> Unit = {},
+    /** Tells the people a share reaches about it; returns the ones it couldn't. */
+    private val tell: suspend (List<OdinId>, AlbumShared, PhotoAlbumAccess) -> List<OdinId> = { _, _, _ -> emptyList() },
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(AlbumShareUiState())
     val uiState: StateFlow<AlbumShareUiState> = _uiState.asStateFlow()
@@ -110,7 +113,8 @@ class AlbumShareViewModel(
         busy {
             val shared = sharing.share(albumId, AlbumAudience.Person(person), state.access, expiresAt = null)
             _uiState.update { it.copy(identity = "") }
-            tell(listOf(person))
+            val untold = tell(listOf(person), shared, state.access)
+            if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             if (shared.waiting.isNotEmpty()) _events.send(AlbumShareEvent.Waiting(shared.waiting.joinToString { it.domainName }))
         }
     }

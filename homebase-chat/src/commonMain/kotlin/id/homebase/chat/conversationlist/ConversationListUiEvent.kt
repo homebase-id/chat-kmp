@@ -61,6 +61,7 @@ sealed interface ConversationListUiEvent {
     data object NavigateToLocationSetup : ConversationListUiEvent
 
     data class NavigateToFileShare(val sharer: OdinId?, val circleId: Uuid) : ConversationListUiEvent
+    data class NavigateToAlbumShare(val sharer: OdinId?, val albumId: Uuid) : ConversationListUiEvent
 
     /** Hand a received contact card to the contact editor in :homebase-core. */
     data class NavigateToSaveContactCard(

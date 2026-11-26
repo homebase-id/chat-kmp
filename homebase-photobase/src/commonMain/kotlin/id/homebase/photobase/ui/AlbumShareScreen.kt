@@ -44,6 +44,7 @@ import id.homebase.resources.photobase_share_identity
 import id.homebase.resources.photobase_share_identity_invalid
 import id.homebase.resources.photobase_share_none
 import id.homebase.resources.photobase_share_not_added
+import id.homebase.resources.photobase_share_not_told
 import id.homebase.resources.photobase_share_send
 import id.homebase.resources.photobase_share_shared_with
 import id.homebase.resources.photobase_share_sign_in
@@ -77,6 +78,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onBack: () -> Unit) {
                 AlbumShareEvent.Failed -> snackbar.showSnackbar(getString(MR.string.photobase_share_failed))
                 is AlbumShareEvent.Waiting -> snackbar.showSnackbar(getString(MR.string.photobase_share_waiting, event.who))
                 is AlbumShareEvent.NotAdded -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_added, event.who))
+                is AlbumShareEvent.NotTold -> snackbar.showSnackbar(getString(MR.string.photobase_share_not_told, event.who))
             }
         }
     }

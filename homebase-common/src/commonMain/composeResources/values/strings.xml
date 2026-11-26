@@ -1017,6 +1017,11 @@
     <string name="chat_file_share_until">%1$s until %2$s</string>
     <string name="chat_file_share_group">Shared with the group %1$s</string>
     <string name="chat_file_share_unparseable">Unable to display these shared files. Please update the app.</string>
+    <string name="chat_album_share_you">You shared an album</string>
+    <string name="chat_album_share_by">%1$s shared an album</string>
+    <string name="chat_album_share_can_add">Can view and add photos</string>
+    <string name="chat_album_share_open">Open album</string>
+    <string name="chat_album_share_unparseable">Unable to display this shared album. Please update the app.</string>
     <string name="chat_contact_unparseable">Unable to display this contact. Please update the app.</string>
     <string name="chat_contact_share">Contact</string>
     <string name="chat_contact_share_title">Send a contact</string>
@@ -3557,6 +3562,7 @@
     <string name="photobase_share_failed">Couldn't change who sees this album. Try again.</string>
     <string name="photobase_share_waiting">%1$s will see it once they set up Photos.</string>
     <string name="photobase_share_not_added">Couldn't share with %1$s.</string>
+    <string name="photobase_share_not_told">Shared, but the chat message to %1$s didn't send.</string>
     <string name="photobase_shared_with_me_title">Shared with me</string>
     <string name="photobase_shared_with_me_none">No one shares albums with you yet.</string>
     <string name="photobase_shared_with_me_add">Add someone who shares with you</string>

@@ -3,6 +3,7 @@ package id.homebase.chat.widget
 import id.homebase.core.ui.assets.Filesync
 import id.homebase.core.ui.assets.HomebaseIcons
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Casino
@@ -75,6 +76,13 @@ class TypedMessageContentLabelTest {
         val label = typedMessageContentLabel(MessageContent.FileShare(null))
         assertEquals(MessageContent.UNPARSEABLE_FILE_SHARE_LABEL, label?.text)
         assertEquals(HomebaseIcons.Filesync, label?.icon)
+    }
+
+    @Test
+    fun albumShare_showsTheAlbumIcon() {
+        val label = typedMessageContentLabel(MessageContent.AlbumShare(null))
+        assertEquals(MessageContent.UNPARSEABLE_ALBUM_SHARE_LABEL, label?.text)
+        assertEquals(Icons.Outlined.PhotoAlbum, label?.icon)
     }
 
     @Test
