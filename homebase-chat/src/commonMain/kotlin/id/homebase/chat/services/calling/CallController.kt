@@ -89,6 +89,7 @@ class CallController(
     private var carriedSignal: CallSignal? = null
     private val remoteIce = mutableSetOf<CallEffect.AddIce>()
     private var answeredRestartOffer: String? = null
+    private val answeredRestartOffers = mutableSetOf<String>()
     private var restartOfferSdp: String? = null
     private var iceFetch: Pair<String, Deferred<IceLease>>? = null
     private var callIce: IceLease? = null
@@ -219,7 +220,8 @@ class CallController(
         try {
             post(peer, signal)
         } finally {
-            if ((signal is CallSignal.Hangup && signal.reason.isElsewhere) || carried) ice?.repost(carriedSignal)
+            val reposts = carried || signal is CallSignal.RestartRequest || (signal is CallSignal.Hangup && signal.reason.isElsewhere)
+            if (reposts) ice?.repost(carriedSignal)
         }
     }
 
@@ -259,7 +261,7 @@ class CallController(
     private fun describe(signal: CallSignal): String = when (signal) {
         is CallSignal.Hangup -> "hangup(${signal.reason})"
         is CallSignal.Offer -> "offer(seq=${signal.seq})"
-        is CallSignal.Ice -> "ice(${signal.all.size})"
+        is CallSignal.Ice -> "ice(${signal.all.size})" + signal.signal?.let { "+${describe(it)}" }.orEmpty()
         else -> signal::class.simpleName.orEmpty()
     }
 
@@ -445,10 +447,11 @@ class CallController(
                     sendBestEffort(state.peer!!, CallSignal.Restart(state.callId!!, sdp))
                 }
                 is CallEffect.AnswerRestart -> {
-                    if (effect.carried && effect.offerSdp == answeredRestartOffer) return
+                    if (effect.carried && effect.offerSdp in answeredRestartOffers) return
                     refreshIceServers(state)
                     if (effect.offerSdp != answeredRestartOffer) newIceGeneration()
                     answeredRestartOffer = effect.offerSdp
+                    answeredRestartOffers += effect.offerSdp
                     val sdp = engine().answerRestart(effect.offerSdp)
                     sendBestEffort(state.peer!!, CallSignal.RestartAnswer(state.callId!!, sdp, offerUfrag = SdpCandidates.iceUfrag(effect.offerSdp)))
                 }
@@ -644,6 +647,7 @@ class CallController(
         bufferedIce.clear()
         remoteIce.clear()
         answeredRestartOffer = null
+        answeredRestartOffers.clear()
         heldIce.clear()
         publishedIce = 0
         offerSeq = 0
