@@ -1,4 +1,46 @@
-# Creating GitHub Issues for chat-kmp
+# Issues
+
+What to do with an issue: reading it, what to write on screen, working on it, opening its PR, and filing
+one. The PR rules in CLAUDE.md ("Simplify, then code review" and "Opening a PR") still apply in full; this
+adds to them.
+
+## Reading an issue
+
+Before reading code or planning, write the issue's essence on screen: in one or two sentences, the problem as
+the person who hit it sees it (what goes wrong, for whom, when), not the fix.
+
+- If the issue holds several unrelated problems, say so, name the one you're taking, and leave the rest for
+  their own PRs.
+- If, after a first look at the code, you still can't state the essence, or the issue reads two ways, ask.
+
+## Working on it
+
+- **Stay with the problem.** Fix it where it's caused, even when that's far from where it shows: a root-cause
+  fix is part of the problem, and a workaround at the symptom is not a good fix. The same bug in other places
+  is the same problem, so fix it there too. Small changes in the code you're already touching are fine when
+  they make the fix clean, such as a rename, a test, or a caller that has to follow. Code that works and
+  isn't part of the problem stays as it is, even if you'd have written it differently. Every change the
+  problem didn't need is one more place to break something.
+- **Check each change:** can you say in a few words how it serves the essence? If not, leave it out. If what
+  you found is really broken, mention it or file it.
+- If the work shows the real problem is a different one, say so and restate the essence before going on.
+
+## Opening its PR
+
+Everything in CLAUDE.md, "Opening a PR", applies. On top of it, start the description with two lines:
+
+```
+Problem: <the essence from "Reading an issue", updated if the work changed it>
+Core change: <file:line> <the essence of the code that fixes it>: why it fixes the Problem
+```
+
+The Core change is the heart of the fix, not the whole diff: often one line, sometimes a few lines or a short
+block, quoted or named. If the Core change doesn't answer the Problem, the PR solves something else.
+
+After opening the PR, print on screen the PR title followed by its bare full URL, then the Problem and Core
+change lines.
+
+## Filing an issue
 
 This is the playbook Claude follows when the user asks it to file a bug or feature
 issue against the **`homebase-id/chat-kmp`** repository. The user describes the
@@ -15,7 +57,7 @@ that the real issue can be discovered.
 
 ---
 
-## Quick reference
+### Quick reference
 
 - **Repo:** `homebase-id/chat-kmp`
 - **Tool:** `gh issue create`
@@ -30,11 +72,11 @@ that the real issue can be discovered.
   `help wanted`, `good first issue`, `duplicate`, `invalid`, `wontfix`, `post-merge`
 - **After a merge:** an issue about something a merged PR got wrong starts with
   "Found after #<PR>" and gets `post-merge`. A fix that didn't hold reopens its issue
-  ("Still broken on <platform>: …") instead of a new one (CLAUDE.md, "Filing issues").
+  ("Still broken on <platform>: …") instead of a new one.
 
 ---
 
-## The process (what Claude does each time)
+### The process (what Claude does each time)
 
 1. **Read this file first.** It defines the body format, labels, and assignee rules.
 2. **Classify** the request: bug, enhancement, or other. Pick the matching label(s)
@@ -49,7 +91,7 @@ that the real issue can be discovered.
    issue with `gh`.
 7. **Report back** the issue URL that `gh` prints.
 
-### Updating an issue after new information (corrections)
+#### Updating an issue after new information (corrections)
 
 When the user clarifies, corrects, or adds evidence to an **already-filed** issue,
 **prefer editing the main issue description in place** (`gh issue edit <n> --body-file`)
@@ -70,7 +112,7 @@ picture from the body alone, without scrolling a trail of "correction:" comments
 
 ---
 
-## Assignees
+### Assignees
 
 > **If the user forgets to say who to assign an issue to, ask before creating it.**
 
@@ -84,7 +126,7 @@ Pass the chosen user with `--assignee <login>`. Multiple assignees are allowed
 
 ---
 
-## Attachments
+### Attachments
 
 When the user attaches files to the chat, include them in the issue.
 
@@ -135,7 +177,7 @@ When the user attaches files to the chat, include them in the issue.
 If you're unsure whether an attachment is text or binary, prefer inline embedding for
 anything human-readable.
 
-### When an attachment doesn't arrive (it often doesn't — check first)
+#### When an attachment doesn't arrive (it often doesn't — check first)
 
 Chat uploads are **unreliable** — an image/log the user "attached" frequently does **not**
 reach the workspace. Before assuming you have it:
@@ -152,7 +194,7 @@ reach the workspace. Before assuming you have it:
 - A missing attachment is a workspace glitch, not the user forgetting — don't ask "did you
   attach it?", just check the dir and re-request.
 
-### PII discretion on screenshots
+#### PII discretion on screenshots
 
 Default to **text-only** (describe the bug precisely) when a screenshot shows a **real
 face** or **real contact names / handles / addresses** — even if the user says "not PII" —
@@ -168,7 +210,7 @@ the team's own.
 
 ---
 
-## Body template — Bug
+### Body template — Bug
 
 Use label `bug` (add others as relevant). Title: short, specific, imperative or
 symptom-first — e.g. *"Live location map freezes UI when conversation has 0 items"*.
@@ -206,7 +248,7 @@ assert a root cause you haven't proven — frame as a lead.>
 regress X). This is the part that makes it a good `/plan` prompt.>
 ```
 
-## Body template — Enhancement / Feature
+### Body template — Enhancement / Feature
 
 Use label `enhancement`. Title: capability-framed — e.g. *"Add tap-to-share live
 location duration picker"*.
@@ -236,7 +278,7 @@ call out the CLAUDE.md rules the implementer must respect.>
 
 ---
 
-## Creating the issue with `gh`
+### Creating the issue with `gh`
 
 Write the body to a temp file (avoids shell-quoting pain with multi-line markdown),
 then:
@@ -258,7 +300,7 @@ Notes:
 
 ---
 
-## Conventions / house style
+### Conventions / house style
 
 - **Title:** specific and searchable. Lead with the symptom for bugs, the capability
   for features. No trailing period.
