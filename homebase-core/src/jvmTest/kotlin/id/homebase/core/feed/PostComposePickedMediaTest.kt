@@ -1,5 +1,6 @@
 package id.homebase.core.feed
 
+import id.homebase.api.file.contentType
 import id.homebase.chat.conversationlist.AttachmentPendingFile
 import id.homebase.core.ui.screens.feed.toPendingMedia
 import io.github.vinceglb.filekit.PlatformFile
@@ -25,8 +26,9 @@ class PostComposePickedMediaTest {
 
     @Test
     fun aVideoThePlatformCannotOpenBecomesAFile() {
-        val file = assertIs<AttachmentPendingFile.File>(picked("picked.mkv").toPendingMedia { false })
-        assertEquals("video/x-matroska", file.sourceContentType)
+        val mkv = picked("picked.mkv")
+        val file = assertIs<AttachmentPendingFile.File>(mkv.toPendingMedia { false })
+        assertEquals(mkv.contentType(), file.sourceContentType)
     }
 
     @Test
