@@ -271,6 +271,21 @@ class PhotoAlbumSharing(
         return AlbumAudience.Group(circleId, name, members.sortedBy { it.domainName })
     }
 
+    /** The albums shared with [group], and with what access: what someone added to it is told about. */
+    suspend fun albumsSharedWith(group: AlbumAudience.Group): List<Pair<AlbumShared, PhotoAlbumAccess>> {
+        circles.requireSignedIn()
+        return albumRecords().filter { record -> record.shares.orEmpty().any { it.circleId == group.circleId } }.map { record ->
+            val access = if (group.circleId in addingCircles(record)) PhotoAlbumAccess.Add else PhotoAlbumAccess.View
+            AlbumShared(group.circleId, record.albumName().orEmpty(), waiting = emptyList()) to access
+        }
+    }
+
+    /** Deletes [group], which a share it was made for didn't reach: nothing is shared with it yet. */
+    suspend fun deleteGroup(group: AlbumAudience.Group) {
+        circles.requireSignedIn()
+        circles.asApp.deleteCircle(group.circleId, removeMembers = true)
+    }
+
     /** Makes [group]'s members [members]; the ones added, for telling. Those who couldn't be added are named once the rest is done. */
     suspend fun setMembers(group: AlbumAudience.Group, members: List<OdinId>): List<OdinId> {
         circles.requireSignedIn()
@@ -504,7 +519,9 @@ class PhotoAlbumSharing(
 
     // Before anything is written: odin-core skips anyone not connected or not reviewed, and the share then fails late.
     private suspend fun assertMayJoin(members: List<OdinId>) {
-        val statuses = coroutineScope { members.map { async { it to connections.getConnectionStatus(it) } }.awaitAll() }
+        val statuses = members.chunked(SelectiveShareCircles.PARALLEL).flatMap { chunk ->
+            coroutineScope { chunk.map { async { it to connections.getConnectionStatus(it) } }.awaitAll() }
+        }
         statuses.filter { it.second?.status != ConnectionStatus.Connected }.map { it.first }
             .takeIf { it.isNotEmpty() }?.let { throw PhotoSharingException.NotConnected(it) }
         statuses.filter { it.second?.reviewedAt == null }.map { it.first }

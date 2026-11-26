@@ -68,6 +68,7 @@ import id.homebase.resources.audience_picker_same_people
 import id.homebase.resources.audience_picker_search
 import id.homebase.resources.audience_picker_typed
 import id.homebase.resources.audience_picker_typed_invalid
+import id.homebase.resources.audience_picker_typed_not_connected
 import id.homebase.resources.audience_picker_with
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.pluralStringResource
@@ -159,7 +160,8 @@ fun typedIdentityOrNull(text: String): OdinId? =
 
 /**
  * Whom to share with: one of [groups], or connected people, one or several (several make a group). Those in [first] are
- * listed first. With [typedFallback], a Homebase ID typed below the list adds someone who isn't a connection. With
+ * listed first. With [typedFallback], a connection can also be added by typing their Homebase ID; one who isn't a
+ * connection is said not to be, since a share reaches only connections. With
  * [onGroupMembers], each group has a button that shows who's in it, and a group that can't be picked opens it too.
  */
 @Composable
@@ -198,7 +200,7 @@ fun AudiencePicker(
             }
         }
     }
-    if (typedFallback) TypedPerson(enabled) { state.addTyped(it) }
+    if (typedFallback) TypedPerson(enabled, notConnected = rememberNotConnected()) { state.addTyped(it) }
     if (sameGroup != null && !state.newGroupInstead) {
         Text(stringResource(MR.string.audience_picker_same_people, sameGroup.name), style = MaterialTheme.typography.bodyMedium)
         TextButton(onClick = { state.newGroupInstead = true }, enabled = enabled) { Text(stringResource(MR.string.audience_picker_new_group_instead)) }
@@ -253,18 +255,31 @@ fun GroupFaces(members: List<OdinId>, avatarSize: Dp = 24.dp) {
     if (members.isEmpty()) GroupTile(avatarSize + 12.dp) else AvatarStack(members, avatarSize = avatarSize)
 }
 
+// Whether someone isn't a connection; false until the connections have loaded, when the share's own check says it.
 @Composable
-private fun TypedPerson(enabled: Boolean, onAdd: (OdinId) -> Unit) {
+private fun rememberNotConnected(): (OdinId) -> Boolean {
+    val connectionService: ConnectionService = koinInject()
+    val connections by connectionService.connections.collectAsStateWithLifecycle()
+    return remember(connections) {
+        { person -> connections.isLoaded && connections.map[person]?.status != ConnectionStatus.Connected }
+    }
+}
+
+@Composable
+private fun TypedPerson(enabled: Boolean, notConnected: (OdinId) -> Boolean, onAdd: (OdinId) -> Unit) {
     // The field holds the space-encoded text it shows as dots.
     var field by remember { mutableStateOf(TextFieldValue()) }
     var invalid by remember { mutableStateOf(false) }
+    var refused by remember { mutableStateOf<OdinId?>(null) }
     val add = {
         val person = typedIdentityOrNull(field.text.cleanDomain(preserveTrailingDot = false, preserveTrailingDash = false))
-        if (person == null) {
-            invalid = true
-        } else {
-            onAdd(person)
-            field = TextFieldValue()
+        when {
+            person == null -> invalid = true
+            notConnected(person) -> refused = person
+            else -> {
+                onAdd(person)
+                field = TextFieldValue()
+            }
         }
     }
     HomebaseIdField(
@@ -272,18 +287,25 @@ private fun TypedPerson(enabled: Boolean, onAdd: (OdinId) -> Unit) {
         onValueChange = { incoming ->
             field = incoming.copy(text = incoming.text.cleanDomain().replace('.', ' '))
             invalid = false
+            refused = null
         },
         label = { Text(stringResource(MR.string.audience_picker_typed)) },
         placeholder = { Text(stringResource(MR.string.add_contact_odinid_hint)) },
-        supportingText = if (invalid) {
-            { Text(stringResource(MR.string.audience_picker_typed_invalid)) }
-        } else null,
+        supportingText = when {
+            invalid -> {
+                { Text(stringResource(MR.string.audience_picker_typed_invalid)) }
+            }
+            refused != null -> {
+                { Text(stringResource(MR.string.audience_picker_typed_not_connected, refused?.domainName.orEmpty())) }
+            }
+            else -> null
+        },
         trailingIcon = {
             IconButton(onClick = add, enabled = enabled && field.text.isNotBlank()) {
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(MR.string.audience_picker_add))
             }
         },
-        isError = invalid,
+        isError = invalid || refused != null,
         enabled = enabled,
         imeAction = ImeAction.Done,
         onImeAction = add,

@@ -2545,6 +2545,8 @@ fun AppNavHost(
                                         viewModel = koinViewModel(key = "album-share-$albumId", parameters = { parametersOf(albumId) }),
                                         onOpenSignIn = signIn::open,
                                         onBack = { navController.popBackStack() },
+                                        signInBlocked = signIn.blockedUrl != null,
+                                        onContinueSignIn = { signIn.blockedUrl?.let(signIn::open) },
                                     )
                                 }
                             }

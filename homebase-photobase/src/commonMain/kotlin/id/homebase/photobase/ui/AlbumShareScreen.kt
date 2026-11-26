@@ -78,7 +78,10 @@ import id.homebase.resources.photobase_share_failed_share
 import id.homebase.resources.photobase_share_failed_sign_in
 import id.homebase.resources.photobase_share_failed_sign_in_unfinished
 import id.homebase.resources.photobase_share_failed_withdraw
+import id.homebase.resources.photobase_share_device_error
+import id.homebase.resources.photobase_share_sign_in_blocked
 import id.homebase.resources.photobase_share_unreachable
+import id.homebase.resources.sign_in_again_continue
 import id.homebase.resources.photobase_share_none
 import id.homebase.resources.photobase_share_done
 import id.homebase.resources.photobase_share_not_added
@@ -129,6 +132,7 @@ private fun RecipientRow(recipient: AlbumShareRecipient, enabled: Boolean, onMem
 }
 
 private suspend fun ShareFailure.detailsText(): String {
+    deviceError?.let { return it }
     val none = getString(MR.string.photobase_share_details_none)
     return getString(MR.string.photobase_share_details_body, status?.toString() ?: none, code ?: none, correlationId ?: none)
 }
@@ -148,7 +152,9 @@ private suspend fun List<DrivePermission>.names(): String =
 
 private suspend fun AlbumShareEvent.Failed.failureMessage(): String {
     if (reason.unreachable) return getString(MR.string.photobase_share_unreachable)
-    val why = reason.reason ?: return getString(MR.string.photobase_share_failed_sign_in_unfinished)
+    val why = reason.reason
+        ?: if (step == AlbumShareStep.SignIn && reason.deviceError == null) return getString(MR.string.photobase_share_failed_sign_in_unfinished)
+        else getString(MR.string.photobase_share_device_error)
     return getString(
         when (step) {
             AlbumShareStep.SignIn -> MR.string.photobase_share_failed_sign_in
@@ -162,7 +168,13 @@ private suspend fun AlbumShareEvent.Failed.failureMessage(): String {
 }
 
 @Composable
-fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> Unit, onBack: () -> Unit) {
+fun AlbumShareScreen(
+    viewModel: AlbumShareViewModel,
+    onOpenSignIn: (String) -> Unit,
+    onBack: () -> Unit,
+    signInBlocked: Boolean = false,
+    onContinueSignIn: () -> Unit = {},
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val uriHandler = LocalUriHandler.current
@@ -216,7 +228,7 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
                 }
                 is AlbumShareEvent.Failed -> {
                     val message = event.failureMessage()
-                    val shown = snackbar.showSnackbar(message, actionLabel = event.reason.takeIf { it.status != null }?.let { getString(MR.string.details) })
+                    val shown = snackbar.showSnackbar(message, actionLabel = event.reason.takeIf { it.hasDetails }?.let { getString(MR.string.details) })
                     if (shown == SnackbarResult.ActionPerformed) details = event.reason.detailsText()
                 }
                 is AlbumShareEvent.CircleTooNarrow -> {
@@ -240,7 +252,13 @@ fun AlbumShareScreen(viewModel: AlbumShareViewModel, onOpenSignIn: (String) -> U
         if (!uiState.signedIn) {
             Column(Modifier.padding(innerPadding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(stringResource(MR.string.photobase_share_sign_in_body), style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = { viewModel.onAction(AlbumShareUiAction.SignIn) }) { Text(stringResource(MR.string.photobase_share_sign_in)) }
+                if (signInBlocked) {
+                    // A browser opens a window only from a click: the first one came after the sign-in link was made.
+                    Text(stringResource(MR.string.photobase_share_sign_in_blocked), style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = onContinueSignIn) { Text(stringResource(MR.string.sign_in_again_continue)) }
+                } else {
+                    Button(onClick = { viewModel.onAction(AlbumShareUiAction.SignIn) }) { Text(stringResource(MR.string.photobase_share_sign_in)) }
+                }
             }
             return@Scaffold
         }

@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 data class AlbumShareUiState(
     val signedIn: Boolean = false,
@@ -58,14 +60,20 @@ sealed interface AlbumShareEvent {
 
 enum class AlbumShareStep { SignIn, Read, Share, Withdraw, EditGroup }
 
-/** Why something failed, as the user is told it: [reason] quoted, [status], [code] and [correlationId] under Details. */
+/**
+ * Why something failed, as the user is told it: the server's [reason] quoted, with [status], [code] and [correlationId]
+ * under Details. An error of this device's own is said as one, its text only under Details ([deviceError]).
+ */
 data class ShareFailure(
     val reason: String?,
     val unreachable: Boolean = false,
     val status: Int? = null,
     val code: String? = null,
     val correlationId: String? = null,
+    val deviceError: String? = null,
 ) {
+    val hasDetails: Boolean get() = status != null || deviceError != null
+
     companion object {
         fun of(e: Throwable): ShareFailure = when {
             e is OdinApiException -> ShareFailure(
@@ -75,7 +83,7 @@ data class ShareFailure(
                 correlationId = e.correlationId ?: e.problem?.correlationId(),
             )
             e.isTransientNetworkFailure() -> ShareFailure(reason = null, unreachable = true)
-            else -> ShareFailure(reason = e.message ?: e::class.simpleName)
+            else -> ShareFailure(reason = null, deviceError = listOfNotNull(e::class.simpleName, e.message).joinToString(": "))
         }
     }
 }
@@ -120,8 +128,11 @@ class AlbumShareViewModel(
             is AlbumShareUiAction.Share -> share(action.choice)
             is AlbumShareUiAction.Withdraw -> busy(AlbumShareStep.Withdraw) { sharing.withdraw(albumId, action.recipient.audience) }
             is AlbumShareUiAction.EditGroup -> busy(AlbumShareStep.EditGroup) {
-                sharing.setMembers(action.group, action.members)
+                val joined = sharing.setMembers(action.group, action.members)
                 _events.send(AlbumShareEvent.GroupSaved(action.group.name))
+                if (joined.isEmpty()) return@busy
+                val untold = sharing.albumsSharedWith(action.group).flatMap { (shared, access) -> tell(joined, shared, access) }.distinct()
+                if (untold.isNotEmpty()) _events.send(AlbumShareEvent.NotTold(untold.joinToString { it.domainName }))
             }
         }
     }
@@ -171,7 +182,15 @@ class AlbumShareViewModel(
                 is AudienceChoice.Person -> AlbumAudience.Person(choice.odinId)
                 is AudienceChoice.NewGroup -> sharing.createGroup(choice.name, choice.members)
             }
-            val shared = sharing.share(albumId, audience, state.access, expiresAt = null)
+            val shared = try {
+                sharing.share(albumId, audience, state.access, expiresAt = null)
+            } catch (e: Exception) {
+                // A group made for this share and not reached by it would be left behind, and a retry would make another.
+                if (choice is AudienceChoice.NewGroup && audience is AlbumAudience.Group) {
+                    withContext(NonCancellable) { runCatching { sharing.deleteGroup(audience) }.onFailure { Logger.w(tag = TAG, throwable = it) { "group ${audience.circleId} not deleted" } } }
+                }
+                throw e
+            }
             _events.send(AlbumShareEvent.Shared(audience.label))
             if (shared.pending.isNotEmpty()) _events.send(AlbumShareEvent.Pending(shared.pending.joinToString { it.domainName }))
             val untold = tell(audience.members - shared.pending.toSet(), shared, state.access)
@@ -201,9 +220,11 @@ class AlbumShareViewModel(
             } catch (e: PhotoSharingException.CircleTooNarrow) {
                 Logger.w(tag = TAG) { "album $albumId: ${e.message}" }
                 _events.send(AlbumShareEvent.CircleTooNarrow(e.circleName, e.circleId, e.granted, e.missing))
+            } catch (e: PhotoSharingException.NotSignedIn) {
+                _uiState.update { it.copy(signedIn = false) }
             } catch (e: Exception) {
                 Logger.w(tag = TAG, throwable = e) { "album $albumId: $step failed" }
-                sharing.signOutIfRefused(e)
+                if (sharing.signOutIfRefused(e)) _uiState.update { it.copy(signedIn = false) }
                 _events.send(AlbumShareEvent.Failed(step, ShareFailure.of(e)))
             } finally {
                 _uiState.update { it.copy(busy = false) }
@@ -223,6 +244,9 @@ class AlbumShareViewModel(
             block()
         } catch (e: CancellationException) {
             throw e
+        } catch (e: PhotoSharingException.NotSignedIn) {
+            _uiState.update { it.copy(signedIn = false) }
+            null
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "album $albumId: sharing not read" }
             if (sharing.signOutIfRefused(e)) _uiState.update { it.copy(signedIn = false) }
