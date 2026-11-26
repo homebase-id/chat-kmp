@@ -664,6 +664,29 @@ class CallControllerTest {
     }
 
     @Test
+    fun aRestartAlreadyAnsweredIsNotAnsweredAgainWhenItComesInsideTheCandidates() = runTest {
+        val (net, a, b) = pair()
+        a.controller.startCall(sam, video = false)
+        runCurrent()
+        b.controller.accept()
+        advanceTimeBy(1_001)
+        a.engines.single().simulateDrop()
+        runCurrent()
+        val restart = net.sent.last { it.from == frodo && it.signal is CallSignal.Restart }.signal as CallSignal.Restart
+        val answers = { net.sent.count { it.from == sam && it.signal is CallSignal.RestartAnswer } }
+        assertEquals(1, answers())
+
+        net.deliver(sam, frodo, CallSignal.Ice.of(restart.callId, listOf(LocalCandidate("candidate:7 1 udp 1 192.0.2.7 9 typ host")), restart))
+        runCurrent()
+        assertEquals(1, answers())
+        assertEquals(1, b.engines.single().restarts)
+
+        net.deliver(sam, frodo, restart)
+        runCurrent()
+        assertEquals(2, answers(), "a resent restart is still answered")
+    }
+
+    @Test
     fun callerOfflineWhileReconnectingRestartsIceOnceTheNetworkReturns() = runTest {
         val (net, a, b) = pair()
         a.controller.startCall(sam, video = false)

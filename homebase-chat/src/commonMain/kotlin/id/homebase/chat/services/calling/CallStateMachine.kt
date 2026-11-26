@@ -204,7 +204,7 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
             is CallSignal.Ice -> {
                 // A peer whose socket reconnected sees only this blob, so the signal it carries comes before its candidates.
                 val carried = when (val c = sig.signal?.takeIf { it.callId == sig.callId }) {
-                    is CallSignal.Answer -> signal(s, inbound.copy(signal = c), nowMs)
+                    is CallSignal.Answer, is CallSignal.RestartAnswer -> signal(s, inbound.copy(signal = c), nowMs)
                     is CallSignal.Restart ->
                         if (s.phase.isInCall) CallTransition(s, listOf(CallEffect.AnswerRestart(c.sdp, carried = true))) else CallTransition(s)
                     else -> CallTransition(s)
@@ -247,7 +247,8 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     // A second device's answer means it missed the first relay (or raced it), so it is told again; anything else it sends is dropped.
     private fun otherCalleeDevice(s: CallState, sig: CallSignal): CallTransition {
         Logger.i(tag = TAG) { "call=${s.callId} dropped ${sig::class.simpleName} from unchosen device ${sig.device}" }
-        if (sig !is CallSignal.Answer || !s.phase.isInCall) return CallTransition(s)
+        val answered = sig is CallSignal.Answer || (sig as? CallSignal.Ice)?.signal is CallSignal.Answer
+        if (!answered || !s.phase.isInCall) return CallTransition(s)
         return CallTransition(s, listOf(relayToCalleeDevices(s, HangupReason.AnsweredElsewhere, chosen = s.peerDevice)))
     }
 

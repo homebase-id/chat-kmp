@@ -53,7 +53,7 @@ sealed class CallSignal {
 
     /**
      * [candidates], when present, is every candidate sent so far and starts with the one in [candidate], which an older build reads alone.
-     * [signal] is the sender's last [Answer] or [Restart], since the relay keeps only this blob.
+     * [signal] is the sender's last [Answer], [Restart] or [RestartAnswer], since the relay keeps only this blob.
      */
     @Serializable @SerialName("ice")
     data class Ice(
