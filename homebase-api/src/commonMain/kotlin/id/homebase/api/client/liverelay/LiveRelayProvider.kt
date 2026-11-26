@@ -62,7 +62,7 @@ data class LiveRelayRequest(
     val push: LiveRelayPush? = null,
 )
 
-/** Optional wake-up riding a relay. `kind` is one of `notify`, `ring`, `hangup`, `handled`, `wake`; `tagId` collapses ring/hangup pairs. */
+/** Optional wake-up riding a relay. `kind` is one of `notify`, `ring`, `hangup`, `handled`, `wake`; `tagId` collapses a ring with the push that ends it. */
 @Serializable
 data class LiveRelayPush(
     val kind: String,
