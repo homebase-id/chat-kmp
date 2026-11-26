@@ -11,6 +11,8 @@ class CallKitMirror(
 ) {
     private var reported: String? = null
     private var answered: String? = null
+    private var videoCallId: String? = null
+    private var connectedReported: String? = null
 
     private data class Key(
         val callId: String?,
@@ -19,14 +21,13 @@ class CallKitMirror(
         val video: Boolean,
         val answeredInApp: Boolean,
         val peer: String?,
-        val localVideo: Boolean,
+        val videoOn: Boolean,
     )
 
     suspend fun run() {
-        session.transitions.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp, it.peer, it.media.localVideo) }
-            // localVideo is only read when the outgoing call is first reported; a later camera toggle is not a lifecycle change.
-            .distinctUntilChanged { old, new -> old.copy(localVideo = new.localVideo) == new }
-            .collect { (callId, phase, direction, video, answeredInApp, peer, localVideo) ->
+        session.transitions.map { Key(it.callId, it.phase, it.direction, it.placedWithVideo, it.answeredInApp, it.peer, it.media.localVideo || it.media.remoteVideo) }
+            .distinctUntilChanged()
+            .collect { (callId, phase, direction, video, answeredInApp, peer, videoOn) ->
                 val bridge = bridge() ?: return@collect
                 val id = callId ?: return@collect
                 if (direction == CallDirection.Outgoing && !bridge.hostsOutgoingCalls()) return@collect
@@ -37,10 +38,23 @@ class CallKitMirror(
                 when (phase) {
                     CallPhase.Outgoing -> if (reported != id) {
                         reported = id
-                        bridge.reportOutgoing(id, peer.orEmpty(), localVideo)
+                        videoCallId = id.takeIf { videoOn }
+                        bridge.reportOutgoing(id, peer.orEmpty(), videoOn)
                     }
-                    CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video) bridge.reportVideo(id, true)
-                    CallPhase.Connected -> if (direction == CallDirection.Outgoing) bridge.reportConnected(id)
+                    CallPhase.Incoming, CallPhase.Connecting -> if (direction == CallDirection.Incoming && video && videoCallId != id) {
+                        videoCallId = id
+                        bridge.reportVideo(id, true)
+                    }
+                    CallPhase.Connected -> {
+                        if (direction == CallDirection.Outgoing && connectedReported != id) {
+                            connectedReported = id
+                            bridge.reportConnected(id)
+                        }
+                        if (videoOn != (videoCallId == id)) {
+                            videoCallId = id.takeIf { videoOn }
+                            bridge.reportVideo(id, videoOn)
+                        }
+                    }
                     is CallPhase.Ended -> {
                         val reason = phase.reason
                         if (reason == CallEndReason.AnsweredElsewhere || reason == CallEndReason.DeclinedElsewhere) {
@@ -48,6 +62,8 @@ class CallKitMirror(
                         } else if (phase.reason.endedLocally(direction)) bridge.requestEnd(id) else bridge.reportEnded(id, remoteEnded = phase.reason !is CallEndReason.Failed)
                         if (reported == id) reported = null
                         if (answered == id) answered = null
+                        if (connectedReported == id) connectedReported = null
+                        if (videoCallId == id) videoCallId = null
                     }
                     else -> Unit
                 }
