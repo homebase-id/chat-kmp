@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -16,6 +17,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,12 +42,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import id.homebase.chat.conversationlist.FullScreenOverlay
+import id.homebase.chat.widget.FullScreenVideoPlayer
 import id.homebase.core.image.HomebaseImage
 import id.homebase.core.image.HomebaseImageData
 import id.homebase.core.image.forGridTile
 import id.homebase.core.widget.ScreenBackHandler
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
+import id.homebase.resources.photobase_gallery_video
 import id.homebase.resources.photobase_photo_added_by
 import id.homebase.resources.photobase_shared_album_add_failed
 import id.homebase.resources.photobase_shared_album_add_not_confirmed
@@ -59,6 +64,12 @@ import org.jetbrains.compose.resources.stringResource
 /** [photo]'s image as its owner's drive holds it, read over peer by its global transit id. */
 internal fun SharedPhoto.imageData(owner: id.homebase.api.common.OdinId): HomebaseImageData? =
     item.tileImageData()?.copy(remoteOdinId = owner, globalTransitId = file.fileMetadata.globalTransitId ?: return null)
+
+/** [photo]'s video, played from its owner's drive over peer; null for a photo. */
+internal fun SharedPhoto.player(owner: id.homebase.api.common.OdinId): FullScreenOverlay.VideoPlayerData? {
+    val globalTransitId = file.fileMetadata.globalTransitId ?: return null
+    return (item.toViewer() as? FullScreenOverlay.VideoPlayerData)?.copy(remoteOdinId = owner, globalTransitId = globalTransitId)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,8 +186,27 @@ private fun SharedPhotoViewer(
         },
     ) { innerPadding ->
         HorizontalPager(pager, Modifier.fillMaxSize().padding(innerPadding), key = { photos[it].file.fileId.toString() }) { page ->
-            val data = remember(photos[page]) { photos[page].imageData(owner) }
-            if (data != null) HomebaseImage(imageData = data, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+            val photo = photos[page]
+            val video = remember(photo) { photo.player(owner) }
+            // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
+            if (video != null && page == pager.settledPage) {
+                FullScreenVideoPlayer(data = video, onDismiss = onClose)
+                return@HorizontalPager
+            }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                val data = remember(photo) { photo.imageData(owner) }
+                if (data != null) {
+                    HomebaseImage(
+                        imageData = data,
+                        contentDescription = if (video != null) stringResource(MR.string.photobase_gallery_video) else null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                if (video != null) {
+                    Icon(Icons.Filled.PlayCircle, contentDescription = null, tint = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.size(64.dp))
+                }
+            }
         }
     }
 }
