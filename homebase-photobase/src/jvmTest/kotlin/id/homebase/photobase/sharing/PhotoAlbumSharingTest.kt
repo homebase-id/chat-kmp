@@ -83,6 +83,20 @@ class PhotoAlbumSharingTest {
     @Volatile private var storedShareKey: String? = null
     @Volatile private var samsPending = "[]"
     @Volatile private var addManyKind = "skipped"
+    // Each one's own enrolment answer, over addManyKind.
+    private val kinds = mutableMapOf<String, String>()
+    private val enrolled = CopyOnWriteArrayList<Pair<String, List<String>>>()
+    private val revoked = CopyOnWriteArrayList<String>()
+    private val created = CopyOnWriteArrayList<String>()
+    private val merry = OdinId("merry.test")
+    private val rosie = OdinId("rosie.test")
+    private val gandalf = OdinId("gandalf.test")
+    private val pippin = OdinId("pippin.test")
+    private val sam = OdinId("sam.test")
+    private val editorsCircle = Uuid.random()
+    private val newGroupCircle = Uuid.random()
+    private val individualCircle = Uuid.random()
+    private val groupCircle = Uuid.random()
     private val photosCircle = Uuid.random()
     // What Photos' recipients circle grants on the drive; null leaves it unlisted.
     @Volatile private var photosCircleGrants: String? = "read, react, comment"
@@ -108,19 +122,45 @@ class PhotoAlbumSharingTest {
         val path = call.path
         val body = when {
             path.endsWith("/query-batch") -> {
-                val asked = decrypted(call).jsonObject["queryParams"]!!.jsonObject["clientUniqueIdAtLeastOne"]!!.jsonArray.single().jsonPrimitive.content
-                """{"searchResults":[${albumRecord(Uuid.parse(asked))}],"hasMoreRows":false}"""
+                val params = decrypted(call).jsonObject["queryParams"]!!.jsonObject
+                val asked = params["clientUniqueIdAtLeastOne"]?.jsonArray?.single()?.jsonPrimitive?.content
+                val albumsAsked = params["fileType"]?.jsonArray?.any { it.jsonPrimitive.int == PhotobaseProtocol.AlbumFileType } == true
+                // One album by id, every album with rows, or (a photo query) nothing.
+                val records = when {
+                    asked != null -> listOf(albumRecord(Uuid.parse(asked)))
+                    albumsAsked -> albumRows.keys.map(::albumRecord)
+                    else -> emptyList()
+                }
+                """{"searchResults":${records.joinToString(prefix = "[", postfix = "]")},"hasMoreRows":false}"""
             }
+            path.endsWith("/share-key/unsealed-members") -> "[]"
             path.endsWith("/share-key") && request.method == HttpMethod.Get -> """{"appKeyLockedShareKey":${storedShareKey?.let { "\"$it\"" } ?: "null"}}"""
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/shares") -> "{}"
             path.endsWith("/connections/status") -> samsConnection
+            // A collaborative drive can't take shares; everyone else has no Photos drive yet.
+            path.endsWith("/public-key") && "/peer/${merry.domainName}/" in path -> """{"publicKeyJwk":"{}","isZeroKnowledge":false}"""
             path.endsWith("/public-key") -> return@MockEngine respond("{}", HttpStatusCode.NotFound, headersOf(HttpHeaders.ContentType, "application/json"))
-            path.endsWith("/circles/create") -> "\"$photosCircle\""
+            path.endsWith("/circles/create") -> {
+                val slug = decrypted(call).jsonObject["slug"]?.jsonPrimitive?.content.orEmpty()
+                created += slug
+                when {
+                    slug == PhotobaseProtocol.CircleSlug -> "\"$photosCircle\""
+                    slug == PhotobaseProtocol.EditorsCircleSlug -> "\"$editorsCircle\""
+                    slug.startsWith("g") -> "\"$newGroupCircle\""
+                    else -> "\"$individualCircle\""
+                }
+            }
             path.endsWith("/circles/with-members") -> photosCircleGrants?.let { permission ->
                 """[{"circle":{"id":"${photosCircle.toHexString()}","name":"Photos","driveGrants":[{"permissionedDrive":{"drive":{"alias":"${PhotobaseProtocol.DriveAlias.toHexString()}","type":"x"},"permission":"$permission"}}]},"members":[]}]"""
             } ?: "[]"
-            path.endsWith("/circles/add-many") -> """{"outcomes":[{"odinId":"sam.test","kind":"$addManyKind"}]}"""
+            path.endsWith("/circles/add-many") -> {
+                val asked = decrypted(call).jsonObject
+                val ids = asked["odinIds"]!!.jsonArray.map { it.jsonPrimitive.content }
+                enrolled += asked["circleId"]!!.jsonPrimitive.content to ids
+                ids.joinToString(prefix = """{"outcomes":[""", postfix = "]}") { """{"odinId":"$it","kind":"${kinds[it] ?: addManyKind}"}""" }
+            }
+            path.endsWith("/circles/revoke") -> "true".also { revoked += decrypted(call).jsonObject["odinId"]!!.jsonPrimitive.content }
             path.endsWith("/circles/delete") -> "true"
             path.endsWith("/circles/pending") -> samsPending
             path.endsWith("/connections/circles") -> "[]"
@@ -145,7 +185,26 @@ class PhotoAlbumSharingTest {
         override suspend fun header(fileId: Uuid): HomebaseFile? = error("not used")
     }
 
-    private val record = PhotobaseRecord({ _, _ -> null }, { error("not used") }, { error("not used") }) { _, _ -> error("not used") }
+    private val recordUpdates = CopyOnWriteArrayList<Uuid?>()
+    // An album's record as stored here, for an Add share's write of who may add.
+    private val record = PhotobaseRecord(
+        { _, uniqueId -> albumHeader(uniqueId) },
+        { error("not used") },
+        { recordUpdates += it.metadata.appData.uniqueId },
+    ) { _, _ -> error("not used") }
+
+    private fun albumHeader(albumId: Uuid) = HomebaseFile(
+        fileId = Uuid.random(),
+        driveId = PhotobaseProtocol.DriveAlias,
+        fileState = FileState.Active,
+        fileSystemType = FileSystemType.Standard,
+        keyHeader = KeyHeader.newRandom16(),
+        fileMetadata = FileMetadata(
+            appData = AppFileMetaData(uniqueId = albumId, fileType = PhotobaseProtocol.AlbumFileType, content = """{"name":"album"}"""),
+            versionTag = Uuid.random(),
+        ),
+        serverMetadata = ServerMetadata(),
+    )
     private val mover = PhotoMover(noServer, filesOf = { emptyList() }, binned = { emptyList() }, sync = {})
     private val albums = PhotoAlbums(PhotoGalleryStore(db, { Uuid.random() }), record, mover, { emptyList() }, emptyFlow(), scope, sync = {})
 
@@ -292,6 +351,87 @@ class PhotoAlbumSharingTest {
 
         assertTrue(calls.any { it.path.endsWith("/circles/delete") }, "a retry would otherwise make a second Trip")
         assertTrue(calls.none { it.path.endsWith("/shares") || it.path.endsWith("/share-key") }, calls.map { it.path }.toString())
+    }
+
+    private fun reviewed() {
+        samsConnection = samsConnection.replace("\"rku\":false", "\"rku\":false,\"reviewedAt\":1")
+    }
+
+    private fun addManyTo(circle: Uuid): List<List<String>> = enrolled.filter { it.first.replace("-", "") == circle.toHexString() }.map { it.second }
+
+    @Test
+    fun aGroupShareChecksNoConnectionsAndLeavesOutOneWhoseHomebaseCantTakeShares() = runTest {
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(merry, sam))
+
+        val shared = sharing.share(trip, group, PhotoAlbumAccess.View, expiresAt = null)
+
+        assertEquals(listOf(merry), shared.refused)
+        assertEquals(trip, shared.albumId)
+        assertTrue(calls.none { it.path.endsWith("/connections/status") }, "a group's members were checked as they joined")
+        val rows = calls.filter { it.path.endsWith("/shares") && it.request.method != HttpMethod.Delete }
+            .flatMap { decrypted(it).jsonObject["shares"]!!.jsonArray }.map { it.jsonObject["circleId"]!!.jsonPrimitive.content }
+        assertTrue(rows.isNotEmpty() && rows.all { it.replace("-", "") == groupCircle.toHexString() }, rows.toString())
+        assertEquals(listOf(listOf(sam.domainName)), addManyTo(photosCircle), "only the ones it can reach join the recipients")
+    }
+
+    @Test
+    fun anAddShareWithAGroupMakesEditorsOfOnlyTheOnesItReached() = runTest {
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(merry, sam))
+
+        sharing.share(trip, group, PhotoAlbumAccess.Add, expiresAt = null)
+
+        assertEquals(listOf(listOf(sam.domainName)), addManyTo(editorsCircle), "merry was left out, so gets no Write")
+    }
+
+    @Test
+    fun aGroupEditSaysWhoJoinedWhoIsPendingWhoWasRefusedAndRemovesThePendingUnticked() = runTest {
+        reviewed()
+        kinds[rosie.domainName] = "enrolled"
+        kinds[gandalf.domainName] = "deposited"
+        val group = AlbumAudience.Group(groupCircle, "Trip", listOf(sam), pending = listOf(pippin))
+
+        val edit = sharing.setMembers(group, listOf(sam, rosie, gandalf, merry))
+
+        assertEquals(listOf(rosie), edit.joined)
+        assertEquals(listOf(gandalf), edit.pending)
+        assertEquals(listOf(merry), edit.refused)
+        assertEquals(listOf(pippin), edit.removed)
+        assertEquals(listOf(pippin.domainName), revoked, "revoking takes a deposited grant too")
+    }
+
+    @Test
+    fun aNewGroupsPendingMembersAreNamedAsPendingAndKeptOutOfItsMembers() = runTest {
+        reviewed()
+        kinds[rosie.domainName] = "enrolled"
+        kinds[gandalf.domainName] = "deposited"
+
+        val (group, shared) = sharing.shareWithNewGroup(trip, "Trip", listOf(rosie, gandalf), PhotoAlbumAccess.View, expiresAt = null)
+
+        assertEquals(listOf(rosie), group.members)
+        assertEquals(listOf(gandalf), group.pending)
+        assertEquals(listOf(gandalf), shared.pending)
+    }
+
+    @Test
+    fun aNewGroupRefusesOneWhoseHomebaseCantTakeSharesBeforeItsCircleIsMade() = runTest {
+        reviewed()
+
+        assertFailsWith<PhotoSharingException.RecipientNotAdded> {
+            sharing.shareWithNewGroup(trip, "Trip", listOf(merry), PhotoAlbumAccess.View, expiresAt = null)
+        }
+
+        assertTrue(created.none { it.startsWith("g") }, created.toString())
+    }
+
+    @Test
+    fun theAlbumsAGroupReachesEachCarryTheirOwnId() = runTest {
+        albumRows[trip] = listOf(groupCircle)
+        albumRows[pets] = listOf(groupCircle)
+        albumRows[Uuid.random()] = listOf(samsCircle)
+
+        val albums = sharing.albumsSharedWith(AlbumAudience.Group(groupCircle, "Trip", listOf(sam)))
+
+        assertEquals(setOf(trip, pets), albums.map { it.first.albumId }.toSet())
     }
 
     private suspend fun decrypted(call: Call) =
