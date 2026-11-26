@@ -396,7 +396,8 @@ class CallStateMachine(private val selfOdinId: String, private val selfDevice: S
     private fun CallState.restarting() = if (direction == CallDirection.Outgoing) copy(restartPending = true) else this
 
     private fun networkChanged(s: CallState): CallTransition {
-        if ((s.phase != CallPhase.Connected && s.phase != CallPhase.Reconnecting) || s.restartPending) return CallTransition(s)
+        if (!s.phase.isEstablished) return CallTransition(s)
+        // Nothing resends a restart left unanswered while Connected, so a later change resends it; the controller reuses the offer.
         return CallTransition(s.restarting(), restartIce(s))
     }
 

@@ -20,6 +20,7 @@ import platform.Network.nw_path_status_satisfied
 import platform.Network.nw_path_t
 import platform.darwin.DISPATCH_QUEUE_PRIORITY_DEFAULT
 import platform.darwin.dispatch_get_global_queue
+import platform.darwin.dispatch_queue_create
 
 /** NWPathMonitor pushes; [isUnmetered] reads the latest push, so it never blocks the caller. */
 @OptIn(ExperimentalForeignApi::class)
@@ -48,7 +49,8 @@ class IosNetworkMonitor : NetworkMonitor {
     override val defaultNetworkChanges: Flow<Unit>
         get() = callbackFlow {
             val monitor = nw_path_monitor_create()
-            nw_path_monitor_set_queue(monitor, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT.toLong(), 0u))
+            // Serial, so two quick path updates cannot reach the switch rule out of order.
+            nw_path_monitor_set_queue(monitor, dispatch_queue_create("id.homebase.network-changes", null))
             nw_path_monitor_set_update_handler(monitor) { path -> trySend(primaryInterface(path)) }
             nw_path_monitor_start(monitor)
             awaitClose { nw_path_monitor_cancel(monitor) }

@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
@@ -135,10 +136,12 @@ class CallController(
                 }
             }
         }
-        // Watched only during a call, so desktop's interface polling never runs while idle.
+        // Seeded with the network the call connected on; a failing watcher must not take the call down with it.
         val network = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            _state.map { it.phase.isInCall }.distinctUntilChanged()
-                .flatMapLatest { inCall -> if (inCall) networkChanges else emptyFlow() }
+            _state.map { it.phase.isEstablished }.distinctUntilChanged()
+                .flatMapLatest { established ->
+                    if (established) networkChanges.catch { log.w(it) { "network watch stopped for this call" } } else emptyFlow()
+                }
                 .debounce(NETWORK_SETTLE_MS)
                 .collect { post(CallEvent.NetworkChanged) }
         }

@@ -43,10 +43,11 @@ class CallNetworkChangeTest {
     }
 
     @Test
-    fun aPendingRestartIgnoresTheChange() {
-        assertTrue(callerReconnecting.restartPending)
-        assertEquals(CallTransition(callerReconnecting), step(callerReconnecting, CallEvent.NetworkChanged))
-        assertEquals(CallTransition(callerRestarted), step(callerRestarted, CallEvent.NetworkChanged))
+    fun aPendingRestartIsResentNotLeftToStall() {
+        listOf(callerReconnecting, callerRestarted).forEach {
+            assertTrue(it.restartPending)
+            assertEquals(CallTransition(it, listOf(CallEffect.RestartIce)), step(it, CallEvent.NetworkChanged), "in ${it.phase}")
+        }
     }
 
     @Test
