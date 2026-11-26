@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.storage.SharedPreferences
 import id.homebase.api.sync.database.BufferedLocationPoint
 import id.homebase.api.sync.database.DatabaseManager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -96,9 +97,9 @@ class LocationPointStore(
         // pre-batch row (best-effort across a history-off gap; steps are non-critical).
         val prevPersistedT = databaseManager.locationPoint.selectLatest()?.toRaw()?.t
         val battery = runCatching { deviceSensors.batteryPercent() }
-            .onFailure { logger.d(it) { "battery read failed" } }.getOrNull()
+            .onFailure { if (it is CancellationException) throw it; logger.d(it) { "battery read failed" } }.getOrNull()
         val sample = runCatching { deviceSensors.stepsSince(prevPersistedT, loadCumulative()) }
-            .onFailure { logger.d(it) { "step read failed" } }.getOrNull()
+            .onFailure { if (it is CancellationException) throw it; logger.d(it) { "step read failed" } }.getOrNull()
         sample?.cumulative?.let { saveCumulative(it) }
 
         val lastIndex = points.lastIndex
