@@ -1,5 +1,6 @@
 package id.homebase.core.image
 
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -59,8 +60,7 @@ data class HomebaseImageData(
     val remoteOdinId: OdinId? = null,
     val globalTransitId: Uuid? = null,
 ) {
-    val isOverPeer: Boolean
-        get() = remoteOdinId != null && globalTransitId != null
+    val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, remoteOdinId, globalTransitId)
 
     companion object {
         /** Create data for a pending (not yet uploaded) image */

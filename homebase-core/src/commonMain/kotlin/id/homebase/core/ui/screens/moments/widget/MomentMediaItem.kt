@@ -301,13 +301,15 @@ fun MomentMediaItem(
                 payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                     ?: KeyHeader.empty()
             }
-            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, remoteOdinId, globalTransitId) {
                 VideoPlayerData(
                     fileId = fileId,
                     driveId = driveId,
                     payloadKey = payload.key,
                     keyHeader = perPayloadKeyHeader,
                     descriptorContent = payload.descriptorContent,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
                     contentType = payload.contentType,
                 )
             }
@@ -316,9 +318,7 @@ fun MomentMediaItem(
             }
             var isPreloading by remember(fileId, payload.key) { mutableStateOf(false) }
             var preloadProgress by remember(fileId, payload.key) { mutableFloatStateOf(0f) }
-            // VideoPreloadService only reads the local drive, so a followed author's video would
-            // 404 every tile. The full-screen player fetches it over peer on demand instead.
-            if (!isUploading && remoteOdinId == null) {
+            if (!isUploading) {
                 VideoPreloadEffect(
                     data = videoPlayerData,
                     onPreloading = { isPreloading = it },

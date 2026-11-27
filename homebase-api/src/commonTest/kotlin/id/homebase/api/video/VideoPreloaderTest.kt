@@ -2,6 +2,7 @@ package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.profile.FakeFileOperationsProvider
+import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -27,7 +28,7 @@ class VideoPreloaderTest {
     )
 
     private fun newPreloader(fake: FakeVideoPrefetchDriveAccess) =
-        VideoPreloader(fake, FakeFileOperationsProvider())
+        VideoPreloader({ fake }, FakeFileOperationsProvider())
 
     // -- Case 1: large video — descriptor stub is incomplete; the m3u8 lives in a separate payload.
     //    Expect: resolveVideoMetadata fetches the metadata payload via getPayloadBytesDecrypted
@@ -140,6 +141,16 @@ class VideoPreloaderTest {
 
         assertTrue(fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.PrefetchPayload>().isEmpty())
         assertEquals(1f, lastProgress)
+    }
+
+    @Test
+    fun aFollowedPostsVideoIsLeftToItsPlay() = runTest {
+        val stub = VideoMetadata(mimeType = "video/mp4", isDescriptorContentComplete = true, isSegmented = false, key = metadataKey, fileSize = 1024)
+        val fake = FakeVideoPrefetchDriveAccess()
+
+        newPreloader(fake).preload(playerData(stub).copy(remoteOdinId = OdinId("sam.dotyou.cloud"), globalTransitId = Uuid.random()))
+
+        assertTrue(fake.calls.isEmpty(), "${fake.calls}")
     }
 
     // A prefetch holds the MP4 in memory: one bigger than our own transcodes (an untouched original) is left

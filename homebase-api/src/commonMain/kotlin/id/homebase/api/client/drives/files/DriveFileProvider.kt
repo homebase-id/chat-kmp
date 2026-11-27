@@ -16,7 +16,6 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.VideoPrefetchDriveAccess
 import io.ktor.client.HttpClient
 import io.ktor.client.request.options
 import io.ktor.http.Headers
@@ -67,7 +66,7 @@ public class DriveFileProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
     private val driveCache: DriveFileProviderCached
-) : OdinApiProviderBase(httpClient, credentialsManager), VideoPrefetchDriveAccess, ResendPayloadByteSource {
+) : OdinApiProviderBase(httpClient, credentialsManager), ResendPayloadByteSource {
 
     companion object {
         private const val TAG = "DriveFileProvider"
@@ -155,11 +154,11 @@ public class DriveFileProvider(
 
     /** Downloads the payload to the encrypted disk cache without decrypting it.
      *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */
-    override suspend fun prefetchPayload(
+    suspend fun prefetchPayload(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
-        onDownloadProgress: ((Float) -> Unit)?,
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ) {
         // A hit would read the whole entry into memory only to drop it.
         if (driveCache.isEphemeral(fileId) || driveCache.hasCachedPayload(driveId, fileId, key)) return
@@ -169,13 +168,13 @@ public class DriveFileProvider(
     /** Downloads a single byterange of a payload into the encrypted disk cache without decrypting.
      *  The cache is keyed by (chunkStart, chunkLength), so a later player request with the
      *  identical range will hit this entry. Used to warm the first HLS segment. */
-    override suspend fun prefetchPayloadChunk(
+    suspend fun prefetchPayloadChunk(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         chunkStart: Long,
         chunkLength: Long,
-        onDownloadProgress: ((Float) -> Unit)?,
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ) {
         if (driveCache.isEphemeral(fileId)) return
         driveCache.getPayloadBytesRaw(
@@ -194,14 +193,14 @@ public class DriveFileProvider(
 
     suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) = driveCache.evictFile(driveId, fileId, key)
 
-    override suspend fun getPayloadBytesDecrypted(
+    suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
         keyHeader: KeyHeader,
-        chunkStart: Long?,
-        chunkLength: Long?,
-        onDownloadProgress: ((Float) -> Unit)?,
+        chunkStart: Long? = null,
+        chunkLength: Long? = null,
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ): BytesResponse? {
         return driveCache.getPayloadBytesDecrypted(
             driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
@@ -362,8 +361,8 @@ public class DriveFileProvider(
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume = consume)
 
-    /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
-    override suspend fun streamPayloadDecryptedToPath(
+    /** The player's read of a whole payload into [outputPath], kept in the payload cache as it streams for the next play. */
+    suspend fun playPayloadToPath(
         driveId: Uuid,
         fileId: Uuid,
         key: String,

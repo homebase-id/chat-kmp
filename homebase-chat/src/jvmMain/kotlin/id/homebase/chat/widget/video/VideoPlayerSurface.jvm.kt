@@ -43,15 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import co.touchlab.kermit.Logger
 import com.sun.net.httpserver.HttpServer
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.HLS_PLAYLIST_CONTENT_TYPE
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
-import id.homebase.api.video.driveAccess
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
+import id.homebase.api.video.videoAccess
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.resources.MR
 import id.homebase.resources.cd_pause_video
@@ -118,9 +117,8 @@ actual fun VideoPlayerSurface(
     // and the only JDK-only alternative (a Robot mouse-jiggle) requires a
     // background timer thread that would outlive this surface. Skipped rather
     // than leaked; desktop sleep-during-playback is a minor annoyance at worst.
-    val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
-    val peerFileProvider = koinInject<PeerFileByGlobalTransitProvider>()
+    val payloadReader = koinInject<PayloadReader>()
     val videoPreloader = koinInject<VideoPreloader>()
     val scope = rememberCoroutineScope()
     var state by remember(data) { mutableStateOf<VpsState>(VpsState.Loading) }
@@ -157,7 +155,7 @@ actual fun VideoPlayerSurface(
                     data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, contentType = data.payload.contentType,
                 )
                 val videoAccess =
-                    videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
+                    payloadReader.videoAccess(videoData.location)
                 when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
@@ -174,9 +172,7 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — the player's own segment
                         // fetches bypass onDownloadProgress entirely.
-                        // The preloader reads our own drive, so for a followed identity it would fetch the
-                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
-                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
+                        videoPreloader.preload(videoData)
                         File(dir, "index.m3u8").writeText(
                             content.originalPlaylist.lines()
                                 .filter { !it.startsWith("#EXT-X-KEY") }

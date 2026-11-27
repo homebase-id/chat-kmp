@@ -5,8 +5,7 @@ import id.homebase.api.client.ForbiddenException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.RetryConfig
-import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.withRetry
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -40,9 +39,8 @@ data class CachedImage(val bytes: ByteArray, val contentType: String, val size: 
  * Note: Caching is now delegated to Coil3. This class serves as a data fetcher.
  */
 class HomebaseImageLoader(
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val peerFileProvider: PeerFileByGlobalTransitProvider,
 ) {
     // Durable scope hosting full-payload loads so a cancelled caller (e.g. a
     // prefetch whose grid item left composition) does not abort a load that
@@ -135,30 +133,14 @@ class HomebaseImageLoader(
 
         return withRetry(retryConfig, TAG) {
             val response = try {
-                if (data.isOverPeer) {
-                    // Followed-post media lives on the author's drive: read the thumbnail over peer
-                    // by globalTransitId. On 404 (no server thumb) the caller keeps the embedded
-                    // preview — no regression.
-                    peerFileProvider.getThumbOverPeerByGlobalTransitId(
-                        peer = data.remoteOdinId!!,
-                        driveId = data.driveId,
-                        globalTransitId = data.globalTransitId!!,
-                        payloadKey = data.payloadKey,
-                        width = nativeSize.pixelWidth,
-                        height = nativeSize.pixelHeight,
-                        keyHeader = data.keyHeader,
-                    )
-                } else {
-                    driveFileProvider.getThumbBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        payloadKey = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                        width = nativeSize.pixelWidth,
-                        height = nativeSize.pixelHeight,
-                        lastModified = data.lastModified,
-                    )
-                }
+                payloadReader.thumb(
+                    at = data.location,
+                    key = data.payloadKey,
+                    keyHeader = data.keyHeader,
+                    width = nativeSize.pixelWidth,
+                    height = nativeSize.pixelHeight,
+                    lastModified = data.lastModified,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -245,22 +227,7 @@ class HomebaseImageLoader(
     ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
-                if (data.isOverPeer) {
-                    peerFileProvider.getPayloadOverPeerByGlobalTransitId(
-                        peer = data.remoteOdinId!!,
-                        driveId = data.driveId,
-                        globalTransitId = data.globalTransitId!!,
-                        payloadKey = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    )
-                } else {
-                    driveFileProvider.getPayloadBytesDecrypted(
-                        driveId = data.driveId,
-                        fileId = data.fileId,
-                        key = data.payloadKey,
-                        keyHeader = data.keyHeader,
-                    )
-                }
+                payloadReader.bytes(data.location, data.payloadKey, data.keyHeader)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PayloadTooLargeException) {

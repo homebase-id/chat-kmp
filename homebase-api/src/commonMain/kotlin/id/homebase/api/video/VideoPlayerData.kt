@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.AppCacheDirs
 import kotlin.uuid.Uuid
@@ -18,4 +19,6 @@ data class VideoPlayerData(
     val scratchSub: String = AppCacheDirs.EXPORT,
     /** The payload's content type: a progressive video kept as picked may be QuickTime or WebM. */
     val contentType: String? = null,
-)
+) {
+    val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, remoteOdinId, globalTransitId)
+}

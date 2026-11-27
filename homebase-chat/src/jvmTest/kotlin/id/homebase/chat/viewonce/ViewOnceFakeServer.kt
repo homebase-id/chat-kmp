@@ -1,5 +1,6 @@
 package id.homebase.chat.viewonce
 
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.serialization.Base64Bytes
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
@@ -70,6 +71,7 @@ internal class ViewOnceFakeServer(
     val evictedImages = CopyOnWriteArrayList<Pair<Uuid, Uuid>>()
     lateinit var loader: ViewOncePayloadLoader
     lateinit var homebaseImageLoader: HomebaseImageLoader
+    lateinit var payloadReader: PayloadReader
     val coil: ImageLoader = ImageLoader.Builder(PlatformContext.INSTANCE).build()
     val viewOnceTempDir: String get() = AppCacheDirs.scratchDir(tempDir, AppCacheDirs.VIEW_ONCE)
     val evictedTemps = CopyOnWriteArrayList<String>()
@@ -118,11 +120,12 @@ internal class ViewOnceFakeServer(
         })
         cached = DriveFileProviderCached(http, credentials, fileOps)
         provider = DriveFileProvider(http, credentials, cached)
-        homebaseImageLoader = HomebaseImageLoader(
-            driveFileProvider = provider,
-            fileOperationsProvider = fileOps,
-            peerFileProvider = PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
+        payloadReader = PayloadReader(
+            provider,
+            PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
+            fileOps,
         )
+        homebaseImageLoader = HomebaseImageLoader(payloadReader, fileOps)
         loader = ViewOncePayloadLoader(
             provider,
             fileOps,
