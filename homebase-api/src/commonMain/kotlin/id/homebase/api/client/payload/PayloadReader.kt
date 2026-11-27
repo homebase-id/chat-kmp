@@ -83,10 +83,11 @@ class PayloadReader(
         keyHeader: KeyHeader,
         cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, consume)
-        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, consume)
+        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, lastModified, consume)
+        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified, consume)
     }
 
     /**
@@ -100,11 +101,12 @@ class PayloadReader(
         outputPath: String,
         cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache)
+        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, lastModified)
         is PayloadLocation.Peer -> {
             var wroteAnything = false
-            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress) { bytes ->
+            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified) { bytes ->
                 fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
             }
             if (!found || !wroteAnything) {
@@ -125,10 +127,11 @@ class PayloadReader(
         keyHeader: KeyHeader,
         outputPath: String,
         cache: Boolean,
+        lastModified: Long? = null,
     ): Boolean {
         val label = "payload $payloadKey at $at"
         var remuxed = false
-        val found = stream(at, payloadKey, keyHeader, cache) { ts ->
+        val found = stream(at, payloadKey, keyHeader, cache, lastModified = lastModified) { ts ->
             remuxed = VideoCompressionService.remuxTsToMp4(fileOps, ts, outputPath, label)
         }
         if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
@@ -147,9 +150,9 @@ class PayloadReader(
         outputPath: String,
         cache: Boolean,
     ): Boolean = if (payload.isHlsVideo) {
-        downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache)
+        downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, payload.lastModified)
     } else {
-        toFile(at, payload.key, keyHeader, outputPath, cache)
+        toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = payload.lastModified)
     }
 
     /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */

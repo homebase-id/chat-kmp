@@ -6,7 +6,7 @@ import id.homebase.api.file.CONTENT_TYPE_MP4
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
 
-/** An HLS video's payload is an MPEG-TS stream, not a file people can open: it leaves the app through [downloadHlsAsMp4]. */
+/** An HLS video's payload is an MPEG-TS stream, not a file people can open: it leaves the app through [id.homebase.api.client.payload.PayloadReader.downloadHlsAsMp4]. */
 val PayloadDescriptor.isHlsVideo: Boolean
     get() = (descriptorInfo() as? DescriptorContent.VideoFile)?.isSegmented == true
 

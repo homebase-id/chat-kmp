@@ -350,8 +350,9 @@ public class DriveFileProvider(
         fileOps: FileOperationsProvider,
         onProgress: ((Float) -> Unit)? = null,
         cache: Boolean = false,
+        lastModified: Long? = null,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress, cache)
+        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, lastModified)
 
     /** The decrypted payload to [consume] as it streams in, at any size; false when it 404s. */
     suspend fun streamPayloadDecrypted(
@@ -361,8 +362,9 @@ public class DriveFileProvider(
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
         cache: Boolean = false,
+        lastModified: Long? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
-    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache, consume)
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache, lastModified, consume)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

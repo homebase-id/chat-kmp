@@ -147,8 +147,9 @@ fun PayloadDescriptor.receivedSaveName(dateMs: Long, zone: TimeZone = TimeZone.c
     saveFileName(playableFileName(filename()), playableContentType, dateMs, zone)
 
 /**
- * A received payload saved through [saveWritten], named [name], as a file people can open ([writePlayable]): an HLS
- * video becomes an `.mp4`. The one save path for media people receive.
+ * A received payload saved through [saveWritten], named [name], as a file people can open
+ * ([PayloadReader.writePlayable]): an HLS video becomes an `.mp4`. The one save path for media people receive. [fileOps]
+ * reserves the path the reader writes, so it must be the reader's own (the app's one FileOperationsProvider).
  */
 suspend fun AlbumSaver.saveReceived(
     payloadReader: PayloadReader,

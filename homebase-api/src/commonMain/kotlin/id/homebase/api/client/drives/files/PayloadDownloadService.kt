@@ -52,7 +52,7 @@ private fun ExportDestination.withSuffix(suffix: String): ExportDestination = wh
  *   (a [PayloadTooLargeException] propagates to the caller's fallback).
  * - [exportToTemp] — EXPORT intent: the payload is passing through to a file
  *   destination (save, share, external player). Streamed decrypt (~64 KB working
- *   set) at ANY size; never touches the LRU caches.
+ *   set) at ANY size; kept in the payload cache only when the caller asks (a preview's cache = true).
  *
  * Downloads are re-fetchable, therefore disposable: every destination is swept
  * scratch, never a durable location.
@@ -84,7 +84,7 @@ class PayloadDownloadService(
     /**
      * Stream-decrypt a payload into a reserved path at [destination] and return
      * the absolute path, or null when the payload 404s. Bounded memory for any
-     * payload size; bypasses the LRU caches entirely.
+     * payload size; bypasses the caches.
      */
     suspend fun exportToTemp(
         driveId: Uuid,
@@ -141,7 +141,7 @@ class PayloadDownloadService(
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = streamVerified(keyHeader, hash, consume) { hashed ->
         // Per network chunk otherwise: thousands of UI updates for a large file.
-        payloadReader.stream(PayloadLocation.Own(driveId, fileId), key, keyHeader, cache = false, onProgress?.let(::wholePercentFractions), hashed)
+        payloadReader.stream(PayloadLocation.Own(driveId, fileId), key, keyHeader, cache = false, onProgress?.let(::wholePercentFractions), consume = hashed)
     }
 
     /** As above, for a payload [source] streams from elsewhere, such as another identity's drive; false when it's gone. */

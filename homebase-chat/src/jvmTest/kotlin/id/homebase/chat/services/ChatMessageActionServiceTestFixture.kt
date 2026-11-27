@@ -252,14 +252,16 @@ class ChatMessageActionServiceTestFixture(
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
             fileProvider = fileProvider,
-            payloadDownloadService = PayloadDownloadService(
-                PayloadReader(
-                    fileProvider,
-                    PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-                    NoopFileOperationsProvider(),
-                ),
-                NoopFileOperationsProvider(),
-            ),
+            payloadDownloadService = NoopFileOperationsProvider().let { fileOps ->
+                PayloadDownloadService(
+                    PayloadReader(
+                        fileProvider,
+                        PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+                        fileOps,
+                    ),
+                    fileOps,
+                )
+            },
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,

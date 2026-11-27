@@ -168,6 +168,26 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
+    fun `a kept preview of a replaced payload opens the new one`() = runTest {
+        val preview = ExportDestination.UploadTemp("share_", ".mp4")
+        fun video(lastModified: Long) = PayloadDescriptor(
+            key = key, contentType = "video/mp4", lastModified = lastModified,
+            descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
+        )
+        val (firstKey, first) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        assertContentEquals(first, File(assertNotNull(service.exportPlayable(driveId, fileId, video(1), firstKey, preview, cache = true))).readBytes())
+
+        // A Vault page reuses its key: the same payload key now holds another video, under a fresh IV.
+        val (secondKey, second) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val reopened = assertNotNull(service.exportPlayable(driveId, fileId, video(2), secondKey, preview, cache = true))
+
+        assertContentEquals(second, File(reopened).readBytes())
+        assertTrue(mockEngine.requestHistory.last().url.toString().contains("lastModified=2"), "${mockEngine.requestHistory.last().url}")
+    }
+
+    @Test
     fun `exportToTemp routes UploadTemp and Scratch destinations to their dirs`() = runTest {
         val (keyHeader, plaintext) = encryptedFixture(4_096)
 
