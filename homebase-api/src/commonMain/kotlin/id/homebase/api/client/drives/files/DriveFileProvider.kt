@@ -161,7 +161,8 @@ public class DriveFileProvider(
         key: String,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
-        if (driveCache.isEphemeral(fileId)) return
+        // A hit would read the whole entry into memory only to drop it.
+        if (driveCache.isEphemeral(fileId) || driveCache.hasCachedPayload(driveId, fileId, key)) return
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 
@@ -359,7 +360,7 @@ public class DriveFileProvider(
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
-    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume = consume)
 
     /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
     override suspend fun streamPayloadDecryptedToPath(
@@ -370,7 +371,7 @@ public class DriveFileProvider(
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress)
+        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress, cache = true)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

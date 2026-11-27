@@ -29,6 +29,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -330,15 +331,35 @@ class DriveFileProviderCached(
             outputPath: String,
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
-    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeDownload(outputPath, it) }
+            cache: Boolean = false,
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache) { fileOps.writeDownload(outputPath, it) }
 
-    /** The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. */
+    /** Whether the payload cache holds an entry for the payload whose header reads; one that doesn't is left to readThrough, which refetches it. */
+    fun hasCachedPayload(driveId: Uuid, fileId: Uuid, key: String): Boolean {
+        val snapshot = payloadDiskCache.openSnapshot(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey()) ?: return false
+        return snapshot.use { snap ->
+            runCatching {
+                fileSystem.read(snap.data) {
+                    val ok = readInt() in 200..299
+                    skip(readInt().toLong())
+                    readByte()
+                    ok
+                }
+            }.getOrDefault(false)
+        }
+    }
+
+    /**
+     * The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. On a miss, [cache]
+     * also keeps it in the payload cache for the next read, written as it streams, never held in memory.
+     */
     suspend fun streamPayloadDecrypted(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
             keyHeader: KeyHeader,
             onProgress: ((Float) -> Unit)? = null,
+            cache: Boolean = false,
             consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         if (fileId in ephemeralFiles) {
@@ -346,7 +367,11 @@ class DriveFileProviderCached(
         }
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
-                ?: return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+                ?: return if (cache) {
+                    streamIntoCache(driveId, fileId, key, cacheKey, keyHeader, onProgress, consume)
+                } else {
+                    delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+                }
 
         return snapshot.use { snap ->
             // A plaintext file (a public post) is cached as the server serves it: decrypting it would throw.
@@ -377,6 +402,62 @@ class DriveFileProviderCached(
             // Cache hit is local-disk speed — progress jumps straight to done.
             onProgress?.invoke(1f)
             true
+        }
+    }
+
+    // Tees the encrypted body into an entry in readThrough's format, committed only once the whole body has arrived
+    // under the generation it started in. A failed write only costs the entry, never the read.
+    private suspend fun streamIntoCache(
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            cacheKey: String,
+            keyHeader: KeyHeader,
+            onProgress: ((Float) -> Unit)?,
+            consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
+        val startedGeneration = generation
+        return delegate.streamPayloadBody(driveId, fileId, key, onProgress) { body ->
+            val size = body.contentLength
+            // Without a stated size a body cut short can't be told from a whole one.
+            val editor = if (size != null && size in 1..PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+                payloadDiskCache.openEditor(cacheKey.toDiskKey())
+            } else {
+                null
+            }
+            val sink = editor?.let { e ->
+                runCatching { fileSystem.sink(e.data).buffer() }.getOrNull()?.takeIf { out ->
+                    runCatching { out.writeEntryHeader(200, body.contentType, body.encrypted) }
+                            .onFailure { runCatching { out.close() } }
+                            .isSuccess
+                } ?: run {
+                    e.abortQuietly()
+                    null
+                }
+            }
+            if (editor == null || sink == null) return@streamPayloadBody consume(body.decrypted(keyHeader))
+
+            var written = 0L
+            var ok = true
+            val teed = body.bytes.onEach { chunk ->
+                if (!ok) return@onEach
+                written += chunk.size
+                ok = written <= PayloadSizePolicy.RENDER_LIMIT_BYTES && runCatching { sink.write(chunk) }.isSuccess
+            }
+            try {
+                consume(body.copy(bytes = teed).decrypted(keyHeader))
+            } catch (e: Throwable) {
+                ok = false
+                throw e
+            } finally {
+                ok = runCatching { sink.close() }.isSuccess && ok
+                if (ok && written == size) {
+                    commitUnlessCleared(payloadDiskCache, editor, cacheKey, startedGeneration, "PayloadIO")
+                } else {
+                    editor.abortQuietly()
+                    Logger.d(tag = "PayloadIO") { "cache-write SKIPPED ($written of ${size ?: "?"} bytes) key=$cacheKey" }
+                }
+            }
         }
     }
 
@@ -490,12 +571,10 @@ class DriveFileProviderCached(
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    // clearCaches bumps generation before clearing disk: a write landing before the
-                    // clear is wiped by it, one landing after is caught by this re-check.
                     if (generation == startedGeneration) {
                         beforeCacheWrite?.invoke()
                         writeToDiskCache(cache, cacheKey, logTag, result)
-                        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
+                        removeIfCleared(cache, cacheKey, startedGeneration)
                     }
                     result
                 } catch (e: NotFoundException) {
@@ -623,6 +702,33 @@ class DriveFileProviderCached(
         }
     }
 
+    // clearCaches bumps generation before clearing disk: a write landing before the clear is wiped by it, one landing
+    // after is caught by this re-check.
+    private fun removeIfCleared(cache: DiskCache, cacheKey: String, startedGeneration: Int) {
+        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
+    }
+
+    private fun commitUnlessCleared(cache: DiskCache, editor: DiskCache.Editor, cacheKey: String, startedGeneration: Int, logTag: String) {
+        if (generation != startedGeneration) return editor.abortQuietly()
+        try {
+            editor.commit()
+            removeIfCleared(cache, cacheKey, startedGeneration)
+        } catch (e: Exception) {
+            editor.abortQuietly()
+            Logger.e(tag = logTag, throwable = e) { "cache-write FAILED to commit key=$cacheKey" }
+        }
+    }
+
+    // The entry format readBytesResponse and the stream's hit path read.
+    private fun okio.BufferedSink.writeEntryHeader(status: Int, contentType: String, encrypted: Boolean) {
+        // The readers take the length as a byte count.
+        val type = contentType.encodeUtf8()
+        writeInt(status)
+        writeInt(type.size)
+        write(type)
+        writeByte(if (encrypted) 1 else 0)
+    }
+
     private fun writeBytesResponse(filePath: String, value: ByteApiResponse): Boolean {
         val path = filePath.toPath()
 
@@ -631,11 +737,7 @@ class DriveFileProviderCached(
                 value.headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
 
         fileSystem.write(path) {
-            writeInt(value.status)
-            writeInt(value.contentType.length)
-            writeUtf8(value.contentType)
-            // Store whether the payload is encrypted (1 = true, 0 = false)
-            writeByte(if (payloadEncrypted) 1 else 0)
+            writeEntryHeader(value.status, value.contentType, payloadEncrypted)
             write(value.bytes)
         }
 

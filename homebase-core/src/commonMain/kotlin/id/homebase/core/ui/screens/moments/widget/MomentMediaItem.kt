@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.moments.widget
 
 import id.homebase.chat.services.builder.locationPreviews
 import id.homebase.chat.services.builder.linkPreviews
+import id.homebase.chat.widget.video.VideoPreloadEffect
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -21,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,8 +43,6 @@ import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.video.VideoPlayerData
-import id.homebase.api.video.VideoPreloadService
-import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
@@ -466,25 +464,6 @@ fun MomentMediaItem(
                 label = "Unknown",
                 modifier = baseModifier,
             )
-        }
-    }
-}
-
-@Composable
-internal fun VideoPreloadEffect(
-    data: VideoPlayerData,
-    onPreloading: (Boolean) -> Unit,
-    onProgress: (Float) -> Unit,
-) {
-    val preloadService = koinInject<VideoPreloadService>()
-    val preloader = koinInject<VideoPreloader>()
-    LaunchedEffect(data.fileId, data.payloadKey) {
-        preloadService.requestPreload(data)
-    }
-    LaunchedEffect(data.fileId, data.payloadKey) {
-        preloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
-            onProgress(p)
-            onPreloading(p < 1f)
         }
     }
 }

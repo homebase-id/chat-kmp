@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.payloadContentType
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
@@ -90,6 +91,26 @@ public class DriveFileHttpProvider(
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)?,
         consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = streamBody(path, onProgress) { body -> consume(body.decrypted(keyHeader)) }
+
+    /** The payload as the server sends it, still encrypted, to [consume]; false when it 404s. */
+    internal suspend fun streamPayloadBody(
+        driveId: Uuid,
+        fileId: Uuid,
+        key: String,
+        onProgress: ((Float) -> Unit)?,
+        consume: suspend (StreamedBody) -> Unit,
+    ): Boolean {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
+        require(key.isNotBlank()) { "Key must be defined" }
+        return streamBody("/drives/$driveId/files/$fileId/payload/$key", onProgress, consume)
+    }
+
+    private suspend fun streamBody(
+        path: String,
+        onProgress: ((Float) -> Unit)?,
+        consume: suspend (StreamedBody) -> Unit,
     ): Boolean {
         val creds = requireCreds()
         val url = apiUrl(creds.domain, path)
@@ -135,7 +156,7 @@ public class DriveFileHttpProvider(
 
                 // A public post's payload is plaintext with an empty keyHeader, and the server says so.
                 val plaintext = response.headers["payloadencrypted"]?.equals("false", ignoreCase = true) == true
-                consume(if (plaintext) body else AesCbc.streamDecryptWithCbc(body, keyHeader.aesKey, keyHeader.iv))
+                consume(StreamedBody(payloadContentType(response.headers), totalBytes, !plaintext, body))
                 onProgress?.invoke(1f)
 
                 true
@@ -597,4 +618,10 @@ public class DriveFileHttpProvider(
         return keyHeader.decrypt(encryptedBytes)
     }
 
+}
+
+/** A payload body as it streams in: [bytes] are encrypted when [encrypted]. */
+internal data class StreamedBody(val contentType: String, val contentLength: Long?, val encrypted: Boolean, val bytes: Flow<ByteArray>) {
+    fun decrypted(keyHeader: KeyHeader): Flow<ByteArray> =
+        if (encrypted) AesCbc.streamDecryptWithCbc(bytes, keyHeader.aesKey, keyHeader.iv) else bytes
 }

@@ -191,10 +191,7 @@ abstract class OdinApiProviderBase(
             }
         }
 
-        val contentType =
-            response.headers["decryptedcontenttype"]
-                ?: response.headers[HttpHeaders.ContentType]
-                ?: "application/octet-stream"
+        val contentType = payloadContentType(response.headers)
 
         return ByteApiResponse(
             status = response.status.value,
@@ -659,3 +656,7 @@ private val UPLOAD_STALL_TIMEOUT = 90.seconds
 
 // About 16 KB/s: a 4 GiB upload gets about three days.
 private const val UPLOAD_MIN_BYTES_PER_MS = 16L
+
+/** What the payload is once decrypted: the server names it apart from the encrypted body's own type. */
+internal fun payloadContentType(headers: Headers): String =
+    headers["decryptedcontenttype"] ?: headers[HttpHeaders.ContentType] ?: "application/octet-stream"

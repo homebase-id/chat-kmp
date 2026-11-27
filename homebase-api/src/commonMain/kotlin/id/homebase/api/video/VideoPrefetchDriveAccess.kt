@@ -37,7 +37,8 @@ interface VideoPrefetchDriveAccess {
     /**
      * Stream-decrypt a full payload to [outputPath] with bounded memory (#845) —
      * the export-shaped read [resolveVideoContent] uses for non-segmented MP4s so
-     * a large video is never buffered whole in RAM. Returns false on 404.
+     * a large video is never buffered whole in RAM, and kept in the payload cache for the next play. Returns false
+     * on 404.
      */
     suspend fun streamPayloadDecryptedToPath(
         driveId: Uuid,

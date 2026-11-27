@@ -9,10 +9,12 @@ import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.cache.CacheStats
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
+import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -405,7 +407,7 @@ class DriveFileProviderCachedTest {
     @Test
     fun `prefetched seg0 is served to playback from the chunk cache with no second fetch`() = runTest {
         nextBody = ByteArray(2048) { 9 }
-        val fileProvider = id.homebase.api.client.drives.files.DriveFileProvider(
+        val fileProvider = DriveFileProvider(
             httpClient, credentialsManager, provider,
         )
 
@@ -420,6 +422,147 @@ class DriveFileProviderCachedTest {
         assertContentEquals(nextBody, assertNotNull(bytes))
         assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"),
             "no range entry may leak into the payload LRU")
+    }
+
+    private suspend fun streamed(cache: Boolean = false, keyHeader: KeyHeader = KeyHeader.empty()): ByteArray {
+        var out = ByteArray(0)
+        assertTrue(provider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, cache = cache) { flow -> flow.collect { out += it } })
+        return out
+    }
+
+    private suspend fun cachedPayloadBytes() = statsSize(provider.getCacheStats(), "drive_payloads")
+
+    private fun mp4Headers(encrypted: Boolean, length: Long) = headersOf(
+        "payloadencrypted" to listOf("$encrypted"),
+        HttpHeaders.ContentLength to listOf("$length"),
+        HttpHeaders.ContentType to listOf("application/octet-stream"),
+        "decryptedcontenttype" to listOf("video/mp4"),
+    )
+
+    private fun servePlainMp4(): DriveFileProvider {
+        nextBody = ByteArray(4096) { 7 }
+        nextHeaders = mp4Headers(encrypted = false, length = nextBody.size.toLong())
+        return DriveFileProvider(httpClient, credentialsManager, provider)
+    }
+
+    @Test
+    fun `a prefetched mp4 plays twice from the payload cache with one fetch`() = runTest {
+        val fileProvider = servePlainMp4()
+
+        fileProvider.prefetchPayload(driveId, fileId, key, onDownloadProgress = null)
+
+        assertContentEquals(nextBody, streamed())
+        assertContentEquals(nextBody, streamed())
+        assertEquals(1, requestCount, "both plays must be served from the entry the prefetch wrote")
+    }
+
+    @Test
+    fun `a played mp4 is cached as it streams and the next play makes no request`() = runTest {
+        servePlainMp4()
+
+        assertContentEquals(nextBody, streamed(cache = true))
+        assertContentEquals(nextBody, streamed(cache = true))
+
+        assertEquals(1, requestCount, "the second play must come from the entry the first one wrote")
+    }
+
+    @Test
+    fun `an encrypted mp4 is cached as the server sent it and decrypts on the next play`() = runTest {
+        val plain = ByteArray(5000) { (it % 251).toByte() }
+        val aes = SecureByteArray(ByteArray(16) { 7 })
+        val iv = ByteArray(16) { 3 }
+        nextBody = AesCbc.encrypt(plain, aes, iv)
+        nextHeaders = mp4Headers(encrypted = true, length = nextBody.size.toLong())
+        val keyHeader = KeyHeader(iv = iv, aesKey = aes)
+
+        assertContentEquals(plain, streamed(cache = true, keyHeader = keyHeader))
+        assertContentEquals(plain, streamed(cache = true, keyHeader = keyHeader))
+
+        assertEquals(1, requestCount)
+        val entry = provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertContentEquals(nextBody, entry.bytes, "the entry must hold the encrypted bytes, in the format readThrough reads")
+        assertEquals("video/mp4", entry.contentType, "the entry must name the decrypted type, as readThrough's do")
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `a stream that is not asked to cache writes nothing`() = runTest {
+        servePlainMp4()
+
+        streamed()
+        streamed()
+
+        assertEquals(2, requestCount)
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a play that fails partway leaves no entry`() = runTest {
+        servePlainMp4()
+
+        assertFailsWith<IllegalStateException> {
+            provider.streamPayloadDecrypted(driveId, fileId, key, KeyHeader.empty(), cache = true) { flow ->
+                flow.collect { error("player gave up") }
+            }
+        }
+
+        assertEquals(0L, cachedPayloadBytes())
+        assertContentEquals(nextBody, streamed(cache = true))
+        assertEquals(2, requestCount, "with no entry left, the next play fetches again")
+    }
+
+    @Test
+    fun `a body shorter than its stated size is played but not cached`() = runTest {
+        servePlainMp4()
+        nextHeaders = mp4Headers(encrypted = false, length = nextBody.size + 100L)
+
+        runCatching { streamed(cache = true) }
+
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a payload of unknown size is played but not cached`() = runTest {
+        nextChannelBody = ByteArray(4096) { 7 }
+        nextHeaders = headersOf("payloadencrypted", "false")
+
+        assertContentEquals(nextChannelBody, streamed(cache = true))
+
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a payload over the render limit is played but not cached`() = runTest {
+        servePlainMp4()
+        nextHeaders = mp4Headers(encrypted = false, length = PayloadSizePolicy.RENDER_LIMIT_BYTES + 1)
+
+        assertContentEquals(nextBody, streamed(cache = true))
+
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a cache clear during the play leaves no entry`() = runTest {
+        servePlainMp4()
+
+        provider.streamPayloadDecrypted(driveId, fileId, key, KeyHeader.empty(), cache = true) { flow ->
+            provider.clearCaches()
+            flow.collect { }
+        }
+
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a view-once mp4 is neither prefetched nor kept by its play`() = runTest {
+        val fileProvider = servePlainMp4()
+        provider.markEphemeral(fileId)
+
+        fileProvider.prefetchPayload(driveId, fileId, key, onDownloadProgress = null)
+        assertContentEquals(nextBody, streamed(cache = true))
+
+        assertEquals(1, requestCount, "only the play itself may fetch")
+        assertEquals(0L, cachedPayloadBytes())
     }
 
     @Test
