@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.OdinApiProviderBase
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.auth.CredentialsManager
+import id.homebase.api.client.payloadContentType
 import id.homebase.api.common.OdinId
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
@@ -20,7 +21,6 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.request.header
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
-import io.ktor.http.contentType
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.uuid.Uuid
@@ -100,7 +100,12 @@ public class DriveFileHttpProvider(
         key: String,
         onProgress: ((Float) -> Unit)?,
         consume: suspend (StreamedBody) -> Unit,
-    ): Boolean = streamBody("/drives/$driveId/files/$fileId/payload/$key", onProgress, consume)
+    ): Boolean {
+        ValidationUtil.requireValidUuid(driveId, "driveId")
+        ValidationUtil.requireValidUuid(fileId, "fileId")
+        require(key.isNotBlank()) { "Key must be defined" }
+        return streamBody("/drives/$driveId/files/$fileId/payload/$key", onProgress, consume)
+    }
 
     private suspend fun streamBody(
         path: String,
@@ -151,7 +156,7 @@ public class DriveFileHttpProvider(
 
                 // A public post's payload is plaintext with an empty keyHeader, and the server says so.
                 val plaintext = response.headers["payloadencrypted"]?.equals("false", ignoreCase = true) == true
-                consume(StreamedBody(response.contentType()?.toString() ?: "application/octet-stream", totalBytes, !plaintext, body))
+                consume(StreamedBody(payloadContentType(response.headers), totalBytes, !plaintext, body))
                 onProgress?.invoke(1f)
 
                 true

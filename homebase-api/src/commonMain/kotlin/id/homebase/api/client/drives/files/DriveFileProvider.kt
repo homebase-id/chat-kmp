@@ -161,7 +161,8 @@ public class DriveFileProvider(
         key: String,
         onDownloadProgress: ((Float) -> Unit)?,
     ) {
-        if (driveCache.isEphemeral(fileId)) return
+        // A hit would read the whole entry into memory only to drop it.
+        if (driveCache.isEphemeral(fileId) || driveCache.hasCachedPayload(driveId, fileId, key)) return
         driveCache.getPayloadBytesRaw(driveId, fileId, key, onDownloadProgress = onDownloadProgress)
     }
 

@@ -14,7 +14,6 @@ import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadOperationOptions
-import id.homebase.api.client.drives.files.StreamedBody
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
@@ -335,6 +334,18 @@ class DriveFileProviderCached(
             cache: Boolean = false,
     ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache) { fileOps.writeDownload(outputPath, it) }
 
+    /** Whether the payload cache holds the whole payload; an entry whose header doesn't read is dropped, so it refetches. */
+    fun hasCachedPayload(driveId: Uuid, fileId: Uuid, key: String): Boolean {
+        val diskKey = buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey()
+        val snapshot = payloadDiskCache.openSnapshot(diskKey) ?: return false
+        val readable = snapshot.use { snap ->
+            runCatching { fileSystem.read(snap.data) { readInt() in 200..299 && readUtf8(readInt().toLong()).isNotEmpty() && !exhausted() } }
+                    .getOrDefault(false)
+        }
+        if (!readable) payloadDiskCache.remove(diskKey)
+        return readable
+    }
+
     /**
      * The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. On a miss, [cache]
      * also keeps it in the payload cache for the next read, written as it streams, never held in memory.
@@ -405,15 +416,21 @@ class DriveFileProviderCached(
         val startedGeneration = generation
         return delegate.streamPayloadBody(driveId, fileId, key, onProgress) { body ->
             val size = body.contentLength
-            val editor = if (size == null || size in 1..PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+            // Without a stated size a body cut short can't be told from a whole one.
+            val editor = if (size != null && size in 1..PayloadSizePolicy.RENDER_LIMIT_BYTES) {
                 payloadDiskCache.openEditor(cacheKey.toDiskKey())
             } else {
                 null
             }
             val sink = editor?.let { e ->
-                runCatching { fileSystem.sink(e.data).buffer().apply { writeEntryHeader(200, body.contentType, body.encrypted) } }
-                        .onFailure { e.abortQuietly() }
-                        .getOrNull()
+                runCatching { fileSystem.sink(e.data).buffer() }.getOrNull()?.takeIf { out ->
+                    runCatching { out.writeEntryHeader(200, body.contentType, body.encrypted) }
+                            .onFailure { runCatching { out.close() } }
+                            .isSuccess
+                } ?: run {
+                    e.abortQuietly()
+                    null
+                }
             }
             if (editor == null || sink == null) return@streamPayloadBody consume(body.decrypted(keyHeader))
 
@@ -431,7 +448,7 @@ class DriveFileProviderCached(
                 throw e
             } finally {
                 ok = runCatching { sink.close() }.isSuccess && ok
-                if (ok && (size == null || written == size)) {
+                if (ok && written == size) {
                     commitUnlessCleared(payloadDiskCache, editor, cacheKey, startedGeneration, "PayloadIO")
                 } else {
                     editor.abortQuietly()

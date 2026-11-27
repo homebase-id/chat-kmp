@@ -432,9 +432,16 @@ class DriveFileProviderCachedTest {
 
     private suspend fun cachedPayloadBytes() = statsSize(provider.getCacheStats(), "drive_payloads")
 
+    private fun mp4Headers(encrypted: Boolean, length: Long) = headersOf(
+        "payloadencrypted" to listOf("$encrypted"),
+        HttpHeaders.ContentLength to listOf("$length"),
+        HttpHeaders.ContentType to listOf("application/octet-stream"),
+        "decryptedcontenttype" to listOf("video/mp4"),
+    )
+
     private fun servePlainMp4(): DriveFileProvider {
         nextBody = ByteArray(4096) { 7 }
-        nextHeaders = headersOf("payloadencrypted", "false")
+        nextHeaders = mp4Headers(encrypted = false, length = nextBody.size.toLong())
         return DriveFileProvider(httpClient, credentialsManager, provider)
     }
 
@@ -465,15 +472,16 @@ class DriveFileProviderCachedTest {
         val aes = SecureByteArray(ByteArray(16) { 7 })
         val iv = ByteArray(16) { 3 }
         nextBody = AesCbc.encrypt(plain, aes, iv)
-        nextHeaders = headersOf("payloadencrypted", "true")
+        nextHeaders = mp4Headers(encrypted = true, length = nextBody.size.toLong())
         val keyHeader = KeyHeader(iv = iv, aesKey = aes)
 
         assertContentEquals(plain, streamed(cache = true, keyHeader = keyHeader))
         assertContentEquals(plain, streamed(cache = true, keyHeader = keyHeader))
 
         assertEquals(1, requestCount)
-        assertContentEquals(nextBody, provider.getPayloadBytesRaw(driveId, fileId, key).bytes,
-            "the entry must hold the encrypted bytes, in the format readThrough reads")
+        val entry = provider.getPayloadBytesRaw(driveId, fileId, key)
+        assertContentEquals(nextBody, entry.bytes, "the entry must hold the encrypted bytes, in the format readThrough reads")
+        assertEquals("video/mp4", entry.contentType, "the entry must name the decrypted type, as readThrough's do")
         assertEquals(1, requestCount)
     }
 
@@ -504,23 +512,31 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
-    fun `a payload that says its size is cached only when every byte arrived`() = runTest {
+    fun `a body shorter than its stated size is played but not cached`() = runTest {
         servePlainMp4()
-        nextHeaders = headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        nextHeaders = mp4Headers(encrypted = false, length = nextBody.size + 100L)
 
-        streamed(cache = true)
-        assertTrue(cachedPayloadBytes() > 0L)
+        runCatching { streamed(cache = true) }
+
+        assertEquals(0L, cachedPayloadBytes())
+    }
+
+    @Test
+    fun `a payload of unknown size is played but not cached`() = runTest {
+        nextChannelBody = ByteArray(4096) { 7 }
+        nextHeaders = headersOf("payloadencrypted", "false")
+
+        assertContentEquals(nextChannelBody, streamed(cache = true))
+
+        assertEquals(0L, cachedPayloadBytes())
     }
 
     @Test
     fun `a payload over the render limit is played but not cached`() = runTest {
         servePlainMp4()
-        nextHeaders = headersOf(
-            "payloadencrypted" to listOf("false"),
-            HttpHeaders.ContentLength to listOf("${PayloadSizePolicy.RENDER_LIMIT_BYTES + 1}"),
-        )
+        nextHeaders = mp4Headers(encrypted = false, length = PayloadSizePolicy.RENDER_LIMIT_BYTES + 1)
 
-        runCatching { streamed(cache = true) }
+        assertContentEquals(nextBody, streamed(cache = true))
 
         assertEquals(0L, cachedPayloadBytes())
     }
