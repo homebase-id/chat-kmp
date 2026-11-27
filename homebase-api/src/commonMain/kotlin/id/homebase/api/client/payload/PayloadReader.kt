@@ -162,10 +162,10 @@ class PayloadReader(
 
     /** Our own payloads and thumbs as stored, still encrypted, for a resend to re-attach. */
     fun resendSource(): ResendPayloadByteSource = object : ResendPayloadByteSource {
-        override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
+        override suspend fun storedPayloadBytes(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
             own.getPayloadBytesEncrypted(driveId, fileId, key)
 
-        override suspend fun getThumbBytesEncrypted(
+        override suspend fun storedThumbBytes(
             driveId: Uuid, fileId: Uuid, payloadKey: String, width: Int, height: Int, lastModified: Long?,
         ): ByteArray? = own.getThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, lastModified)
     }

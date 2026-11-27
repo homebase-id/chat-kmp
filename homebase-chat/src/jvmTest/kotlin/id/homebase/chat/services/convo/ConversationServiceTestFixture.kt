@@ -748,12 +748,12 @@ class FakeResendPayloadByteSource(
     val payloadRequests = mutableListOf<String>()
     val thumbRequests = mutableListOf<Triple<String, Int, Int>>()
 
-    override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray {
+    override suspend fun storedPayloadBytes(driveId: Uuid, fileId: Uuid, key: String): ByteArray {
         payloadRequests += key
         return payloadBytes
     }
 
-    override suspend fun getThumbBytesEncrypted(
+    override suspend fun storedThumbBytes(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

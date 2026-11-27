@@ -38,7 +38,7 @@ class ArchitectureTest {
 
     @Test
     fun `Forward and moment share stream the payload to disk instead of reading it whole`() {
-        val wholeFileRead = Regex("""\.\s*getPayloadBytesDecrypted\s*\(""")
+        val wholeFileRead = Regex("""\.\s*getPayloadBytesDecrypted\s*\(|\bpayloadReader\s*\.\s*bytes\s*\(""")
         val guarded = Konsist.scopeFromProject()
             .files
             .filter {
@@ -59,6 +59,40 @@ class ArchitectureTest {
         val productionFiles by lazy {
             Konsist.scopeFromProject().files.filter { Regex("""/src/[a-zA-Z]*[Mm]ain/""").containsMatchIn(it.path.replace('\\', '/')) }
         }
+    }
+
+    @Test
+    fun `Every payload read goes through PayloadReader`() {
+        // The providers' reads are internal to homebase-api; this holds the rest: the cache's raw accessors, and api itself.
+        val readers = setOf("PayloadReader", "DriveFileProvider", "DriveFileProviderCached", "DriveFileHttpProvider", "PeerFileByGlobalTransitProvider")
+        val providerType = Regex("""\b(DriveFileProvider|DriveFileProviderCached|DriveFileHttpProvider|PeerFileByGlobalTransitProvider)\b""")
+        val read = Regex(
+            """\.\s*(getPayloadBytes\w*|getThumbBytes\w*|streamPayloadDecrypted\w*|streamPayloadBody|prefetchPayload\w*|""" +
+                """get\w+OverPeerByGlobalTransitId|read(Payload|Thumb|HlsChunk)Through|streamDecrypted)\s*\(""",
+        )
+        val others = productionFiles.filter { it.name !in readers }
+        assertTrue(others.size > 100, "guard matched too few files; update the path filter")
+        others.assertFalse(
+            additionalMessage = "Read payloads and thumbnails through PayloadReader (bytes, thumb, stream, toFile, " +
+                "writePlayable, resendSource); the temporal drive API is the one read outside it.",
+        ) { file ->
+            val code = file.text.lines().filterNot { it.trimStart().startsWith("import ") }.joinToString("\n")
+            providerType.containsMatchIn(code) && read.containsMatchIn(code)
+        }
+    }
+
+    @Test
+    fun `Decrypted payloads reach disk only through PayloadReader and PayloadDownloadService`() {
+        // AlbumSaver copies a finished file into the album the person picked: the one deliberate plaintext copy.
+        val writers = setOf("PayloadReader", "PayloadDownloadService", "AlbumSaver")
+        val decryptedRead = Regex("""\b\w*[Rr]eader\s*\.\s*(bytes|stream|writePlayable|downloadHlsAsMp4)\s*\(""")
+        val fileWrite = Regex("""\.\s*(writeBytesToTempFile|writeBytesToShareOutboundFile|writeDownload|writeStream|writeBytes|writeText)\s*\(""")
+        val others = productionFiles.filter { it.name !in writers }
+        assertTrue(others.size > 100, "guard matched too few files; update the path filter")
+        others.assertFalse(
+            additionalMessage = "A decrypted payload must not be written to a file by hand: export it through " +
+                "PayloadDownloadService (exportToTemp, exportPlayable) into a swept folder.",
+        ) { it.text.contains(decryptedRead) && it.text.contains(fileWrite) }
     }
 
     @Test

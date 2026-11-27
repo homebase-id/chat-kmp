@@ -70,7 +70,7 @@ public class DriveFileHttpProvider(
 
     // ==================== GET METHODS ====================
     /** Hands the decrypted payload to [consume] as it arrives; false when it 404s. */
-    suspend fun streamPayloadDecrypted(
+    internal suspend fun streamPayloadDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -178,7 +178,7 @@ public class DriveFileHttpProvider(
      * (`options.chunkStart != null`) are exempt by shape: they're the HLS playback
      * path and are bounded by their requested chunkLength.
      */
-    suspend fun getPayloadBytesRawNetwork(
+    internal suspend fun getPayloadBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -241,7 +241,7 @@ public class DriveFileHttpProvider(
     // TODO: I suppose we can live with this NOT being streaming, but maybe we can insert a
     // safeguard so that if it's larger than 1MB we return an error (I believe thumb max is
     // roughly 1MB)
-    suspend fun getThumbBytesRawNetwork(
+    internal suspend fun getThumbBytesRawNetwork(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

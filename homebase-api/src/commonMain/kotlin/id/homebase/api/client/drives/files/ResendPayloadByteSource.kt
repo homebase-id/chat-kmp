@@ -9,10 +9,10 @@ import kotlin.uuid.Uuid
  */
 interface ResendPayloadByteSource {
     /** Raw, still-encrypted bytes of a payload; null on 404. */
-    suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray?
+    suspend fun storedPayloadBytes(driveId: Uuid, fileId: Uuid, key: String): ByteArray?
 
     /** Raw, still-encrypted bytes of one of a payload's thumbnails; null on 404. */
-    suspend fun getThumbBytesEncrypted(
+    suspend fun storedThumbBytes(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

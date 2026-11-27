@@ -775,7 +775,7 @@ class MomentsPostSenderService(
         val stored = payloadReader.resendSource()
         for (descriptor in existing) {
             try {
-                val bytes = stored.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
+                val bytes = stored.storedPayloadBytes(drive, file.fileId, descriptor.key)
                 if (bytes == null || bytes.isEmpty()) {
                     Logger.w(tag = TAG) {
                         "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — bytes ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
@@ -817,7 +817,7 @@ class MomentsPostSenderService(
                         }
                         continue
                     }
-                    val thumbBytes = stored.getThumbBytesEncrypted(
+                    val thumbBytes = stored.storedThumbBytes(
                         driveId = drive,
                         fileId = file.fileId,
                         payloadKey = descriptor.key,
