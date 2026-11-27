@@ -12,8 +12,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.onDownload
-import io.ktor.client.request.HttpRequestBuilder
+import id.homebase.api.client.reportDownloadProgress
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.timeout
@@ -616,12 +615,4 @@ public class DriveFileHttpProvider(
 internal data class StreamedBody(val contentType: String, val contentLength: Long?, val encrypted: Boolean, val bytes: Flow<ByteArray>) {
     fun decrypted(keyHeader: KeyHeader): Flow<ByteArray> =
         if (encrypted) AesCbc.streamDecryptWithCbc(bytes, keyHeader.aesKey, keyHeader.iv) else bytes
-}
-
-// Without a Content-Length nothing is reported; callers fall back to their own milestones.
-internal fun HttpRequestBuilder.reportDownloadProgress(onProgress: ((Float) -> Unit)?) {
-    if (onProgress == null) return
-    onDownload { bytesReceived, contentLength ->
-        if (contentLength != null && contentLength > 0L) onProgress(bytesReceived.toFloat() / contentLength.toFloat())
-    }
 }

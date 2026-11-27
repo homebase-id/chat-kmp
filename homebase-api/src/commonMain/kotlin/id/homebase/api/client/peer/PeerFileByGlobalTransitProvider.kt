@@ -11,7 +11,7 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.drives.files.reportDownloadProgress
+import id.homebase.api.client.reportDownloadProgress
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
@@ -60,7 +60,7 @@ class PeerFileByGlobalTransitProvider(
         globalTransitId: Uuid,
         payloadKey: String,
         keyHeader: KeyHeader,
-        onDownloadProgress: ((Float) -> Unit)? = null,
+        onDownloadProgress: ((Float) -> Unit)?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         val creds = requireCreds()
@@ -110,7 +110,7 @@ class PeerFileByGlobalTransitProvider(
         width: Int,
         height: Int,
         keyHeader: KeyHeader,
-        lastModified: Long? = null,
+        lastModified: Long?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(width > 0 && height > 0) { "width/height must be positive" }
@@ -119,7 +119,7 @@ class PeerFileByGlobalTransitProvider(
         // The by-gtid route takes the size as query params; the peer broker takes it as path segments.
         val remotePath = "$base/thumb?width=$width&height=$height"
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height")
-        // An edit replaces the image under the same key; lastModified tells the versions apart, as on our own drive.
+        // An edit replaces the image under the same key; lastModified tells the versions apart.
         val cacheKey =
             peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height, lastModified)
         val response = try {
@@ -150,7 +150,7 @@ class PeerFileByGlobalTransitProvider(
         keyHeader: KeyHeader,
         chunkStart: Long,
         chunkLength: Long?,
-        onDownloadProgress: ((Float) -> Unit)? = null,
+        onDownloadProgress: ((Float) -> Unit)?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(chunkStart >= 0) { "chunkStart must be >= 0" }
@@ -240,7 +240,9 @@ class PeerFileByGlobalTransitProvider(
         cdnUrlFor(peer, remotePath)?.let { cdnUrl ->
             try {
                 Logger.i(tag = TAG) { "CDN GET $cdnUrl" }
-                val response = requestBytes(maxBytes) { httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress) } }
+                val response = requestBytes(maxBytes) {
+                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress) }
+                }
                 throwForFailure(response)
                 return response
             } catch (e: CancellationException) {
