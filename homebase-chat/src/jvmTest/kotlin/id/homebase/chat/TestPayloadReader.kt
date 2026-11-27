@@ -15,7 +15,7 @@ internal fun testPayloadReader(
     credentials: CredentialsManager,
     cache: DriveFileProviderCached,
     fileOps: FileOperationsProvider,
-    own: DriveFileProvider = DriveFileProvider(http, credentials, cache),
+    own: DriveFileProvider,
 ): PayloadReader = PayloadReader(
     own,
     PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cache),

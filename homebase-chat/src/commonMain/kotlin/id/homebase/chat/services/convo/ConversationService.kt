@@ -2440,12 +2440,6 @@ class ConversationService(
      * heal (see [updateConversationInternal]: `aesKey = conversationFile.keyHeader.aesKey`),
      * so the existing IV + bytes decrypt cleanly on the peer side.
      *
-     * Per-payload thumbnails aren't carried in this pass — the avatar UI uses the
-     * `appData.previewThumbnail` (an embedded thumb at the appData level, preserved
-     * separately in [updateConversationInternal]) so the chat list still shows the
-     * group image. If a future heal target ships rich payloads with per-payload
-     * thumbnails, we'll need to download + re-attach those too.
-     *
      * Temp files: written with [FileOperationsProvider.writeBytesToTempFile] and
      * left for the OS / app cleanup pass to remove once the outbox has drained.
      * This mirrors how `MessageAttachmentBuilder` handles attachments today.
@@ -2453,18 +2447,18 @@ class ConversationService(
     private suspend fun reuseExistingPayloadsForResend(
         file: HomebaseFile,
     ): Pair<List<PayloadFile>, List<ThumbnailFile>> {
-        val dfp = resendBytes
+        val bytes = resendBytes
         val fop = fileOperationsProvider
-        if (dfp == null || fop == null) {
+        if (bytes == null || fop == null) {
             Logger.d(tag = "HealAudit") {
-                "reuseExistingPayloadsForResend: skipping payload re-attach (resendBytes=${dfp != null}, fileOperationsProvider=${fop != null}) — likely test fixture"
+                "reuseExistingPayloadsForResend: skipping payload re-attach (resendBytes=${bytes != null}, fileOperationsProvider=${fop != null}) — likely test fixture"
             }
             return emptyList<PayloadFile>() to emptyList()
         }
         val recovered = resendablePayloads(
             file = file,
             driveId = chatDrive,
-            byteSource = dfp,
+            byteSource = bytes,
             fileOps = fop,
             tempPrefix = "heal",
             logTag = "HealAudit",

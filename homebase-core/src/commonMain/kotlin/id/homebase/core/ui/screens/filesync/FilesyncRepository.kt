@@ -206,17 +206,8 @@ class FilesyncRepository(
     }
 
     /** A file's checked plaintext to [consume] as it downloads; throws when it's damaged or gone. */
-    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) {
-        val found = payloadDownloadService.streamVerified(
-            at = PayloadLocation.Own(FilesyncProtocol.DriveAlias, payload.fileId),
-            key = FilesyncProtocol.PayloadKey,
-            keyHeader = payload.payloadKey,
-            hash = payload.hash,
-            onProgress = onProgress,
-            consume = consume,
-        )
-        if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
-    }
+    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) =
+        streamVerified(PayloadLocation.Own(FilesyncProtocol.DriveAlias, payload.fileId), payload, onProgress, consume)
 
     /** As [streamPayload], for a file [owner] shares with this identity, read from their drive. */
     suspend fun streamSharedPayload(
@@ -226,15 +217,17 @@ class FilesyncRepository(
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ) {
-        val found = payloadDownloadService.streamVerified(
-            at = PayloadLocation.Peer(PeerFileRef(owner, globalTransitId), FilesyncProtocol.DriveAlias),
-            key = FilesyncProtocol.PayloadKey,
-            keyHeader = payload.payloadKey,
-            hash = payload.hash,
-            onProgress = onProgress,
-            consume = consume,
-        )
-        if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
+        streamVerified(PayloadLocation.Peer(PeerFileRef(owner, globalTransitId), FilesyncProtocol.DriveAlias), payload, onProgress, consume)
+    }
+
+    private suspend fun streamVerified(
+        at: PayloadLocation,
+        payload: FilesyncPayload,
+        onProgress: ((Float) -> Unit)?,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ) {
+        val found = payloadDownloadService.streamVerified(at, FilesyncProtocol.PayloadKey, payload.payloadKey, payload.hash, onProgress, consume)
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} at $at is gone")
     }
 
     /**

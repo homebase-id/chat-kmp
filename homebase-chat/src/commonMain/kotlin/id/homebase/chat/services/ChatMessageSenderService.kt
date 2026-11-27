@@ -968,7 +968,8 @@ class ChatMessageSenderService(
                     key = descriptor.key,
                     keyHeader = keyHeader,
                     width = width,
-                    height = height
+                    height = height,
+                    lastModified = descriptor.lastModified
                 ) ?: return@forEach
                 thumbnailFiles += ThumbnailFile(
                     pixelWidth = width,

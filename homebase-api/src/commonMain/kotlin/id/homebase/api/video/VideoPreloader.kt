@@ -35,7 +35,7 @@ class VideoPreloader(
      * Downloads the encrypted video payload into the cache so that [awaitPreloadedFile] can
      * unblock the tap handler immediately when play is pressed.
      *
-     * Decryption is deferred to playback — the player calls [DriveFileProvider.getPayloadBytesDecrypted]
+     * Decryption is deferred to playback — the player calls [VideoPrefetchDriveAccess.getPayloadBytesDecrypted]
      * which hits the warm cache and decrypts in memory only.
      *
      * Concurrent calls for the same (fileId, payloadKey) serialize on a per-key mutex: the second
@@ -146,7 +146,7 @@ class VideoPreloader(
 
     /**
      * Waits for any in-progress preload to finish before returning, so the tap handler can
-     * call [DriveFileProvider.getPayloadBytesDecrypted] knowing the encrypted bytes are cached.
+     * call [VideoPrefetchDriveAccess.getPayloadBytesDecrypted] knowing the encrypted bytes are cached.
      *
      * Always returns null — decryption now happens at playback time, not during preload.
      */
