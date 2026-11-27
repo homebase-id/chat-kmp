@@ -145,5 +145,6 @@ class PhotoInfoFormatTest {
         assertNull(typedLocation("91", "0"))
         assertNull(typedLocation("0", "-181"))
         assertNull(typedLocation("north", "0"))
+        assertEquals(MediaLocation(52.52, -13.4), typedLocation("52,52", "-13,4"), "a decimal comma")
     }
 }

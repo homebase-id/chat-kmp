@@ -3,6 +3,7 @@ package id.homebase.api.image
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
 import java.io.ByteArrayInputStream
+import kotlin.time.Instant
 
 actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? = try {
     ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata()
@@ -59,6 +60,20 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         modifiedAt = parseExifLocalDateTime(getAttribute(ExifInterface.TAG_DATETIME)),
         imageDirectionDegrees = exifImageDirection(double(ExifInterface.TAG_GPS_IMG_DIRECTION)),
         horizontalErrorMeters = exifHorizontalError(double(ExifInterface.TAG_GPS_H_POSITIONING_ERROR)),
+        focalLength35mm = exifFocalLength35mm(int(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM)),
+        digitalZoomRatio = exifDigitalZoom(double(ExifInterface.TAG_DIGITAL_ZOOM_RATIO)),
+        sceneCaptureType = exifSceneCaptureType(int(ExifInterface.TAG_SCENE_CAPTURE_TYPE)),
+        customRendered = exifCustomRendered(int(ExifInterface.TAG_CUSTOM_RENDERED)),
+        colorSpace = exifColorSpace(int(ExifInterface.TAG_COLOR_SPACE)),
+        subjectDistanceMeters = exifSubjectDistance(double(ExifInterface.TAG_SUBJECT_DISTANCE)),
+        imageDescription = exifName(getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION)),
+        artist = exifName(getAttribute(ExifInterface.TAG_ARTIST)),
+        copyright = exifName(getAttribute(ExifInterface.TAG_COPYRIGHT)),
+        userComment = exifUserComment(getAttributeBytes(ExifInterface.TAG_USER_COMMENT)),
+        bodySerial = exifName(getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER)),
+        lensSerial = exifName(getAttribute(ExifInterface.TAG_LENS_SERIAL_NUMBER)),
+        gpsTime = gpsDateTime?.let { Instant.fromEpochMilliseconds(it) },
+        speedKmh = exifSpeedKmh(double(ExifInterface.TAG_GPS_SPEED), getAttribute(ExifInterface.TAG_GPS_SPEED_REF)),
     )
 }
 

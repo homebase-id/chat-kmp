@@ -6,7 +6,13 @@ import id.homebase.api.media.MediaLocation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.LocalTime
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.atTime
+import kotlinx.datetime.toInstant
+import kotlin.time.Instant
 
 /**
  * EXIF / image-file metadata read from JPEG/HEIC/TIFF/PNG bytes.
@@ -59,6 +65,28 @@ data class ImageMetadata(
     val modifiedAt: LocalDateTime? = null,
     val imageDirectionDegrees: Double? = null,
     val horizontalErrorMeters: Double? = null,
+    /**
+     * Read alike on every platform: the 35 mm-equivalent focal length, above 0; the digital zoom ratio, above 0 (0 is
+     * none); the scene capture type (0..3), custom rendering (0 or 1) and colour space (1 sRGB, 65535 uncalibrated) as
+     * their EXIF codes, others as null; the subject distance in metres, above 0 and below 1000 km (0 is unknown, and
+     * EXIF's "infinity", 0xFFFFFFFF over its denominator, lands past that); names as above; the user comment with its
+     * character-code prefix taken off; [gpsTime] in UTC, only with both the GPS date and time; the speed in km/h, 0
+     * or more, from km/h, mph or knots.
+     */
+    val focalLength35mm: Int? = null,
+    val digitalZoomRatio: Double? = null,
+    val sceneCaptureType: Int? = null,
+    val customRendered: Int? = null,
+    val colorSpace: Int? = null,
+    val subjectDistanceMeters: Double? = null,
+    val imageDescription: String? = null,
+    val artist: String? = null,
+    val copyright: String? = null,
+    val userComment: String? = null,
+    val bodySerial: String? = null,
+    val lensSerial: String? = null,
+    val gpsTime: Instant? = null,
+    val speedKmh: Double? = null,
 ) {
     val location: MediaLocation?
         get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitudeMeters) else null
@@ -71,8 +99,9 @@ data class ImageMetadata(
  * Returns null only when the bytes cannot be parsed at all. If the image has
  * no metadata, an [ImageMetadata] with all-null fields is returned.
  *
- * Web reads a JPEG's camera fields, capture time and offset and orientation only ([readJpegExifCamera]):
- * no GPS or size, and null for anything else, a JPEG without EXIF too, since browsers expose no EXIF reader.
+ * Web reads a JPEG's camera, lens, exposure and software fields, capture and modified times, offset, orientation, and
+ * the GPS direction and accuracy ([readJpegExifCamera]): no position or size, and null for anything else, a JPEG
+ * without EXIF too, since browsers expose no EXIF reader.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 
@@ -150,3 +179,66 @@ internal fun exifMeteringMode(raw: Int?): Int? = raw?.takeIf { it in 1..6 || it 
 internal fun exifWhiteBalance(raw: Int?): Int? = raw?.takeIf { it == 0 || it == 1 }
 internal fun exifImageDirection(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it >= 0 && it < 360 }
 internal fun exifHorizontalError(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it >= 0 }
+internal fun exifFocalLength35mm(raw: Int?): Int? = raw?.takeIf { it > 0 }
+internal fun exifDigitalZoom(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it > 0 }
+internal fun exifSceneCaptureType(raw: Int?): Int? = raw?.takeIf { it in 0..3 }
+internal fun exifCustomRendered(raw: Int?): Int? = raw?.takeIf { it == 0 || it == 1 }
+internal fun exifColorSpace(raw: Int?): Int? = raw?.takeIf { it == 1 || it == 65535 }
+internal fun exifSubjectDistance(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it > 0 && it < 1_000_000 }
+
+/** A UserComment's bytes: an 8-byte character code, then the text. [littleEndian] is the TIFF's, for UNICODE; null guesses. */
+internal fun exifUserComment(raw: ByteArray?, littleEndian: Boolean? = null): String? {
+    if (raw == null || raw.size < 8) return null
+    val code = raw.copyOfRange(0, 8).decodeToString().trimEnd('\u0000', ' ')
+    val text = raw.copyOfRange(8, raw.size)
+    val decoded = when (code) {
+        "UNICODE" -> utf16(text, littleEndian ?: (text.size >= 2 && text[0].toInt() != 0 && text[1].toInt() == 0))
+        // ASCII, JIS (rarely written, and not decoded here) and undefined: undefined is UTF-8 in practice.
+        "JIS" -> return null
+        else -> text.decodeToString()
+    }
+    return exifComment(decoded)
+}
+
+/** A comment the platform decoded itself, with the same trimming. */
+internal fun exifComment(raw: String?): String? = raw?.replace("\u0000", "")?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun utf16(bytes: ByteArray, littleEndian: Boolean): String = buildString {
+    for (i in 0 until bytes.size / 2) {
+        val lo = bytes[2 * i + if (littleEndian) 0 else 1].toInt() and 0xFF
+        val hi = bytes[2 * i + if (littleEndian) 1 else 0].toInt() and 0xFF
+        append(((hi shl 8) or lo).toChar())
+    }
+}
+
+/** GPSDateStamp "YYYY:MM:DD" and GPSTimeStamp's hours, minutes and seconds, in UTC. */
+internal fun exifGpsTime(date: String?, hours: Double?, minutes: Double?, seconds: Double?): Instant? {
+    if (date == null || hours == null || minutes == null || seconds == null) return null
+    val parts = date.trim().split(':').map { it.toIntOrNull() ?: return null }
+    if (parts.size != 3 || hours !in 0.0..23.0 || minutes !in 0.0..59.0 || seconds < 0 || seconds >= 61) return null
+    return try {
+        val day = LocalDate(parts[0], parts[1], parts[2])
+        val wholeSeconds = seconds.toInt().coerceAtMost(59)
+        val nanos = ((seconds - seconds.toInt()) * 1_000_000_000).toInt()
+        day.atTime(LocalTime(hours.toInt(), minutes.toInt(), wholeSeconds, nanos)).toInstant(TimeZone.UTC)
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+}
+
+/** GPSTimeStamp as ImageIO gives it: "HH:mm:ss" with optional fractions. */
+internal fun exifGpsTime(date: String?, time: String?): Instant? {
+    val parts = time?.trim()?.split(':')?.takeIf { it.size == 3 } ?: return null
+    return exifGpsTime(date, parts[0].toDoubleOrNull(), parts[1].toDoubleOrNull(), parts[2].toDoubleOrNull())
+}
+
+/** GPSSpeed in its GPSSpeedRef's unit: "K" km/h, the default; "M" mph; "N" knots. */
+internal fun exifSpeedKmh(raw: Double?, ref: String?): Double? {
+    val factor = when (ref?.trim()?.uppercase()) {
+        null, "", "K" -> 1.0
+        "M" -> 1.609344
+        "N" -> 1.852
+        else -> return null
+    }
+    return raw?.times(factor)?.takeIf { it.isFinite() && it >= 0 }
+}

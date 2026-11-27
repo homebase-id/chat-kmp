@@ -109,11 +109,14 @@ fun LocationPreviewCard(
     modifier: Modifier = Modifier,
     isCompact: Boolean = false,
     onCancel: (() -> Unit)? = null,
+    /** In place of the `geo:` link, which opens nothing on desktop or web. */
+    onOpen: (() -> Unit)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(locationPreview.lat, locationPreview.lon, locationPreview.address) {
         buildGeoUri(locationPreview.lat, locationPreview.lon, locationPreview.address)
     }
+    val open = onOpen ?: { uriHandler.openUri(geoUri) }
 
     val imageBitmap = remember(locationPreview.imageUrl) {
         locationPreview.imageUrl?.let {
@@ -129,7 +132,7 @@ fun LocationPreviewCard(
         Row(
             modifier = modifier.fillMaxWidth().background(
                 MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)
-            ).clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(geoUri) },
+            ).clip(RoundedCornerShape(12.dp)).clickable(onClick = open),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f).padding(12.dp)) {
@@ -174,7 +177,7 @@ fun LocationPreviewCard(
         }
     } else {
         Column(
-            modifier = modifier.fillMaxWidth().clickable { uriHandler.openUri(geoUri) }
+            modifier = modifier.fillMaxWidth().clickable(onClick = open)
         ) {
             Box {
                 if (imageBitmap != null) {

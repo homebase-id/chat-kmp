@@ -3,6 +3,7 @@ package id.homebase.api.image
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.UtcOffset
+import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -37,6 +38,20 @@ class ImageMetadataCameraContractTest {
         assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), exif.modifiedAt)
         assertEquals(123.4, assertNotNull(exif.imageDirectionDegrees), 1e-9)
         assertEquals(5.0, exif.horizontalErrorMeters)
+        assertEquals(75, exif.focalLength35mm)
+        assertEquals(2.0, exif.digitalZoomRatio)
+        assertEquals(3, exif.sceneCaptureType)
+        assertEquals(1, exif.customRendered)
+        assertEquals(1, exif.colorSpace)
+        assertEquals(2.5, assertNotNull(exif.subjectDistanceMeters), 1e-9)
+        assertEquals(CameraExifFixture.DESCRIPTION, exif.imageDescription)
+        assertEquals(CameraExifFixture.ARTIST, exif.artist)
+        assertEquals(CameraExifFixture.COPYRIGHT, exif.copyright)
+        assertEquals(CameraExifFixture.COMMENT, exif.userComment)
+        assertEquals(CameraExifFixture.BODY_SERIAL, exif.bodySerial)
+        assertEquals(CameraExifFixture.LENS_SERIAL, exif.lensSerial)
+        assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exif.gpsTime)
+        assertEquals(36.0, assertNotNull(exif.speedKmh), 1e-9)
 
         val plain = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, plainTimes = true), jpeg)))
         assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), plain.capturedAt, "without DateTimeOriginal, the file's DateTime")

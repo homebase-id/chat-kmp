@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -23,6 +24,12 @@ data class PhotoGalleryItem(
     val tags: Set<Uuid> = emptySet(),
     /** Its header content, a [PhotoContent]: read only when asked for, see [photoContent]. */
     val content: String? = null,
+    /** When it reached the drive, and when its record last changed there; 0 when unknown. */
+    val backedUpAtMs: Long = 0,
+    val changedAtMs: Long = 0,
+    /** What all its payloads and their thumbnails take on the drive. */
+    val storedBytes: Long? = null,
+    val archived: Boolean = false,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
 
@@ -57,5 +64,11 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         motion = live?.playableIn(payloads),
         tags = localTags().toSet(),
         content = appData.content,
+        backedUpAtMs = fileMetadata.created.milliseconds,
+        changedAtMs = fileMetadata.updated.milliseconds,
+        storedBytes = payloads.sumOf { it.storedBytes() }.takeIf { it > 0 },
+        archived = appData.archivalStatus == ArchivalStatus.Archived,
     )
 }
+
+private fun PayloadDescriptor.storedBytes(): Long = (bytesWritten ?: 0) + thumbnails.orEmpty().sumOf { it.bytesWritten ?: 0 }

@@ -3,6 +3,7 @@ package id.homebase.photobase.info
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.payload.PayloadReader
@@ -32,8 +33,11 @@ interface PhotoInfoSource {
     /** The EXIF of [item]'s original; null for a video. */
     suspend fun camera(item: PhotoGalleryItem): ImageMetadata?
 
-    /** The place's name; null when it has none or the lookup failed. */
-    suspend fun place(latitude: Double, longitude: Double): String?
+    /** The place's map and name, as a location shows in chat; its name is the coordinates when it has none. */
+    suspend fun preview(latitude: Double, longitude: Double): LocationPreview
+
+    /** A point's address, for the place picker; null when it has none. */
+    suspend fun address(latitude: Double, longitude: Double): String?
 
     suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray?
 
@@ -56,7 +60,9 @@ class DrivePhotoInfoSource(
         return withContext(Dispatchers.Default) { readImageMetadata(original.bytes) }
     }
 
-    override suspend fun place(latitude: Double, longitude: Double): String? = places.reverseGeocode(latitude, longitude)
+    override suspend fun preview(latitude: Double, longitude: Double): LocationPreview = places.getLocationPreview(latitude, longitude)
+
+    override suspend fun address(latitude: Double, longitude: Double): String? = places.reverseGeocode(latitude, longitude)
 
     override suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray? = places.getTilePng(zoom, x, y)
 
@@ -77,8 +83,8 @@ data class PhotoInfoUiState(
     val offsetByHand: UtcOffset? = null,
     val location: MediaLocation? = null,
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
-    /** Read(null) when the place has no name, or isn't looked up because maps are offline. */
-    val place: InfoPart<String> = InfoPart.Loading,
+    /** Read(null) when it isn't looked up because maps are offline. */
+    val place: InfoPart<LocationPreview> = InfoPart.Loading,
     val saving: Boolean = false,
     val saveFailed: Boolean = false,
 )
@@ -89,6 +95,10 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
     val uiState: StateFlow<PhotoInfoUiState> = _uiState.asStateFlow()
 
     private var item: PhotoGalleryItem? = null
+    // What a save set, until the gallery's copy of the header catches up with it: reopened before then, it still shows.
+    private val saved = mutableMapOf<Uuid, Saved>()
+
+    private data class Saved(val capturedAtMs: Long, val offsetByHand: UtcOffset?, val location: MediaLocation?)
     private var reading: Job? = null
     private var placing: Job? = null
 
@@ -98,12 +108,15 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         placing?.cancel()
         this.item = item
         val content = item.photoContent()
-        val location = content?.location
+        // A header from another app version can hold anything; UtcOffset throws outside ±18 h.
+        val header = Saved(item.capturedAtMs, content?.offsetSeconds?.takeIf { it in -MAX_OFFSET..MAX_OFFSET }?.let { UtcOffset(seconds = it) }, content?.location)
+        val shown = saved[item.fileId]?.takeIf { it != header } ?: header.also { saved.remove(item.fileId) }
+        val location = shown.location
         _uiState.update {
             PhotoInfoUiState(
                 fileId = item.fileId,
-                capturedAtMs = item.capturedAtMs,
-                offsetByHand = content?.offsetSeconds?.let { UtcOffset(seconds = it) },
+                capturedAtMs = shown.capturedAtMs,
+                offsetByHand = shown.offsetByHand,
                 location = location,
                 place = placeUnread(),
             )
@@ -120,19 +133,19 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         if (_uiState.value.saving) return
         update(item.fileId) { it.copy(saving = true, saveFailed = false) }
         viewModelScope.launch {
-            val saved = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
+            val ok = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
             update(item.fileId) { state ->
-                val done = state.copy(saving = false, saveFailed = !saved)
-                if (!saved) {
+                val done = state.copy(saving = false, saveFailed = !ok)
+                if (!ok) {
                     done
                 } else {
                     when (edit) {
                         is PhotoEdit.Time -> done.copy(capturedAtMs = edit.at.toEpochMilliseconds(), offsetByHand = edit.offset)
                         is PhotoEdit.Place -> done.copy(location = edit.at, place = placeUnread())
-                    }
+                    }.also { saved[item.fileId] = Saved(it.capturedAtMs, it.offsetByHand, it.location) }
                 }
             }
-            if (saved && edit is PhotoEdit.Place) lookUpPlace(item.fileId, edit.at)
+            if (ok && edit is PhotoEdit.Place) lookUpPlace(item.fileId, edit.at)
         }
     }
 
@@ -145,13 +158,13 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
     }
 
     // Read(null) with maps offline: nothing will be looked up.
-    private fun placeUnread(): InfoPart<String> = if (source.mapsOnline) InfoPart.Loading else InfoPart.Read(null)
+    private fun placeUnread(): InfoPart<LocationPreview> = if (source.mapsOnline) InfoPart.Loading else InfoPart.Read(null)
 
     private fun lookUpPlace(fileId: Uuid, at: MediaLocation?) {
         placing?.cancel()
         if (at == null || !source.mapsOnline) return
         placing = viewModelScope.launch {
-            val place = read(fileId, "place") { source.place(at.latitude, at.longitude) }
+            val place = read(fileId, "place") { source.preview(at.latitude, at.longitude) }
             update(fileId) { it.copy(place = place) }
         }
     }
@@ -172,5 +185,6 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
     private companion object {
         const val TAG = "PhotoInfoViewModel"
+        const val MAX_OFFSET = 18 * 3600
     }
 }

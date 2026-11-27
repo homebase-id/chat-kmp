@@ -19,13 +19,12 @@ import id.homebase.core.location.LocationMapProvider
 import id.homebase.core.location.LocationPreferences
 import id.homebase.core.location.LocationService
 import id.homebase.core.location.liveShareEndTimeMs
+import id.homebase.core.location.map.PinAddress
 import id.homebase.core.location.tracking.DemandReason
 import id.homebase.core.location.tracking.GpsFixResult
 import id.homebase.resources.MR
 import id.homebase.resources.chat_location_unavailable
 import id.homebase.resources.error_unknown
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -35,9 +34,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.PI
-import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
@@ -78,12 +74,10 @@ class ShareLocationViewModel(
     // fix and the re-center button have a warm provider. No-op without permission.
     private val demandToken = locationService.acquireDemand(DemandReason.LiveMapOpen)
 
-    private var geocodeJob: Job? = null
+    private val pinAddress = PinAddress(viewModelScope) { lat, lon -> previewProvider.reverseGeocode(lat, lon) }
 
     // Kept out of the UI state: it changes on every pan frame and only the send reads it.
     private var pin: Pair<Double, Double>? = null
-    private var lastResolvedLat: Double? = null
-    private var lastResolvedLon: Double? = null
     private var recenterSeq = 0
     /** Set once the user pans/zooms — a late first fix must not yank the map away anymore. */
     private var userMoved = false
@@ -104,6 +98,9 @@ class ShareLocationViewModel(
             it.copy(initialBbox = WORLD_BBOX, initialBboxKey = it.initialBboxKey + 1)
         }
         viewModelScope.launch { seedFromCachedThenFresh() }
+        viewModelScope.launch {
+            pinAddress.state.collect { pinned -> _uiState.update { it.copy(address = pinned.address, isResolvingAddress = pinned.resolving) } }
+        }
         // Hide the live banner while my share already covers this conversation (#966 follow-up).
         viewModelScope.launch {
             liveLocationShareService.recipients.collectLatest { roster ->
@@ -134,6 +131,9 @@ class ShareLocationViewModel(
     fun onPermissionGranted() {
         locationService.refreshGpsHold()
         viewModelScope.launch { seedFromCachedThenFresh() }
+        viewModelScope.launch {
+            pinAddress.state.collect { pinned -> _uiState.update { it.copy(address = pinned.address, isResolvingAddress = pinned.resolving) } }
+        }
     }
 
     private suspend fun seedFromCachedThenFresh() {
@@ -170,26 +170,7 @@ class ShareLocationViewModel(
         pin = lat to lon
         _uiState.update { it.copy(hasPin = true) }
 
-        val last = lastResolvedLat
-        if (last != null && lastResolvedLon != null &&
-            approxDistanceMeters(last, lastResolvedLon!!, lat, lon) < RESOLVE_MIN_MOVE_METERS
-        ) {
-            return
-        }
-        _uiState.update { it.copy(isResolvingAddress = true) }
-        geocodeJob?.cancel()
-        geocodeJob = viewModelScope.launch {
-            delay(GEOCODE_DEBOUNCE_MS)
-            val address = runCatching { previewProvider.reverseGeocode(lat, lon) }.getOrNull()
-            lastResolvedLat = lat
-            lastResolvedLon = lon
-            _uiState.update {
-                it.copy(
-                    address = address ?: formatLatLon(lat, lon),
-                    isResolvingAddress = false,
-                )
-            }
-        }
+        pinAddress.moved(lat, lon)
     }
 
     fun onCommentChanged(text: String) = _uiState.update { it.copy(comment = text) }
@@ -293,26 +274,10 @@ class ShareLocationViewModel(
     private fun captionOrNull(): String? =
         _uiState.value.comment.trim().ifBlank { null }?.truncateToCodePoints(CAPTION_MAX_CODEPOINTS)
 
-    /** Small-distance approximation — plenty for a "did the pin really move" check. */
-    private fun approxDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
-        val dLat = abs(lat2 - lat1) * METERS_PER_DEGREE
-        val dLon = abs(lon2 - lon1) * METERS_PER_DEGREE * cos(lat1 * PI / 180.0)
-        return dLat + dLon
-    }
-
-    private fun formatLatLon(lat: Double, lon: Double): String {
-        val latStr = ((lat * 1e5).toLong() / 1e5).toString()
-        val lonStr = ((lon * 1e5).toLong() / 1e5).toString()
-        return "$latStr, $lonStr"
-    }
-
     private companion object {
         const val TAG = "ShareLocationViewModel"
         /** Unit-space bbox of the whole world — the no-fix fallback so the map never opens blank. */
         val WORLD_BBOX = listOf(0.0, 0.0, 1.0, 1.0)
-        const val GEOCODE_DEBOUNCE_MS = 700L
-        const val RESOLVE_MIN_MOVE_METERS = 30.0
-        const val METERS_PER_DEGREE = 111_320.0
         // Same cap the composer-caption path uses (7 KB header budget).
         const val CAPTION_MAX_CODEPOINTS = 2000
     }

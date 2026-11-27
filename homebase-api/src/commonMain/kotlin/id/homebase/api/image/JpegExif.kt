@@ -13,7 +13,7 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val tiff = Tiff.at(bytes, tiffStart, end) ?: return null
     val ifd0 = tiff.ifd0() ?: return null
     val exif = ifd0.long(0x8769)?.let(tiff::directory)
-    // Only the direction and accuracy: web reading the position would change what its uploads record.
+    // Not the position: web reading it would change what its uploads record.
     val gps = ifd0.long(0x8825)?.let(tiff::directory)
     return ImageMetadata(
         capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003) ?: ifd0.ascii(0x0132)),
@@ -36,6 +36,20 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
         modifiedAt = parseExifLocalDateTime(ifd0.ascii(0x0132)),
         imageDirectionDegrees = exifImageDirection(gps?.rational(0x0011)),
         horizontalErrorMeters = exifHorizontalError(gps?.rational(0x001F)),
+        focalLength35mm = exifFocalLength35mm(exif?.long(0xA405)),
+        digitalZoomRatio = exifDigitalZoom(exif?.rational(0xA404)),
+        sceneCaptureType = exifSceneCaptureType(exif?.long(0xA406)),
+        customRendered = exifCustomRendered(exif?.long(0xA401)),
+        colorSpace = exifColorSpace(exif?.long(0xA001)),
+        subjectDistanceMeters = exifSubjectDistance(exif?.rational(0x9206)),
+        imageDescription = exifName(ifd0.ascii(0x010E)),
+        artist = exifName(ifd0.ascii(0x013B)),
+        copyright = exifName(ifd0.ascii(0x8298)),
+        userComment = exifUserComment(exif?.bytes(0x9286), tiff.littleEndian),
+        bodySerial = exifName(exif?.ascii(0xA431)),
+        lensSerial = exifName(exif?.ascii(0xA435)),
+        gpsTime = gps?.rationals(0x0007, 3)?.let { (h, m, sec) -> exifGpsTime(gps.ascii(0x001D), h, m, sec) },
+        speedKmh = exifSpeedKmh(gps?.rational(0x000D), gps?.ascii(0x000C)),
     )
 }
 
@@ -147,6 +161,27 @@ private class Directory(val tiff: Tiff, val at: Int) {
         val read = if (type == 10) tiff::s32 else tiff::u32long
         val denominator = read(value + 4)
         return if (denominator == 0L) null else read(value).toDouble() / denominator
+    }
+
+    /** [count] rationals, as GPSTimeStamp's three; null when it holds another number of them or one is x/0. */
+    fun rationals(tag: Int, count: Int): List<Double>? {
+        val entry = entry(tag) ?: return null
+        if (tiff.u16(entry + 2) != 5 || tiff.u32(entry + 4) != count) return null
+        val value = valueAt(entry, 8L * count, 8 * count) ?: return null
+        return List(count) { i ->
+            val denominator = tiff.u32long(value + 8 * i + 4)
+            if (denominator == 0L) return null
+            tiff.u32long(value + 8 * i).toDouble() / denominator
+        }
+    }
+
+    /** An UNDEFINED tag's bytes. */
+    fun bytes(tag: Int): ByteArray? {
+        val entry = entry(tag) ?: return null
+        if (tiff.u16(entry + 2) != 7) return null
+        val count = tiff.u32(entry + 4)
+        val value = valueAt(entry, count.toLong(), count) ?: return null
+        return tiff.bytes.copyOfRange(value, value + count)
     }
 
     fun ascii(tag: Int): String? {

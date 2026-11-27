@@ -96,6 +96,7 @@ class PhotoGalleryViewModelTest {
         driveState: MutableStateFlow<DriveState?> = MutableStateFlow(DriveState.Completed()),
         mover: PhotoMover = noMover(),
         gallery: PhotoGallery = PhotoGallery.Library,
+        recountDays: suspend (Collection<Int>) -> Unit = {},
     ): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
@@ -107,6 +108,7 @@ class PhotoGalleryViewModelTest {
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),
+            recountDays = recountDays,
         )
         // The screen collects the days while it's shown.
         val screen = launch { viewModel.library.collect { } }
@@ -172,6 +174,26 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(listOf(9..9), library.asked, "only the held day touched")
         assertEquals(replacement, viewModel.uiState.value.loaded.getValue(9).first())
+        screen.cancel()
+    }
+
+    @Test
+    fun aPhotoWhoseTimeChangedLeavesTheDayItWasOn() = runTest {
+        val library = Library(1..10, perDay = 3)
+        val recounted = mutableListOf<Collection<Int>>()
+        val (viewModel, screen) = viewModel(library, recountDays = { recounted += it })
+        val moved = library.photos.getValue(9).first()
+        library.asked.clear()
+
+        // Its time edited to day 3: the change names only day 3.
+        library.photos[9] = library.photos.getValue(9).drop(1)
+        library.photos[3] = listOf(moved.copy(capturedAtMs = 3 * DAY_MS + 99)) + library.photos.getValue(3)
+        library.touched.emit(mapOf(3 to listOf(galleryTestFile(3 * DAY_MS + 99, fileId = moved.fileId))))
+        advanceUntilIdle()
+
+        assertEquals(listOf<Collection<Int>>(setOf(9)), recounted)
+        assertTrue(9..9 in library.asked, "the day it left is read again")
+        assertTrue(viewModel.uiState.value.loaded.getValue(9).none { it.fileId == moved.fileId })
         screen.cancel()
     }
 

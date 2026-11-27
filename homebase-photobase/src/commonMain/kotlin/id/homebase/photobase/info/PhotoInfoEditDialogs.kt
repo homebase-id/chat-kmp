@@ -1,17 +1,32 @@
 package id.homebase.photobase.info
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import org.jetbrains.compose.resources.StringResource
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filterNotNull
+import id.homebase.core.location.tracking.GpsFixResult
+import id.homebase.core.location.rememberCurrentGps
+import id.homebase.core.location.map.PinAddress
+import id.homebase.core.location.map.MapCameraState
+import id.homebase.core.location.map.LocationPicker
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -29,21 +44,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.WebMercator
 import id.homebase.api.media.MediaLocation
-import id.homebase.core.location.map.TiledMapView
 import id.homebase.core.location.map.rememberMapCameraState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.cd_location_pin
 import id.homebase.resources.ok
 import id.homebase.resources.photobase_info_edit_location
-import id.homebase.resources.photobase_info_edit_location_hint
 import id.homebase.resources.photobase_info_edit_time
 import id.homebase.resources.photobase_info_latitude
 import id.homebase.resources.photobase_info_longitude
@@ -100,66 +110,107 @@ internal fun EditTimeDialogs(at: Instant, offset: UtcOffset, onSave: (Instant, U
     }
 }
 
+
 /**
- * The place under the pin in the map's middle, or, with Maps at None, typed in: no tiles are fetched then. Null from
- * [onSave] removes it.
+ * The place under the pin in the map's middle, as share-location picks it; with Maps at None, typed in, and no tiles
+ * fetched. Saves only a change. Null from [onSave] removes it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave: (MediaLocation?) -> Unit, onDismiss: () -> Unit) {
     val camera = rememberMapCameraState()
     var latitude by remember { mutableStateOf(at?.latitude?.toString().orEmpty()) }
     var longitude by remember { mutableStateOf(at?.longitude?.toString().orEmpty()) }
-    val typed = typedLocation(latitude, longitude)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.string.photobase_info_edit_location)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (source.mapsOnline) {
-                    Text(stringResource(MR.string.photobase_info_edit_location_hint), style = MaterialTheme.typography.bodyMedium)
-                    Box(Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                        val box = remember(at) { at?.let { WebMercator.latLonToUnit(it.latitude, it.longitude) }?.let { (x, y) -> mapBox(x, y) } ?: WORLD }
-                        TiledMapView(bbox = box, showMapTiles = true, fetchTile = source::tile, cameraState = camera, modifier = Modifier.matchParentSize())
-                        Icon(
-                            Icons.Filled.LocationOn,
-                            contentDescription = stringResource(MR.string.cd_location_pin),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(PIN).offset(y = -PIN / 2),
-                        )
+    val chosen = if (source.mapsOnline) {
+        camera.centerUnit?.takeIf { camera.isUserPositioned }?.let { (x, y) -> WebMercator.unitToLatLon(x, y) }?.let { (lat, lon) -> MediaLocation(lat, lon) }
+    } else {
+        typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
+    }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(MR.string.photobase_info_edit_location)) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel)) }
+                    },
+                    actions = {
+                        TextButton(onClick = { chosen?.let(onSave) }, enabled = chosen != null) { Text(stringResource(MR.string.save)) }
+                    },
+                )
+            },
+            bottomBar = {
+                if (at != null) {
+                    TextButton(onClick = { onSave(null) }, modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(8.dp)) {
+                        Text(stringResource(MR.string.photobase_info_remove_location))
                     }
-                } else {
-                    OutlinedTextField(
-                        latitude, { latitude = it },
-                        label = { Text(stringResource(MR.string.photobase_info_latitude)) },
-                        singleLine = true,
-                        isError = latitude.isNotBlank() && typed == null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    )
-                    OutlinedTextField(
-                        longitude, { longitude = it },
-                        label = { Text(stringResource(MR.string.photobase_info_longitude)) },
-                        singleLine = true,
-                        isError = longitude.isNotBlank() && typed == null,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    )
+                }
+            },
+        ) { padding ->
+            if (source.mapsOnline) {
+                PlacePicker(at, source, camera, Modifier.padding(padding).fillMaxSize())
+            } else {
+                Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CoordinateField(latitude, { latitude = it }, MR.string.photobase_info_latitude, isError = latitude.isNotBlank() && typedLocation(latitude, longitude) == null)
+                    CoordinateField(longitude, { longitude = it }, MR.string.photobase_info_longitude, isError = longitude.isNotBlank() && typedLocation(latitude, longitude) == null)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlacePicker(at: MediaLocation?, source: PhotoInfoSource, camera: MapCameraState, modifier: Modifier) {
+    val scope = rememberCoroutineScope()
+    val pinAddress = remember { PinAddress(scope) { lat, lon -> source.address(lat, lon) } }
+    val address by pinAddress.state.collectAsStateWithLifecycle()
+    // The world, with no place yet: its middle means nothing until the map is moved.
+    val box = remember(at) { at?.let { WebMercator.latLonToUnit(it.latitude, it.longitude) }?.let { (x, y) -> mapBox(x, y) } ?: WORLD }
+    LaunchedEffect(camera) {
+        snapshotFlow { camera.centerUnit }.filterNotNull().collect { (x, y) ->
+            if (at != null || camera.isUserPositioned) WebMercator.unitToLatLon(x, y).let { (lat, lon) -> pinAddress.moved(lat, lon) }
+        }
+    }
+    var acquiring by remember { mutableStateOf(false) }
+    val recenterSpec = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
+    val gps = rememberCurrentGps { result ->
+        acquiring = false
+        if (result is GpsFixResult.Success) {
+            val (x, y) = WebMercator.latLonToUnit(result.point.lat, result.point.lon)
+            scope.launch { camera.animateCenterTo(x, y, recenterSpec) }
+        }
+    }
+    LocationPicker(
+        bbox = box,
+        fetchTile = source::tile,
+        camera = camera,
+        address = address,
+        acquiringFix = acquiring,
+        onRecenter = {
+            acquiring = true
+            gps.launch()
         },
-        confirmButton = {
-            val chosen = if (source.mapsOnline) camera.centerUnit?.let { (x, y) -> WebMercator.unitToLatLon(x, y) }?.let { (lat, lon) -> MediaLocation(lat, lon) } else typed
-            TextButton(onClick = { chosen?.let(onSave) }, enabled = chosen != null) { Text(stringResource(MR.string.save)) }
-        },
-        dismissButton = {
-            Row {
-                if (at != null) TextButton(onClick = { onSave(null) }) { Text(stringResource(MR.string.photobase_info_remove_location)) }
-                TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) }
-            }
-        },
+        modifier = modifier,
     )
 }
 
+// Text, not a number pad: iOS's decimal pad has no minus, so no place west or south could be typed.
+@Composable
+private fun CoordinateField(value: String, onValueChange: (String) -> Unit, label: StringResource, isError: Boolean) {
+    OutlinedTextField(
+        value, onValueChange,
+        label = { Text(stringResource(label)) },
+        singleLine = true,
+        isError = isError,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** A comma reads as the decimal point, as a keyboard in many languages writes it. */
 internal fun typedLocation(latitude: String, longitude: String): MediaLocation? =
-    MediaLocation.of(latitude.trim().toDoubleOrNull(), longitude.trim().toDoubleOrNull())
+    MediaLocation.of(latitude.coordinate(), longitude.coordinate())
+
+private fun String.coordinate(): Double? = trim().replace(',', '.').toDoubleOrNull()
 
 private val WORLD = doubleArrayOf(0.0, 0.0, 1.0, 1.0)
-private val PIN = 32.dp

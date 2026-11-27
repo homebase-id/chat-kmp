@@ -16,6 +16,22 @@ import platform.Foundation.NSNumber
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyExifDateTimeOriginal
+import platform.ImageIO.kCGImagePropertyExifFocalLenIn35mmFilm
+import platform.ImageIO.kCGImagePropertyExifDigitalZoomRatio
+import platform.ImageIO.kCGImagePropertyExifSceneCaptureType
+import platform.ImageIO.kCGImagePropertyExifCustomRendered
+import platform.ImageIO.kCGImagePropertyExifColorSpace
+import platform.ImageIO.kCGImagePropertyExifSubjectDistance
+import platform.ImageIO.kCGImagePropertyTIFFImageDescription
+import platform.ImageIO.kCGImagePropertyTIFFArtist
+import platform.ImageIO.kCGImagePropertyTIFFCopyright
+import platform.ImageIO.kCGImagePropertyExifUserComment
+import platform.ImageIO.kCGImagePropertyExifBodySerialNumber
+import platform.ImageIO.kCGImagePropertyExifLensSerialNumber
+import platform.ImageIO.kCGImagePropertyGPSDateStamp
+import platform.ImageIO.kCGImagePropertyGPSTimeStamp
+import platform.ImageIO.kCGImagePropertyGPSSpeed
+import platform.ImageIO.kCGImagePropertyGPSSpeedRef
 import platform.ImageIO.kCGImagePropertyExifLensMake
 import platform.ImageIO.kCGImagePropertyExifLensModel
 import platform.ImageIO.kCGImagePropertyExifExposureBiasValue
@@ -144,6 +160,21 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
         modifiedAt = parseExifLocalDateTime(tiff?.objectForKey(kCGImagePropertyTIFFDateTime.ns) as? String),
         imageDirectionDegrees = exifImageDirection(gps?.double(kCGImagePropertyGPSImgDirection)),
         horizontalErrorMeters = exifHorizontalError(gps?.double(kCGImagePropertyGPSHPositioningError)),
+        focalLength35mm = exifFocalLength35mm(exif?.int(kCGImagePropertyExifFocalLenIn35mmFilm)),
+        digitalZoomRatio = exifDigitalZoom(exif?.double(kCGImagePropertyExifDigitalZoomRatio)),
+        sceneCaptureType = exifSceneCaptureType(exif?.int(kCGImagePropertyExifSceneCaptureType)),
+        customRendered = exifCustomRendered(exif?.int(kCGImagePropertyExifCustomRendered)),
+        colorSpace = exifColorSpace(exif?.int(kCGImagePropertyExifColorSpace)),
+        subjectDistanceMeters = exifSubjectDistance(exif?.double(kCGImagePropertyExifSubjectDistance)),
+        imageDescription = exifName(tiff?.objectForKey(kCGImagePropertyTIFFImageDescription.ns) as? String),
+        artist = exifName(tiff?.objectForKey(kCGImagePropertyTIFFArtist.ns) as? String),
+        copyright = exifName(tiff?.objectForKey(kCGImagePropertyTIFFCopyright.ns) as? String),
+        // ImageIO hands it over decoded, its character code taken off.
+        userComment = exifComment(exif?.objectForKey(kCGImagePropertyExifUserComment.ns) as? String),
+        bodySerial = exifName(exif?.objectForKey(kCGImagePropertyExifBodySerialNumber.ns) as? String),
+        lensSerial = exifName(exif?.objectForKey(kCGImagePropertyExifLensSerialNumber.ns) as? String),
+        gpsTime = exifGpsTime(gps?.objectForKey(kCGImagePropertyGPSDateStamp.ns) as? String, gps?.objectForKey(kCGImagePropertyGPSTimeStamp.ns) as? String),
+        speedKmh = exifSpeedKmh(gps?.double(kCGImagePropertyGPSSpeed), gps?.objectForKey(kCGImagePropertyGPSSpeedRef.ns) as? String),
     )
 }
 

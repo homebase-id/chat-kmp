@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,14 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,7 +51,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -67,11 +63,11 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.ui.screens.location.MapsOffState
-import id.homebase.core.location.map.TiledMapView
+import id.homebase.core.location.map.LocationPicker
+import id.homebase.core.location.map.PinAddress
 import id.homebase.core.location.map.rememberMapCameraState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
-import id.homebase.resources.cd_location_pin
 import id.homebase.resources.live_location_enable_gps_confirm
 import id.homebase.resources.live_location_enable_gps_dismiss
 import id.homebase.resources.live_location_enable_gps_text
@@ -83,8 +79,6 @@ import id.homebase.resources.live_share_enable_location_title
 import id.homebase.resources.menu_back
 import id.homebase.resources.share_location_comment_hint
 import id.homebase.resources.share_location_live_banner
-import id.homebase.resources.share_location_recenter_cd
-import id.homebase.resources.share_location_resolving
 import id.homebase.resources.share_location_send_cd
 import id.homebase.resources.share_location_title
 import kotlin.time.Clock
@@ -329,12 +323,15 @@ fun ShareLocationScreen(
             } else {
                 val camera = rememberMapCameraState()
 
-                TiledMapView(
+                LocationPicker(
                     bbox = uiState.initialBbox?.toDoubleArray(),
-                    showMapTiles = true,
                     fetchTile = { z, x, y -> previewProvider.getTilePng(z, x, y) },
+                    camera = camera,
+                    address = PinAddress.State(uiState.address, uiState.isResolvingAddress),
+                    acquiringFix = uiState.isAcquiringFix,
+                    onRecenter = { viewModel.onRecenter() },
                     resetViewportOn = uiState.initialBboxKey,
-                    cameraState = camera,
+                    modifier = Modifier.fillMaxSize(),
                 )
 
                 // Pin follows the viewport center; the VM debounces the geocode.
@@ -349,68 +346,6 @@ fun ShareLocationScreen(
                     uiState.recenterTarget?.let { target ->
                         camera.animateCenterTo(target.unitX, target.unitY, recenterSpec)
                         viewModel.recenterConsumed()
-                    }
-                }
-
-                // Fixed center pin. Offset up half its size so the pin TIP marks the center.
-                Icon(
-                    imageVector = Icons.Default.LocationOn,
-                    contentDescription = stringResource(MR.string.cd_location_pin),
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(40.dp)
-                        .offset(y = (-20).dp),
-                )
-
-                // Address chip — resolves as the user pans.
-                val addressText = when {
-                    uiState.isResolvingAddress -> stringResource(MR.string.share_location_resolving)
-                    else -> uiState.address
-                }
-                AnimatedVisibility(
-                    visible = addressText.isNotEmpty(),
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    enter = fadeIn(motion.defaultEffectsSpec()),
-                    exit = fadeOut(motion.fastEffectsSpec()),
-                ) {
-                    Surface(
-                        modifier = Modifier
-                            .padding(start = 16.dp, top = 12.dp, end = 72.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        tonalElevation = 2.dp,
-                    ) {
-                        Text(
-                            text = addressText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-
-                // GPS re-center — upper-right corner.
-                FilledTonalIconButton(
-                    onClick = { viewModel.onRecenter() },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 12.dp, end = 12.dp),
-                ) {
-                    Crossfade(targetState = uiState.isAcquiringFix, animationSpec = motion.defaultEffectsSpec()) { acquiring ->
-                        if (acquiring) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.MyLocation,
-                                contentDescription = stringResource(MR.string.share_location_recenter_cd),
-                            )
-                        }
                     }
                 }
             }

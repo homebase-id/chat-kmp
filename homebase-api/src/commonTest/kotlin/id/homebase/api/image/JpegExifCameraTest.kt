@@ -2,6 +2,7 @@ package id.homebase.api.image
 
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.UtcOffset
+import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -33,7 +34,22 @@ class JpegExifCameraTest {
             assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), exif.modifiedAt)
             assertEquals(123.4, exif.imageDirectionDegrees)
             assertEquals(5.0, exif.horizontalErrorMeters)
+            assertEquals(75, exif.focalLength35mm)
+            assertEquals(2.0, exif.digitalZoomRatio)
+            assertEquals(3, exif.sceneCaptureType)
+            assertEquals(1, exif.customRendered)
+            assertEquals(1, exif.colorSpace)
+            assertEquals(2.5, exif.subjectDistanceMeters)
+            assertEquals(CameraExifFixture.DESCRIPTION, exif.imageDescription)
+            assertEquals(CameraExifFixture.ARTIST, exif.artist)
+            assertEquals(CameraExifFixture.COPYRIGHT, exif.copyright)
+            assertEquals(CameraExifFixture.COMMENT, exif.userComment)
+            assertEquals(CameraExifFixture.BODY_SERIAL, exif.bodySerial)
+            assertEquals(CameraExifFixture.LENS_SERIAL, exif.lensSerial)
+            assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exif.gpsTime)
+            assertEquals(36.0, exif.speedKmh)
             assertNull(exif.latitude, "web reads no position: its uploads would record it")
+            assertEquals(CameraExifFixture.COMMENT, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian, unicodeComment = true)))?.userComment, "UNICODE, littleEndian=$littleEndian")
         }
     }
 
@@ -70,17 +86,42 @@ class JpegExifCameraTest {
 
     @Test
     fun unknownCodesAndOutOfRangeValuesAreNull() {
-        // Metering mode 0 "unknown"; the program's count 0.
+        // Metering mode 0 "unknown"; the program's count 0; colour space 2, custom rendering 2, scene type 4, 35 mm 0.
         val tiff = CameraExifFixture.tiff(littleEndian = true).also {
-            it[CameraExifFixture.exifCountAt(7) + 4] = 0
+            it[CameraExifFixture.exifCountAt(8) + 4] = 0
             it[CameraExifFixture.exifCountAt(2)] = 0
+            it[CameraExifFixture.exifCountAt(12) + 4] = 2
+            it[CameraExifFixture.exifCountAt(13) + 4] = 2
+            it[CameraExifFixture.exifCountAt(17) + 4] = 4
+            it[CameraExifFixture.exifCountAt(16) + 4] = 0
         }
 
         val exif = assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff)))
 
         assertNull(exif.meteringMode)
         assertNull(exif.exposureProgram)
+        assertNull(exif.colorSpace)
+        assertNull(exif.customRendered)
+        assertNull(exif.sceneCaptureType)
+        assertNull(exif.focalLength35mm)
         assertEquals(0x10, exif.flash)
+    }
+
+    @Test
+    fun theRulesForTheNewerFields() {
+        assertNull(exifSubjectDistance(0.0), "unknown")
+        assertNull(exifSubjectDistance(4294967295.0), "EXIF's infinity")
+        assertNull(exifDigitalZoom(0.0), "no zoom")
+        assertEquals(36.0 * 1.609344, exifSpeedKmh(36.0, "M"))
+        assertEquals(10 * 1.852, exifSpeedKmh(10.0, "N"))
+        assertNull(exifSpeedKmh(10.0, "X"))
+        assertNull(exifGpsTime("2026:01:15", null, 0.0, 0.0), "no time, no instant")
+        assertNull(exifGpsTime(null, 6.0, 0.0, 30.0), "no date, no instant")
+        assertNull(exifGpsTime("2026:13:40", 6.0, 0.0, 30.0))
+        assertEquals(Instant.parse("2026-01-15T06:00:30.500Z"), exifGpsTime("2026:01:15", "06:00:30.5"))
+        assertNull(exifUserComment(ByteArray(8)), "an empty comment")
+        assertEquals("hi", exifUserComment(ByteArray(8) + "hi\u0000\u0000".encodeToByteArray()), "undefined: as UTF-8")
+        assertNull(exifUserComment("JIS".encodeToByteArray() + ByteArray(5) + "x".encodeToByteArray()))
     }
 
     @Test
@@ -119,8 +160,8 @@ class JpegExifCameraTest {
         assertNull(readJpegExifCamera(CameraExifFixture.inJpeg(noIfd)))
         assertNull(readJpegExifOrientation(CameraExifFixture.inJpeg(noIfd)))
 
-        // Make's count, 0x80000000, the first IFD0 entry's at 10 + 4: the rest still reads.
-        val hugeMake = tiff.copyOf().also { it[14] = 0; it[15] = 0; it[16] = 0; it[17] = 0x80.toByte() }
+        // Make's count, 0x80000000, the second IFD0 entry's at 10 + 12 + 4: the rest still reads.
+        val hugeMake = tiff.copyOf().also { it[26] = 0; it[27] = 0; it[28] = 0; it[29] = 0x80.toByte() }
         val exif = assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(hugeMake)))
         assertNull(exif.cameraMake)
         assertEquals(CameraExifFixture.MODEL, exif.cameraModel)

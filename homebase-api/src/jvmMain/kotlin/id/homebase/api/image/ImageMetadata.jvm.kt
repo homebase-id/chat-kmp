@@ -83,6 +83,23 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         modifiedAt = parseExifLocalDateTime(ifd0?.getString(ExifIFD0Directory.TAG_DATETIME)),
         imageDirectionDegrees = exifImageDirection(gps?.double(GpsDirectory.TAG_IMG_DIRECTION)),
         horizontalErrorMeters = exifHorizontalError(gps?.double(GpsDirectory.TAG_H_POSITIONING_ERROR)),
+        focalLength35mm = exifFocalLength35mm(sub?.getInteger(ExifSubIFDDirectory.TAG_35MM_FILM_EQUIV_FOCAL_LENGTH)),
+        digitalZoomRatio = exifDigitalZoom(sub?.double(ExifSubIFDDirectory.TAG_DIGITAL_ZOOM_RATIO)),
+        sceneCaptureType = exifSceneCaptureType(sub?.getInteger(ExifSubIFDDirectory.TAG_SCENE_CAPTURE_TYPE)),
+        customRendered = exifCustomRendered(sub?.getInteger(ExifSubIFDDirectory.TAG_CUSTOM_RENDERED)),
+        colorSpace = exifColorSpace(sub?.getInteger(ExifSubIFDDirectory.TAG_COLOR_SPACE)),
+        subjectDistanceMeters = exifSubjectDistance(sub?.double(ExifSubIFDDirectory.TAG_SUBJECT_DISTANCE)),
+        imageDescription = exifName(ifd0?.getString(ExifIFD0Directory.TAG_IMAGE_DESCRIPTION)),
+        artist = exifName(ifd0?.getString(ExifIFD0Directory.TAG_ARTIST)),
+        copyright = exifName(ifd0?.getString(ExifIFD0Directory.TAG_COPYRIGHT)),
+        userComment = exifUserComment(sub?.getByteArray(ExifSubIFDDirectory.TAG_USER_COMMENT)),
+        bodySerial = exifName(sub?.getString(ExifSubIFDDirectory.TAG_BODY_SERIAL_NUMBER)),
+        lensSerial = exifName(sub?.getString(ExifSubIFDDirectory.TAG_LENS_SERIAL_NUMBER)),
+        gpsTime = gps?.let { dir ->
+            val time = dir.getRationalArray(GpsDirectory.TAG_TIME_STAMP)?.takeIf { it.size == 3 && it.all { r -> r.denominator != 0L } }
+            exifGpsTime(dir.getString(GpsDirectory.TAG_DATE_STAMP), time?.get(0)?.toDouble(), time?.get(1)?.toDouble(), time?.get(2)?.toDouble())
+        },
+        speedKmh = exifSpeedKmh(gps?.double(GpsDirectory.TAG_SPEED), gps?.getString(GpsDirectory.TAG_SPEED_REF)),
     )
 }
 

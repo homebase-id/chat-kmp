@@ -101,6 +101,7 @@ import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.info.InfoButton
+import id.homebase.photobase.info.LiveButton
 import id.homebase.photobase.info.PhotoInfoSheet
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
@@ -304,10 +305,6 @@ fun PhotoGalleryScreen(
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
             editable = gallery != PhotoGallery.Bin,
-            onReplay = {
-                infoOn = null
-                motionReplay += 1
-            }.takeIf { playsMotionClips },
             onDismiss = { infoOn = null },
         )
     }
@@ -327,6 +324,7 @@ fun PhotoGalleryScreen(
                         heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
                         onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { source != null },
                         motionReplay = motionReplay,
+                        onReplay = { motionReplay += 1 },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -367,6 +365,7 @@ private fun GalleryViewer(
     heart: Boolean?,
     onInfo: ((PhotoGalleryItem) -> Unit)?,
     motionReplay: Int,
+    onReplay: () -> Unit,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -437,6 +436,7 @@ private fun GalleryViewer(
                 onDelete = onMoveToBin,
                 extraActions = {
                     if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+                    if (item.motion != null && playsMotionClips) LiveButton(onReplay)
                     if (onInfo != null) InfoButton { onInfo(item) }
                 },
                 onDismiss = close,

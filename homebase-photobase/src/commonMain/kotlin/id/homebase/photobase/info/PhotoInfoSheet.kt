@@ -3,16 +3,16 @@ package id.homebase.photobase.info
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.AddLocationAlt
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Copyright
+import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Camera
@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Exposure
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.MotionPhotosOn
 import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -32,8 +33,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -42,23 +43,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.location.WebMercator
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.media.MediaLocation
+import id.homebase.chat.widget.video.playsMotionClips
 import id.homebase.common.util.formatBytes
 import id.homebase.common.util.formatDecimal
-import id.homebase.core.location.map.TiledMapView
+import id.homebase.chat.widget.LocationPreviewCard
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.formatTime
 import id.homebase.core.util.offsetLabel
@@ -66,8 +65,28 @@ import id.homebase.core.widget.AdaptiveSheet
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import id.homebase.photobase.ui.ToolbarAction
 import id.homebase.resources.MR
-import id.homebase.resources.cd_location_pin
 import id.homebase.resources.photobase_info_accuracy
+import id.homebase.resources.photobase_info_speed
+import id.homebase.resources.photobase_info_gps_time
+import id.homebase.resources.photobase_info_lens_serial
+import id.homebase.resources.photobase_info_body_serial
+import id.homebase.resources.photobase_info_serials
+import id.homebase.resources.photobase_info_artist
+import id.homebase.resources.photobase_info_description
+import id.homebase.resources.photobase_info_subject_distance
+import id.homebase.resources.photobase_info_color_wide
+import id.homebase.resources.photobase_info_color_srgb
+import id.homebase.resources.photobase_info_processed
+import id.homebase.resources.photobase_info_scene_night
+import id.homebase.resources.photobase_info_scene_portrait
+import id.homebase.resources.photobase_info_scene_landscape
+import id.homebase.resources.photobase_info_zoom
+import id.homebase.resources.photobase_info_focal_35mm
+import id.homebase.resources.photobase_info_archived_body
+import id.homebase.resources.photobase_info_archived
+import id.homebase.resources.photobase_info_uses
+import id.homebase.resources.photobase_info_changed_on
+import id.homebase.resources.photobase_info_backed_up_on
 import id.homebase.resources.photobase_info_add_location
 import id.homebase.resources.photobase_info_albums
 import id.homebase.resources.photobase_info_altitude_above
@@ -95,6 +114,7 @@ import id.homebase.resources.photobase_info_lens
 import id.homebase.resources.photobase_info_list
 import id.homebase.resources.photobase_info_live
 import id.homebase.resources.photobase_info_live_body
+import id.homebase.resources.photobase_info_live_body_still
 import id.homebase.resources.photobase_info_location
 import id.homebase.resources.photobase_info_location_details
 import id.homebase.resources.photobase_info_megapixels
@@ -107,7 +127,6 @@ import id.homebase.resources.photobase_info_metering_pattern
 import id.homebase.resources.photobase_info_metering_spot
 import id.homebase.resources.photobase_info_modified
 import id.homebase.resources.photobase_info_open
-import id.homebase.resources.photobase_info_open_map
 import id.homebase.resources.photobase_info_place_failed
 import id.homebase.resources.photobase_info_program_action
 import id.homebase.resources.photobase_info_program_aperture
@@ -121,6 +140,7 @@ import id.homebase.resources.photobase_info_quality_untouched
 import id.homebase.resources.photobase_info_replay
 import id.homebase.resources.photobase_info_save_failed
 import id.homebase.resources.photobase_info_shutter
+import id.homebase.resources.photobase_info_software
 import id.homebase.resources.photobase_info_title
 import id.homebase.resources.photobase_info_white_balance_auto
 import id.homebase.resources.photobase_info_white_balance_manual
@@ -135,7 +155,6 @@ import kotlinx.datetime.toInstant
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.time.Instant
 
 /**
@@ -149,8 +168,6 @@ fun PhotoInfoSheet(
     albums: List<String>,
     backedUp: Boolean,
     editable: Boolean,
-    /** Plays a Live photo's clip again; null where clips don't play. */
-    onReplay: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
@@ -162,7 +179,7 @@ fun PhotoInfoSheet(
     var editing by remember { mutableStateOf<Editing?>(null) }
     val capturedAtMs = uiState?.capturedAtMs ?: item.capturedAtMs
     val taken = remember(capturedAtMs, exif, uiState?.offsetByHand) { takenAt(capturedAtMs, exif, uiState?.offsetByHand) }
-    val canEdit = editable && uiState != null
+    val canEdit = editable && uiState != null && !uiState.saving
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -186,13 +203,17 @@ fun PhotoInfoSheet(
             } else if (canEdit) {
                 InfoRow(Icons.Outlined.AddLocationAlt, stringResource(MR.string.photobase_info_add_location), null, Modifier.clickable { editing = Editing.Place })
             }
-            LocationDetailsRow(location, exif)
+            location?.let { LocationDetailsRow(it, exif) }
             FileRow(item)
-            if (item.motion != null) LiveRow(onReplay)
+            if (item.motion != null) LiveRow()
             CameraSection(uiState?.camera ?: InfoPart.Loading)
-            exif?.let { EditedRow(it) }
+            exif?.let {
+                EditedRow(it)
+                AboutRows(it)
+            }
             if (albums.isNotEmpty()) InfoRow(Icons.Outlined.PhotoAlbum, stringResource(MR.string.photobase_info_albums), joined(albums, MR.string.photobase_info_list))
-            if (backedUp) InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), stringResource(MR.string.photobase_info_backed_up_body))
+            if (item.archived) InfoRow(Icons.Outlined.Archive, stringResource(MR.string.photobase_info_archived), stringResource(MR.string.photobase_info_archived_body))
+            if (backedUp) BackedUpRow(item)
             if (editable) {
                 Text(
                     stringResource(MR.string.photobase_info_edits_note),
@@ -247,66 +268,41 @@ private fun WhenRow(taken: Pair<Instant, UtcOffset?>, onEdit: (() -> Unit)?) {
 }
 
 @Composable
-private fun WhereSection(at: MediaLocation, place: InfoPart<String>, source: PhotoInfoSource, onEdit: (() -> Unit)?) {
-    val uriHandler = LocalUriHandler.current
-    val openMap = stringResource(MR.string.photobase_info_open_map)
-    val headline = when (place) {
-        InfoPart.Failed -> stringResource(MR.string.photobase_info_place_failed)
-        InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
-        is InfoPart.Read -> place.value ?: stringResource(MR.string.photobase_info_location)
-    }
+private fun WhereSection(at: MediaLocation, place: InfoPart<LocationPreview>, source: PhotoInfoSource, onEdit: (() -> Unit)?) {
     val trailing: (@Composable () -> Unit)? = onEdit?.let { { EditButton(MR.string.photobase_info_edit_location, it) } }
     // With Maps at None the place stays on the device: no map, no lookup and no link.
-    if (!source.mapsOnline) return InfoRow(Icons.Outlined.Place, headline, coordinates(at), trailing = trailing)
+    if (!source.mapsOnline) return InfoRow(Icons.Outlined.Place, stringResource(MR.string.photobase_info_location), coordinates(at), trailing = trailing)
+    val uriHandler = LocalUriHandler.current
     val open = {
         runCatching { uriHandler.openUri(mapsUrl(at)) }.onFailure { Logger.w(tag = "PhotoInfoSheet", throwable = it) { "maps link not opened" } }
         Unit
     }
-    val opens = Modifier.clickable(onClickLabel = openMap, role = Role.Button, onClick = open)
-    PlaceMap(at, source, opens)
-    InfoRow(Icons.Outlined.Place, headline, coordinates(at), opens, trailing)
+    // Until it's read, the card holds a pin and the coordinates.
+    val preview = (place as? InfoPart.Read)?.value ?: LocationPreview(at.latitude, at.longitude, coordinates(at), imageUrl = null, imageWidth = null, imageHeight = null)
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
+    ) {
+        LocationPreviewCard(preview, onOpen = open)
+    }
+    val failed = (place as? InfoPart.Failed)?.let { stringResource(MR.string.photobase_info_place_failed) }
+    InfoRow(Icons.Outlined.Place, coordinates(at), failed, trailing = trailing)
 }
 
 @Composable
-private fun LocationDetailsRow(location: MediaLocation?, exif: ImageMetadata?) {
+private fun LocationDetailsRow(location: MediaLocation, exif: ImageMetadata?) {
     val details = buildList {
-        location?.altitude?.let {
+        location.altitude?.let {
             val meters = formatDecimal(abs(it), 0)
             add(stringResource(if (it < 0) MR.string.photobase_info_altitude_below else MR.string.photobase_info_altitude_above, meters))
         }
         exif?.imageDirectionDegrees?.let { add(stringResource(MR.string.photobase_info_facing, formatDecimal(it, 0))) }
         exif?.horizontalErrorMeters?.let { add(stringResource(MR.string.photobase_info_accuracy, formatDecimal(it, 0))) }
+        exif?.speedKmh?.let { add(stringResource(MR.string.photobase_info_speed, formatDecimal(it, 0))) }
+        exif?.gpsTime?.let { add(stringResource(MR.string.photobase_info_gps_time, "${formatMediumDate(it)} ${formatTime(it)}")) }
     }
     if (details.isNotEmpty()) InfoRow(Icons.Outlined.Explore, stringResource(MR.string.photobase_info_location_details), details)
-}
-
-@Composable
-private fun PlaceMap(at: MediaLocation, source: PhotoInfoSource, modifier: Modifier) {
-    val (x, y) = remember(at) { WebMercator.latLonToUnit(at.latitude, at.longitude) }
-    val pin = stringResource(MR.string.cd_location_pin)
-    TiledMapView(
-        bbox = remember(x, y) { mapBox(x, y) },
-        showMapTiles = true,
-        fetchTile = source::tile,
-        interactive = false,
-        resetViewportOn = at,
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)),
-        markerContent = { project, ready ->
-            if (ready) {
-                Icon(
-                    Icons.Filled.LocationOn,
-                    contentDescription = pin,
-                    tint = MaterialTheme.colorScheme.primary,
-                    // The pin's point, at the bottom of the icon, on the photo's place.
-                    modifier = Modifier.size(PIN).offset {
-                        val point = project(x, y)
-                        val size = PIN.toPx()
-                        IntOffset((point.x - size / 2).roundToInt(), (point.y - size).roundToInt())
-                    },
-                )
-            }
-        },
-    )
 }
 
 @Composable
@@ -334,12 +330,11 @@ private fun qualityLabel(quality: MediaQuality?, untouched: Boolean): String? = 
 }
 
 @Composable
-private fun LiveRow(onReplay: (() -> Unit)?) {
+private fun LiveRow() {
     InfoRow(
         Icons.Outlined.MotionPhotosOn,
         stringResource(MR.string.photobase_info_live),
-        stringResource(MR.string.photobase_info_live_body),
-        trailing = onReplay?.let { { TextButton(onClick = it) { Text(stringResource(MR.string.photobase_info_replay)) } } },
+        stringResource(if (playsMotionClips) MR.string.photobase_info_live_body else MR.string.photobase_info_live_body_still),
     )
 }
 
@@ -354,6 +349,8 @@ private fun CameraSection(camera: InfoPart<ImageMetadata>) {
                 exif.fNumber?.let { add(stringResource(MR.string.photobase_info_aperture, formatDecimal(it, 1))) }
                 exif.exposureTimeSeconds?.let { add(stringResource(MR.string.photobase_info_shutter, shutter(it))) }
                 exif.focalLengthMm?.let { add(stringResource(MR.string.photobase_info_focal_length, formatDecimal(it, 1))) }
+                exif.focalLength35mm?.let { add(stringResource(MR.string.photobase_info_focal_35mm, it)) }
+                exif.digitalZoomRatio?.takeIf { it > 1.0 }?.let { add(stringResource(MR.string.photobase_info_zoom, formatDecimal(it, 1))) }
                 exif.iso?.let { add(stringResource(MR.string.photobase_info_iso, it)) }
             }
             InfoRow(Icons.Outlined.PhotoCamera, cameraName(exif.cameraMake, exif.cameraModel), settings)
@@ -364,21 +361,61 @@ private fun CameraSection(camera: InfoPart<ImageMetadata>) {
                 exif.meteringMode?.let { meteringName(it) }?.let { add(stringResource(it)) }
                 exif.flash?.let { add(stringResource(if (it and 1 == 1) MR.string.photobase_info_flash_fired else MR.string.photobase_info_flash_off)) }
                 exif.whiteBalance?.let { add(stringResource(if (it == 1) MR.string.photobase_info_white_balance_manual else MR.string.photobase_info_white_balance_auto)) }
+                exif.sceneCaptureType?.let { sceneName(it) }?.let { add(stringResource(it)) }
+                if (exif.customRendered == 1) add(stringResource(MR.string.photobase_info_processed))
+                exif.colorSpace?.let { add(stringResource(if (it == 1) MR.string.photobase_info_color_srgb else MR.string.photobase_info_color_wide)) }
+                exif.subjectDistanceMeters?.let { add(stringResource(MR.string.photobase_info_subject_distance, formatDecimal(it, 1))) }
             }
             if (exposure.isNotEmpty()) InfoRow(Icons.Outlined.Exposure, stringResource(MR.string.photobase_info_exposure), exposure)
         }
     }
 }
 
-// Software alone, or when it was last saved too, but not a "modified" that's only the capture time again.
+// "Edited with" only when the file was saved after it was taken: phones write their own version as the software.
 @Composable
 private fun EditedRow(exif: ImageMetadata) {
-    val modified = exif.modifiedAt?.takeIf { it != exif.capturedAt }
-    val software = exif.software
+    val modified = exif.modifiedAt?.takeIf { exif.capturedAt != null && it != exif.capturedAt }
     // EXIF's clock has no zone: read in this device's, it shows as written.
     val modifiedText = modified?.let { stringResource(MR.string.photobase_info_modified, formatMediumDate(it.toInstant(TimeZone.currentSystemDefault()))) }
-    val headline = software?.let { stringResource(MR.string.photobase_info_edited_with, it) } ?: modifiedText ?: return
-    InfoRow(Icons.Outlined.AutoFixHigh, headline, modifiedText.takeIf { software != null })
+    val software = exif.software
+    when {
+        software != null && modifiedText != null -> InfoRow(Icons.Outlined.AutoFixHigh, stringResource(MR.string.photobase_info_edited_with, software), modifiedText)
+        modifiedText != null -> InfoRow(Icons.Outlined.AutoFixHigh, modifiedText, null)
+        software != null -> InfoRow(Icons.Outlined.Memory, software, stringResource(MR.string.photobase_info_software))
+    }
+}
+
+// The words, credit and serials a camera or editor wrote into it.
+@Composable
+private fun AboutRows(exif: ImageMetadata) {
+    val words = listOfNotNull(exif.imageDescription, exif.userComment).distinct()
+    if (words.isNotEmpty()) InfoRow(Icons.AutoMirrored.Outlined.Notes, words.first(), joined(words.drop(1), MR.string.photobase_info_joined) ?: stringResource(MR.string.photobase_info_description))
+    val credit = listOfNotNull(exif.artist?.let { stringResource(MR.string.photobase_info_artist, it) }, exif.copyright)
+    InfoRow(Icons.Outlined.Copyright, null, credit)
+    val serials = listOfNotNull(
+        exif.bodySerial?.let { stringResource(MR.string.photobase_info_body_serial, it) },
+        exif.lensSerial?.let { stringResource(MR.string.photobase_info_lens_serial, it) },
+    )
+    if (serials.isNotEmpty()) InfoRow(Icons.Outlined.Tag, stringResource(MR.string.photobase_info_serials), serials)
+}
+
+// When it reached your Homebase, when its record there last changed, and the space all its copies take.
+@Composable
+private fun BackedUpRow(item: PhotoGalleryItem) {
+    val details = buildList {
+        if (item.backedUpAtMs > 0) add(stringResource(MR.string.photobase_info_backed_up_on, formatMediumDate(Instant.fromEpochMilliseconds(item.backedUpAtMs))))
+        // A minute's grace: the backup itself writes the record more than once.
+        if (item.changedAtMs > item.backedUpAtMs + 60_000) add(stringResource(MR.string.photobase_info_changed_on, formatMediumDate(Instant.fromEpochMilliseconds(item.changedAtMs))))
+        item.storedBytes?.let { add(stringResource(MR.string.photobase_info_uses, formatBytes(it))) }
+    }
+    InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), joined(details, MR.string.photobase_info_joined) ?: stringResource(MR.string.photobase_info_backed_up_body))
+}
+
+private fun sceneName(code: Int): StringResource? = when (code) {
+    1 -> MR.string.photobase_info_scene_landscape
+    2 -> MR.string.photobase_info_scene_portrait
+    3 -> MR.string.photobase_info_scene_night
+    else -> null
 }
 
 private fun programName(code: Int): StringResource? = when (code) {
@@ -440,9 +477,14 @@ private fun InfoRow(
     )
 }
 
-private val PIN = 32.dp
 
 @Composable
 fun InfoButton(onClick: () -> Unit) {
     ToolbarAction(Icons.Outlined.Info, MR.string.photobase_info_open, enabled = true, onClick)
+}
+
+/** Plays a Live photo's clip again. */
+@Composable
+fun LiveButton(onClick: () -> Unit) {
+    ToolbarAction(Icons.Outlined.MotionPhotosOn, MR.string.photobase_info_replay, enabled = true, onClick)
 }

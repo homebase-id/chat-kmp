@@ -138,6 +138,7 @@ class PhotoGalleryViewModel(
     touchedDays: Flow<Map<Int, List<HomebaseFile>>?> = emptyFlow(),
     countFailed: Flow<Boolean> = flowOf(false),
     private val recount: suspend () -> Unit = {},
+    private val recountDays: suspend (Collection<Int>) -> Unit = {},
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
@@ -221,6 +222,13 @@ class PhotoGalleryViewModel(
                         items.size <= READ_WHOLE_DAY_UP_TO || library == null || library.countOf(day) != items.size
                     }.keys
                 } else {
+                    // A photo whose time changed arrives on its new day only: the one it left still holds it.
+                    val arrived = byDay.values.flatMapTo(mutableSetOf()) { files -> files.map { it.fileId } }
+                    val left = loaded.filter { (day, items) -> day !in byDay && items.any { it.fileId in arrived } }.keys
+                    if (left.isNotEmpty()) {
+                        stale += left
+                        viewModelScope.launch { recountDays(left) }
+                    }
                     for ((day, files) in byDay) {
                         val held = loaded[day]
                         when {

@@ -83,6 +83,11 @@ class PhotoDayIndex(
 
     suspend fun recount() = mutex.withLock { orCountAgainLater { rebuild() } }
 
+    /** Counts [days] again: ones a photo left, which a change says nothing about, as it names only where it went. */
+    suspend fun recountDays(days: Collection<Int>) = mutex.withLock {
+        if (builtFor != null) orCountAgainLater { put(days.map { DayCount(it, photosOn(it)) }) }
+    }
+
     /** Photobase is gone: count again from scratch next time. */
     suspend fun forget() = mutex.withLock {
         current.value = LibraryDays(IntArray(0), IntArray(0))

@@ -1,5 +1,6 @@
 package id.homebase.photobase.info
 
+import id.homebase.api.client.location.LocationPreview
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
 import id.homebase.photobase.gallery.PhotoGalleryItem
@@ -19,6 +20,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
+private fun InfoPart<LocationPreview>.address() = (this as? InfoPart.Read)?.value?.address
+
 class PhotoInfoViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
@@ -32,7 +35,9 @@ class PhotoInfoViewModelTest {
         var placeReads = 0
         val saved = mutableListOf<PhotoEdit>()
         override suspend fun camera(item: PhotoGalleryItem) = camera()
-        override suspend fun place(latitude: Double, longitude: Double): String? = place().also { placeReads++ }
+        override suspend fun preview(latitude: Double, longitude: Double): LocationPreview =
+            LocationPreview(latitude, longitude, place().orEmpty(), null, null, null).also { placeReads++ }
+        override suspend fun address(latitude: Double, longitude: Double): String? = null
         override suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray? = null
         override suspend fun save(item: PhotoGalleryItem, edit: PhotoEdit) {
             save(edit)
@@ -52,7 +57,7 @@ class PhotoInfoViewModelTest {
         viewModel.show(item(located))
 
         assertEquals(InfoPart.Failed, viewModel.uiState.value.camera)
-        assertEquals(InfoPart.Read("San Francisco"), viewModel.uiState.value.place)
+        assertEquals("San Francisco", viewModel.uiState.value.place.address())
         assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.location)
     }
 
@@ -143,7 +148,7 @@ class PhotoInfoViewModelTest {
 
         viewModel.save(PhotoEdit.Place(MediaLocation(35.68, 139.76)))
         assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.location)
-        assertEquals(InfoPart.Read("Tokyo"), viewModel.uiState.value.place)
+        assertEquals("Tokyo", viewModel.uiState.value.place.address())
 
         viewModel.save(PhotoEdit.Place(null))
         assertNull(viewModel.uiState.value.location)
@@ -171,5 +176,29 @@ class PhotoInfoViewModelTest {
         viewModel.show(item("""{"v":1,"offsetSeconds":32400}"""))
 
         assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.offsetByHand)
+    }
+
+    @Test
+    fun anOffsetOutOfRangeIsIgnoredNotACrash() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+
+        viewModel.show(item("""{"v":1,"offsetSeconds":100000}"""))
+
+        assertNull(viewModel.uiState.value.offsetByHand)
+    }
+
+    @Test
+    fun reopenedBeforeTheSyncLandsAnEditStillShows() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { "Tokyo" }))
+        val photo = item(located)
+        viewModel.show(photo)
+        viewModel.save(PhotoEdit.Place(MediaLocation(35.68, 139.76)))
+        viewModel.close()
+
+        viewModel.show(photo)
+
+        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.location)
     }
 }
