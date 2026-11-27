@@ -248,7 +248,7 @@ class HomebaseImageLoader(
                         fileId = data.fileId,
                         payloadKey = data.payloadKey,
                         size = null,
-                        lastModified = data.lastModified,
+                        lastModified = data.version,
                         causeClass = e::class.simpleName
                     ),
                     e

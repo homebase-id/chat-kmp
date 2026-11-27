@@ -34,7 +34,8 @@ data class HomebaseImageData(
     val isEncrypted: Boolean = true,
     /** Last modification timestamp for cache validation */
     val lastModified: Long? = null,
-    val payloadUid: Long? = null,
+    /** [PayloadDescriptor.version]: keys the full-size image. */
+    val version: Long? = lastModified,
     /** Local pending file (for images being uploaded/sent) */
     val pendingFileUri: String? = null,
     /**
@@ -61,9 +62,6 @@ data class HomebaseImageData(
 ) {
     val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, peer)
 
-    /** As [PayloadDescriptor.version]: a payload overwritten under its key must not be read from the old one's cache. */
-    val version: Long? get() = payloadUid ?: lastModified
-
     // Peer images share driveId/fileId space with ours, so a cache key names the author too.
     val peerKeyPrefix: String get() = peer?.let { "${it.odinId}@" }.orEmpty()
 
@@ -80,7 +78,7 @@ data class HomebaseImageData(
             keyHeader = KeyHeader.newRandom16(),
         )
 
-        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
+        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified/version from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
         fun from(
             driveId: Uuid,
             fileId: Uuid,
@@ -106,7 +104,7 @@ data class HomebaseImageData(
                 loadFullPayload = loadFullPayload,
                 isEncrypted = isEncrypted,
                 lastModified = lastModified,
-                payloadUid = descriptor.uid,
+                version = descriptor.version,
                 pendingFileUri = pendingFileUri,
                 payloadContentType = payloadContentType,
                 keyHeader = keyHeader,

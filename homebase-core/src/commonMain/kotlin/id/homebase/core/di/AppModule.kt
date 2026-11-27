@@ -1055,8 +1055,8 @@ val appModule = module {
     single {
         val reader = get<PayloadReader>()
         AgentUiTreeLoader(
-            fetch = { fileId, keyHeader, lastModified ->
-                reader.bytes(PayloadLocation.Own(chatTargetDrive.alias, fileId), ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, version = lastModified)?.bytes
+            fetch = { fileId, keyHeader, version ->
+                reader.bytes(PayloadLocation.Own(chatTargetDrive.alias, fileId), ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, version = version)?.bytes
             },
             scope = get(),
             events = get(),

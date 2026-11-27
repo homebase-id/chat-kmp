@@ -97,7 +97,7 @@ data class DedicatedThumbCache(
  * Unlike [id.homebase.api.client.profile.PublicProfileProviderCached], this
  * cache has no TTL or `Cache-Control` handling: drive file bytes are
  * immutable at a given `(driveId, fileId, key, chunkStart, chunkLength,
- * lastModified)` tuple, so the cacheKey itself is version-addressed.
+ * version)` tuple (the payload's uid, else lastModified), so the cacheKey itself is version-addressed.
  * A new version lands under a new key, which gets fetched fresh; the old
  * key ages out through LRU eviction.
  *

@@ -41,10 +41,7 @@ class PayloadReader(
     private val peer: PeerFileByGlobalTransitProvider,
     private val fileOps: FileOperationsProvider,
 ) {
-    /**
-     * The payload, or the range of it, decrypted; null when it isn't there. [version] ([PayloadDescriptor.version]) keys
-     * the cache and the URL, so a payload overwritten under its key isn't read from the old one's copy.
-     */
+    /** The payload, or the range of it, decrypted; null when it isn't there. [version] is [PayloadDescriptor.version]. */
     suspend fun bytes(
         at: PayloadLocation,
         key: String,
