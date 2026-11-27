@@ -38,6 +38,20 @@ import kotlinx.coroutines.test.runTest
 class MomentsHeicOriginalScrubTest {
 
     @Test
+    fun anOffsetWithoutItsLocalTimeIsNotSent() {
+        val picked = AttachmentPendingFile.FileImage(
+            id = Uuid.random(),
+            file = platformFileFromPath(File.createTempFile("moment_", ".jpg").absolutePath),
+            metadata = ImageMetadata(captureUtcOffset = kotlinx.datetime.UtcOffset(hours = 9), cameraModel = "Pixel 9"),
+            includeLocation = false,
+        )
+
+        val info = assertNotNull(picked.toMediaInfo())
+        kotlin.test.assertNull(info.captureUtcOffsetSeconds)
+        kotlin.test.assertEquals("Pixel 9", info.cameraModel)
+    }
+
+    @Test
     fun heicPostedOnOriginalWithLocationOff_uploadsNoGps() = runTest {
         val fileOps = JvmFileOperationsProvider()
         val realEncryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())

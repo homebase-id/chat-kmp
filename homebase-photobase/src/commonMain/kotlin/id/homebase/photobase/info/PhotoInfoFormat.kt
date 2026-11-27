@@ -16,11 +16,11 @@ import kotlinx.datetime.offsetAt
 internal fun megapixels(width: Int, height: Int): String? =
     (width.toLong() * height / 1_000_000.0).takeIf { it >= 0.05 }?.let { formatDecimal(it, 1) }
 
-/** As cameras show it: a fraction, "1/250", up to a third of a second or for a whole fraction; else seconds, "0.8". */
+/** As cameras show it: a fraction, "1/250", up to a quarter second or for a whole fraction; else seconds, "0.3". */
 internal fun shutter(seconds: Double): String {
     val denominator = 1.0 / seconds
     val whole = abs(denominator - denominator.roundToLong()) < 0.05
-    return if (seconds < 1.0 && (denominator >= 3 || whole)) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
+    return if (seconds < 1.0 && (denominator >= 4 || whole)) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
 }
 
 /**
@@ -48,10 +48,12 @@ internal const val MAP_ZOOM = 15
 
 /**
  * [at] shifted so a formatter that shows the [system] zone reads the clock at [offset], the zone the photo was taken
- * in. Near the system zone's own change of offset it can be an hour out.
+ * in. Shifted again by the system's offset where it lands, so a change of offset in between doesn't put it an hour out.
  */
-internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instant =
-    at + (offset.totalSeconds - system.offsetAt(at).totalSeconds).seconds
+internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instant {
+    val first = at + (offset.totalSeconds - system.offsetAt(at).totalSeconds).seconds
+    return at + (offset.totalSeconds - system.offsetAt(first).totalSeconds).seconds
+}
 
 internal data class FileFacts(val name: String?, val width: Int?, val height: Int?, val bytes: Long?)
 

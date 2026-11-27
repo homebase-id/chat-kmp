@@ -27,6 +27,7 @@ class ImageMetadataCameraContractTest {
 
         val twoIsos = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoTwice = true), jpeg)))
         assertEquals(400, twoIsos.iso, "an ISO of two values reads as its first")
+        assertEquals(400, readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoThrice = true), jpeg))?.iso)
 
         val manual = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, manualLens = true), jpeg)))
         assertNull(manual.fNumber, "a manual lens's 0 is unknown, as the common reader has it")

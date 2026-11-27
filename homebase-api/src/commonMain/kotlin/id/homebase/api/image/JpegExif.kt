@@ -100,14 +100,20 @@ private class Directory(val tiff: Tiff, val at: Int) {
         return null
     }
 
+    // The first value: inline when they all fit in four bytes, else at the offset written there.
     fun long(tag: Int): Int? {
         val entry = entry(tag) ?: return null
-        return when (tiff.u16(entry + 2)) {
-            3 -> tiff.u16(entry + 8)
-            // 13 is IFD: a pointer some encoders type that way.
-            4, 13 -> tiff.u32(entry + 8)
-            else -> null
+        val type = tiff.u16(entry + 2)
+        // 13 is IFD: a pointer some encoders type that way.
+        val size = when (type) {
+            3 -> 2
+            4, 13 -> 4
+            else -> return null
         }
+        val count = tiff.u32(entry + 4)
+        val at = if (count.toLong() * size <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
+        if (at + size > tiff.end) return null
+        return if (size == 2) tiff.u16(at.toInt()) else tiff.u32(at.toInt())
     }
 
     fun rational(tag: Int): Double? {

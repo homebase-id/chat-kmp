@@ -31,7 +31,7 @@ class PhotoInfoFormatTest {
         assertEquals("1/3", shutter(1.0 / 3))
         assertEquals("1/2", shutter(0.5))
         assertEquals("0.8", shutter(0.8))
-        assertEquals("1/3", shutter(0.3))
+        assertEquals("0.3", shutter(0.3))
         assertEquals("0.4", shutter(0.4))
         assertEquals("1/81", shutter(0.0123))
         assertEquals("1/3817", shutter(0.000262))
@@ -72,6 +72,15 @@ class PhotoInfoFormatTest {
 
         assertEquals(LocalDateTime(2026, 1, 15, 15, 0), shown.toLocalDateTime(newYork))
         assertEquals("GMT+9", offsetLabel(at, UtcOffset(hours = 9).asTimeZone()))
+    }
+
+    @Test
+    fun theShiftHoldsAcrossTheViewersChangeOfClock() {
+        // Berlin goes to summer time at 01:00 UTC on 29 March; 23:30 UTC the night before is 08:30 in Tokyo.
+        val berlin = TimeZone.of("Europe/Berlin")
+        val shown = shiftedTo(Instant.parse("2026-03-28T23:30:00Z"), UtcOffset(hours = 9), berlin)
+
+        assertEquals(LocalDateTime(2026, 3, 29, 8, 30), shown.toLocalDateTime(berlin))
     }
 
     @Test

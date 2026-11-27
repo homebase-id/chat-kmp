@@ -26,6 +26,7 @@ class JpegExifCameraTest {
     @Test
     fun anIsoOfTwoValuesIsItsFirstAndAnIfdTypedPointerIsFollowed() {
         assertEquals(400, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = true, isoTwice = true)))?.iso)
+        assertEquals(400, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoThrice = true)))?.iso, "past the inline field, at its offset")
         assertEquals(1.8, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, exifPointerType = 13)))?.fNumber)
     }
 
