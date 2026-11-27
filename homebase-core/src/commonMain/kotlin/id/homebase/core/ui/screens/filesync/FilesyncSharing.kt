@@ -65,11 +65,13 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -248,13 +250,12 @@ class FilesyncSharing(
             try {
                 // The server takes a Write row only from someone already holding Write; locked so syncEditors can't remove them first.
                 editing.withLock {
-                    enroll(editorsCircle(), members)
+                    enroll(editorsCircle(), members).takeIf { it.isNotEmpty() }?.let { throw FilesyncSharingException.RecipientNotAdded(it.toList()) }
                     writeRows()
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                editorsMayHaveChanged(removalsOnly = true)
+            } catch (e: Throwable) {
+                // A cancelled share mustn't leave anyone Write on the whole drive.
+                withContext(NonCancellable) { editorsMayHaveChanged(removalsOnly = true) }
                 throw e
             }
         } else {

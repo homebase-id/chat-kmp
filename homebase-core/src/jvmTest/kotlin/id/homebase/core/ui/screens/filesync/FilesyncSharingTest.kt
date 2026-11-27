@@ -41,6 +41,7 @@ import io.ktor.http.headersOf
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.youauth.DrivePermissionSet
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.encoding.Base64
@@ -51,6 +52,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,10 +61,12 @@ import id.homebase.api.client.eventbus.EventBus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -97,7 +101,7 @@ class FilesyncSharingTest {
         val path get() = request.url.encodedPath
     }
 
-    private val sharedPages = mutableListOf<String>()
+    private val sharedPages = ConcurrentLinkedQueue<String>()
 
     private fun sharedFile(
         name: String,
@@ -158,6 +162,7 @@ class FilesyncSharingTest {
     private var rowsRefused = false
     private val rowsArrived = CompletableDeferred<Unit>()
     private var rowsLand = CompletableDeferred(Unit)
+    @Volatile private var circlesRead = CompletableDeferred<Unit>()
 
     private val engine = MockEngine { request ->
         val call = Call(request, request.body.toByteArray()).also { calls += it }
@@ -165,8 +170,9 @@ class FilesyncSharingTest {
         val body = when {
             ceiling && path.endsWith("/connections/circles/add-many") -> {
                 val (circleId, added) = call.addedTo()
-                if (circleId == editorsCircle.toString()) editorsAre(*(editors + added).toTypedArray())
-                """{"enrolled":${added.size},"deposited":0,"skipped":0,"outcomes":[]}"""
+                val refused = if (circleId == editorsCircle.toString()) refusedByAddMany else emptyList()
+                if (circleId == editorsCircle.toString()) editorsAre(*(editors + added - refused.toSet()).toTypedArray())
+                """{"enrolled":${added.size - refused.size},"deposited":0,"skipped":${refused.size},"outcomes":[${refused.joinToString { """{"odinId":"$it","kind":"skipped"}""" }}]}"""
             }
             ceiling && path.endsWith("/connections/circles/revoke") -> "{}".also {
                 val (circleId, odinId) = call.revoked()
@@ -208,10 +214,12 @@ class FilesyncSharingTest {
             path.endsWith("/share-key") -> "{}".also { storedShareKey = decrypted(call, filesyncSecret).jsonObject["appKeyLockedShareKey"]!!.jsonPrimitive.content }
             path.endsWith("/share-key/members") || path.endsWith("/shares") -> "{}"
             "/shares/" in path && request.method == HttpMethod.Delete -> "{}"
-            path.endsWith("/circles/with-members") ->
+            path.endsWith("/circles/with-members") -> {
+                circlesRead.complete(Unit)
                 if (filesyncRefused && call.asFilesync) return@MockEngine respond("""{"title":"Unauthorized"}""", io.ktor.http.HttpStatusCode.Unauthorized, json)
-                else circles
-            path.endsWith("/query-batch") -> sharedPages.removeFirstOrNull() ?: """{"searchResults":[],"hasMoreRows":false}"""
+                circles
+            }
+            path.endsWith("/query-batch") -> sharedPages.poll() ?: """{"searchResults":[],"hasMoreRows":false}"""
             path.endsWith("/files") -> """{"fileId":"${Uuid.random()}","driveId":"${SystemDriveConstants.transientTempDrive.alias}","newVersionTag":"${Uuid.random()}"}"""
             // Only a marker's in-place update is expected; any other PATCH falls through to "unexpected".
             request.method == HttpMethod.Patch && path.substringAfterLast('/').let { id -> markerFileIds.any { it.toString() == id } } ->
@@ -379,14 +387,40 @@ class FilesyncSharingTest {
 
         val shared = async { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
         rowsArrived.await()
+        circlesRead = CompletableDeferred()
         val synced = async { sharing.syncEditors() }
-        testScheduler.runCurrent()
+        // Room for a sync that skipped the lock to read the circles before the rows land; a locked one never does.
+        assertNull(withContext(Dispatchers.Default) { withTimeoutOrNull(500) { circlesRead.await() } })
         rowsLand.complete(Unit)
         shared.await()
         synced.await()
 
         assertEquals(setOf("sam.test"), editors)
         assertTrue(calls.none { it.path.endsWith("/revoke") })
+    }
+
+    @Test
+    fun aCancelledEditShareTakesBackTheWriteItGave() = runTest {
+        ceiling = true
+        rowsLand = CompletableDeferred()
+
+        val shared = async { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
+        rowsArrived.await()
+        assertEquals(setOf("sam.test"), editors)
+        shared.cancelAndJoin()
+
+        assertEquals(emptySet(), editors)
+    }
+
+    @Test
+    fun someoneTheEditorsCircleRefusesIsNamedAndNothingIsShared() = runTest {
+        ceiling = true
+        refusedByAddMany = listOf("sam.test")
+
+        val e = assertFailsWith<FilesyncSharingException.RecipientNotAdded> { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
+
+        assertEquals(listOf(sam), e.recipients)
+        assertTrue(calls.none { it.path.endsWith("/shares") })
     }
 
     private fun editorsAre(vararg members: String) {
