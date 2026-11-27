@@ -17,14 +17,12 @@ class HomebaseImageKeyer : Keyer<HomebaseImageData> {
     override fun key(data: HomebaseImageData, options: Options): String? {
         if (data.isPending) return null
         val variant = if (data.loadFullPayload) "full" else "thumb"
-        return "homebase/${identity(data)}${data.driveId}/${data.fileId}/${data.payloadKey}/$variant/${data.lastModified ?: 0}"
+        return "homebase/${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/$variant/${data.lastModified ?: 0}"
     }
 
     companion object {
         /** Build the memory cache key for the thumbnail variant of an image. */
         fun thumbnailCacheKey(data: HomebaseImageData): String =
-            "homebase/${identity(data)}${data.driveId}/${data.fileId}/${data.payloadKey}/thumb/${data.lastModified ?: 0}"
-
-        private fun identity(data: HomebaseImageData): String = data.peerKeyPrefix
+            "homebase/${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/thumb/${data.lastModified ?: 0}"
     }
 }

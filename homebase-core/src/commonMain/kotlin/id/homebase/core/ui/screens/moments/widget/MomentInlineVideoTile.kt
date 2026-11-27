@@ -58,7 +58,6 @@ import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
-import id.homebase.api.video.VideoPlayerData
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.chat.services.LocalAttachmentContext
 import id.homebase.chat.widget.video.VideoPlayerSurface
@@ -202,7 +201,10 @@ fun MomentInlineVideoTile(
             peer = peer,
         )
     }
-    val videoPlayerData = remember(fullScreenData) { fullScreenData.toVideoData() }
+    // Keyed on what the player reads, so a descriptor update (size, lastModified) doesn't restart the preload.
+    val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, payload.contentType, peer) {
+        fullScreenData.toVideoData()
+    }
     val videoDescriptor = remember(payload.descriptorContent) {
         payload.descriptorInfo() as? DescriptorContent.VideoFile
     }

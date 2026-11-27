@@ -193,6 +193,12 @@ class PostCardArticleTest {
         val own = post()
         assertEquals(own.driveId, own.mediaSource().driveId)
         assertNull(own.mediaSource().peer)
+
+        for (halfAddressed in listOf(received.copy(globalTransitId = null), received.copy(senderOdinId = null))) {
+            val stays = halfAddressed.mediaSource()
+            assertNull(stays.peer, "an author or a transit id alone can't address the author's drive")
+            assertEquals(halfAddressed.driveId, stays.driveId)
+        }
     }
 
     @Test

@@ -184,7 +184,7 @@ fun FullScreenMediaViewer(
                 is MediaPageSource.LocalFile -> remember(resolved.path) {
                     SubSamplingImageSource.LocalFile(filePath = resolved.path)
                 }
-                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
+                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn, data.peer) {
                     val imageData = HomebaseImageData.from(
                         driveId = data.driveId,
                         fileId = data.fileId,
@@ -388,6 +388,7 @@ fun FullScreenMediaViewer(
                             payload.key,
                             payload.lastModified,
                             railIv,
+                            data.peer,
                         ) {
                             HomebaseImageData.from(
                                 driveId = data.driveId,
