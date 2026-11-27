@@ -119,7 +119,7 @@ class PeerFileByGlobalTransitProvider(
         val creds = requireCreds()
         val base = "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey"
         // The by-gtid route takes the size as query params; the peer broker takes it as path segments.
-        val remotePath = "$base/thumb?width=$width&height=$height" + lastModified?.let { "&lastModified=$it" }.orEmpty()
+        val remotePath = "$base/thumb?width=$width&height=$height${versionQuery(lastModified, separator = '&')}"
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height${versionQuery(lastModified)}")
         val cacheKey =
             peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height, lastModified)
@@ -164,13 +164,8 @@ class PeerFileByGlobalTransitProvider(
         // an absent length has to become on a route taking it as a required path segment.
         val length = range.updatedChunkEnd?.let { it - start + 1 } ?: Int.MAX_VALUE.toLong()
 
-        // Both routes take the range as `/{start}/{length}` path segments rather than a Range header, so each
-        // segment is a distinct URL the edge can cache on its own.
-        val remotePath =
-            "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey/$start/$length${versionQuery(lastModified)}"
+        val (remotePath, cacheKey) = chunkRoute(peer, driveId, globalTransitId, payloadKey, start, length, lastModified)
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$remotePath")
-
-        val cacheKey = peerCacheKey("chunk", peer, driveId, globalTransitId, payloadKey, start, length, lastModified)
         val response = try {
             driveCache.readHlsChunkThrough(cacheKey) {
                 fetchViaCdnOrPeer(peer, remotePath, peerUrl, creds.accessToken, maxBytes = null, onDownloadProgress)
@@ -212,11 +207,8 @@ class PeerFileByGlobalTransitProvider(
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(chunkStart >= 0 && chunkLength > 0) { "chunk must be a positive range" }
         val creds = requireCreds()
-        val remotePath =
-            "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey/$chunkStart/$chunkLength"
+        val (remotePath, cacheKey) = chunkRoute(peer, driveId, globalTransitId, payloadKey, chunkStart, chunkLength, lastModified = null)
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$remotePath")
-        val cacheKey =
-            peerCacheKey("chunk", peer, driveId, globalTransitId, payloadKey, chunkStart, chunkLength)
         val response = try {
             driveCache.readHlsChunkThrough(cacheKey) {
                 fetchViaCdnOrPeer(peer, remotePath, peerUrl, creds.accessToken, maxBytes = null)
@@ -304,7 +296,16 @@ class PeerFileByGlobalTransitProvider(
 
     // The routes ignore lastModified, but the CDN and the platform's HTTP cache (a year's max-age) key by URL,
     // so an edited payload must be asked for by a new one.
-    private fun versionQuery(lastModified: Long?): String = lastModified?.let { "?lastModified=$it" }.orEmpty()
+    private fun versionQuery(lastModified: Long?, separator: Char = '?'): String =
+        lastModified?.let { "${separator}lastModified=$it" }.orEmpty()
+
+    // Both routes take the range as `/{start}/{length}` path segments rather than a Range header, so each
+    // segment is a distinct URL the edge can cache on its own; the decrypted and the encrypted read share it.
+    private fun chunkRoute(
+        peer: OdinId, driveId: Uuid, globalTransitId: Uuid, payloadKey: String, start: Long, length: Long, lastModified: Long?,
+    ): Pair<String, String> =
+        "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey/$start/$length${versionQuery(lastModified)}" to
+            peerCacheKey("chunk", peer, driveId, globalTransitId, payloadKey, start, length, lastModified)
 
     // The peer segment keeps these off the own-drive keys: a followed post has no local fileId, and
     // two identities can publish the same gtid on same-aliased channel drives. The key is route-agnostic

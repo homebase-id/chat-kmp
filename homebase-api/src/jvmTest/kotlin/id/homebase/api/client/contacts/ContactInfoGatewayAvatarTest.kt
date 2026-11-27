@@ -2,10 +2,8 @@
 
 package id.homebase.api.client.contacts
 
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.payload.PayloadReader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.serialization.Base64Bytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
@@ -16,7 +14,6 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.SystemDriveConstants
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -253,15 +250,6 @@ internal fun emptyContactRepository(): ContactRepository {
         credentialsManager = credentials,
         eventBus = EventBus(),
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
-    )
-}
-
-internal fun payloadReaderOver(http: HttpClient, credentials: CredentialsManager, fileOps: FakeFileOperationsProvider): PayloadReader {
-    val cached = DriveFileProviderCached(http, credentials, fileOps)
-    return PayloadReader(
-        DriveFileProvider(http, credentials, cached),
-        PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
-        fileOps,
     )
 }
 

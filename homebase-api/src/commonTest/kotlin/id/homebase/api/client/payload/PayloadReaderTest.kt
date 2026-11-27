@@ -3,10 +3,6 @@ package id.homebase.api.client.payload
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.FileOperationsProvider
@@ -89,12 +85,7 @@ class PayloadReaderTest {
                 headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${served.size}")),
             )
         })
-        val cached = DriveFileProviderCached(http, credentials, fileOps)
-        return PayloadReader(
-            DriveFileProvider(http, credentials, cached),
-            PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
-            fileOps,
-        )
+        return payloadReaderOver(http, credentials, fileOps)
     }
 
     private suspend fun PayloadReader.readEverything(at: PayloadLocation) {

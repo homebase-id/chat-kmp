@@ -74,7 +74,7 @@ class PayloadReader(
 
     /**
      * The whole payload, decrypted, streamed into [outputPath] at any size; false when it isn't there. [cache] keeps our
-     * own drive's copy for the next read (a player's replay); a followed identity's isn't cached yet.
+     * own drive's copy for the next read (a player's replay); it applies to our own drive only.
      */
     suspend fun toFile(
         at: PayloadLocation,
