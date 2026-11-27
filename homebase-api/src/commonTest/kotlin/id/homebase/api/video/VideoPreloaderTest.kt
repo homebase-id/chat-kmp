@@ -142,6 +142,26 @@ class VideoPreloaderTest {
         assertEquals(1f, lastProgress)
     }
 
+    // A prefetch holds the MP4 in memory: one bigger than our own transcodes (an untouched original) is left
+    // for the player to cache as it streams.
+    @Test
+    fun mp4LargerThanOurTranscodes_isLeftToThePlayer() = runTest {
+        for ((size, prefetched) in listOf(HLS_MIN_BYTES - 1 to true, HLS_MIN_BYTES to false, 20L * 1024 * 1024 to false)) {
+            val stub = VideoMetadata(
+                mimeType = "video/mp4",
+                isDescriptorContentComplete = true,
+                isSegmented = false,
+                key = metadataKey,
+                fileSize = size,
+            )
+            val fake = FakeVideoPrefetchDriveAccess()
+
+            newPreloader(fake).preload(playerData(stub))
+
+            assertEquals(prefetched, fake.calls.any { it is FakeVideoPrefetchDriveAccess.Call.PrefetchPayload }, "size $size")
+        }
+    }
+
     @Test
     fun unknownSizeMp4_skipsPrefetch() = runTest {
         val stub = VideoMetadata(

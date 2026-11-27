@@ -1,7 +1,6 @@
 package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,15 +70,12 @@ class VideoPreloader(
                 if (metadata?.isSegmented == true) {
                     preloadFirstHlsSegment(data, metadata, emit)
                 } else if (metadata != null) {
-                    // Render-limit gate (#845): a full-MP4 prefetch is a whole-payload
-                    // fetch into the LRU. Only ≤5 MB sent MP4s matter here (bigger sends
-                    // are HLS); an export-sized or unknown-size mp4 (foreign client)
-                    // would be refused by the network guard anyway — skip it quietly so
-                    // preload can't churn the cache or burn a doomed request.
+                    // A prefetch holds the whole MP4 in memory while it downloads, so only one the size of our own
+                    // transcodes (bigger ones are sent as HLS); the player caches a bigger one as it streams it.
                     val size = metadata.fileSize
-                    if (size <= 0L || size > PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+                    if (size <= 0L || size >= HLS_MIN_BYTES) {
                         Logger.d(tag = "VideoIO") {
-                            "preload skipped — export-sized/unknown mp4 (${size}B): ${data.fileId}/${data.payloadKey}"
+                            "preload skipped — large/unknown mp4 (${size}B), the player caches it: ${data.fileId}/${data.payloadKey}"
                         }
                     } else {
                         try {
