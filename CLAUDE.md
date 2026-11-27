@@ -404,6 +404,10 @@ description, not the source.
 
 ## UI & Design Quality
 
+Before writing a button, form or screen that starts work, or an operation that names a recipient, read
+[`UI_BEHAVIORS.md`](UI_BEHAVIORS.md): how a screen shows work in progress, blocks a second start, reports
+the outcome, handles a recipient who is still pending, and says why an operation failed.
+
 All UI code must follow **Material 3** guidelines and the **kmp-compose-multiplatform** skill. Before
 writing or modifying any screen/composable, verify:
 
