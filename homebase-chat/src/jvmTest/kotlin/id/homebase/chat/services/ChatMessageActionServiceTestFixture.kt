@@ -1,7 +1,5 @@
 package id.homebase.chat.services
 
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
@@ -20,7 +18,6 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -42,6 +39,7 @@ import id.homebase.chat.services.convo.FakeIntroductionSender
 import id.homebase.chat.services.convo.FakePayloadBundleEncryptor
 import id.homebase.chat.services.convo.FakeStatusMessageSender
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.testPayloadReader
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -185,11 +183,7 @@ class ChatMessageActionServiceTestFixture(
         )
         val fileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
         val readerFileOps = NoopFileOperationsProvider()
-        val payloadReader = PayloadReader(
-            fileProvider,
-            PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-            readerFileOps,
-        )
+        val payloadReader = testPayloadReader(httpClient, credentialsManager, driveCache, readerFileOps, own = fileProvider)
         val reactionProvider = DriveFileGroupReactionProvider(httpClient, credentialsManager)
 
         // captureHttp=true wires the REAL DriveOutboxUploader so we exercise the

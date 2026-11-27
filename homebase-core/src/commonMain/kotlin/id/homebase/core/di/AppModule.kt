@@ -1001,7 +1001,7 @@ val appModule = module {
             conversationStream = get(),
             participantLookup = get(),
             driveSyncManager = get(),
-            driveFileProvider = get<PayloadReader>(),
+            resendBytes = get<PayloadReader>().resendSource(),
             fileOperationsProvider = get(),
             serverConversationHeader = { uniqueId ->
                 driveFiles.getFileHeaderByUid(chatTargetDrive.alias, uniqueId)

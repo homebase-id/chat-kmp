@@ -253,7 +253,7 @@ public class DriveFileProvider(
      * through the disk cache. Returns null on 404. Counterpart to
      * [getPayloadBytesEncrypted] for the heal-redistribute path: the thumbnails
      * must be re-attached alongside the payload or the `updateFileByUniqueId`
-     * AppendOrOverwrite wipes them server-side (see [id.homebase.api.client.drives.files.ResendPayloadByteSource]).
+     * AppendOrOverwrite wipes them server-side (see [ResendPayloadByteSource]).
      */
     suspend fun getThumbBytesEncrypted(
         driveId: Uuid,

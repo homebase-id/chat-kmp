@@ -763,6 +763,7 @@ class MomentsPostSenderService(
         file: HomebaseFile,
     ): Pair<List<PayloadFile>, List<ThumbnailFile>> {
         val existing = file.fileMetadata.payloads.orEmpty()
+        val stored = payloadReader.resendSource()
         if (existing.isEmpty()) {
             Logger.d(tag = TAG) {
                 "reuseExistingPayloadsForResend: fileId=${file.fileId} has no payloads — nothing to re-attach"
@@ -774,7 +775,7 @@ class MomentsPostSenderService(
         val thumbnails = mutableListOf<ThumbnailFile>()
         for (descriptor in existing) {
             try {
-                val bytes = payloadReader.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
+                val bytes = stored.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
                 if (bytes == null || bytes.isEmpty()) {
                     Logger.w(tag = TAG) {
                         "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — bytes ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
@@ -816,7 +817,7 @@ class MomentsPostSenderService(
                         }
                         continue
                     }
-                    val thumbBytes = payloadReader.getThumbBytesEncrypted(
+                    val thumbBytes = stored.getThumbBytesEncrypted(
                         driveId = drive,
                         fileId = file.fileId,
                         payloadKey = descriptor.key,

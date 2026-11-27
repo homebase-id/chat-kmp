@@ -10,12 +10,9 @@ import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.payload.PayloadReader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.MainIndexMetaHelpers
@@ -28,6 +25,7 @@ import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.testPayloadReader
 import id.homebase.chat.viewonce.VO_OWNER
 import id.homebase.chat.viewonce.ownerCredentials
 import id.homebase.core.config.chatTargetDrive
@@ -196,6 +194,7 @@ internal fun testChatMessageStream(
 ): ChatMessageStream {
     val httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
     val driveCache = DriveFileProviderCached(httpClient, credentialsManager, NoopFileOperationsProvider())
+    val drives = DriveFileProvider(httpClient, credentialsManager, driveCache)
     return ChatMessageStream(
         credentialsManager = credentialsManager,
         contactService = ContactService(
@@ -219,12 +218,8 @@ internal fun testChatMessageStream(
         dbm = dbm,
         eventBus = eventBus,
         scope = scope,
-        driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache),
-        payloadReader = PayloadReader(
-            DriveFileProvider(httpClient, credentialsManager, driveCache),
-            PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-            NoopFileOperationsProvider(),
-        ),
+        driveFileProvider = drives,
+        payloadReader = testPayloadReader(httpClient, credentialsManager, driveCache, NoopFileOperationsProvider(), own = drives),
         optimisticWriter = optimisticWriter,
         serverHistory = ChatServerHistory(
             credentialsManager = credentialsManager,

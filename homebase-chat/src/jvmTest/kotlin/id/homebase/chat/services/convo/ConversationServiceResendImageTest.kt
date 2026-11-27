@@ -37,7 +37,7 @@ class ConversationServiceResendImageTest {
             val fileOps = FakeFileOperationsProvider()
             val service = fixture.build(
                 scope = this,
-                driveFileProvider = byteSource,
+                resendBytes = byteSource,
                 fileOperationsProvider = fileOps,
             )
 

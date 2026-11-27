@@ -229,8 +229,9 @@ class PayloadReaderTest {
     fun aResendReadsOurPayloadAndThumbAsStored() = runTest {
         val reader = reader()
 
-        assertContentEquals(body, reader.getPayloadBytesEncrypted(driveId, fileId, key))
-        reader.getThumbBytesEncrypted(driveId, fileId, key, width = 320, height = 320, lastModified = null)
+        val stored = reader.resendSource()
+        assertContentEquals(body, stored.getPayloadBytesEncrypted(driveId, fileId, key))
+        stored.getThumbBytesEncrypted(driveId, fileId, key, width = 320, height = 320, lastModified = null)
 
         assertTrue(requests.all { "/drives/$driveId/files/$fileId/payload/$key" in it }, "$requests")
         assertEquals(2, requests.size, "$requests")

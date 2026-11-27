@@ -13,6 +13,7 @@ import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
 import id.homebase.api.client.drives.files.LocalAppMetadata
 import id.homebase.api.client.drives.files.PayloadFile
+import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.drives.files.ThumbnailFile
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.client.drives.upload.FileIdFileIdentifier
@@ -108,12 +109,8 @@ class ConversationService(
      * still at t1) and stamp the conversation file backwards.
      */
     private val participantLookup: ConversationParticipantLookup,
-    /** Used by the heal redistribute path to pull existing payload AND thumbnail
-     *  bytes off our drive and re-attach them to the update request. Narrowed to
-     *  [ResendPayloadByteSource] (implemented by DriveFileProvider) so tests can
-     *  pass a fake without standing up the full network stack — the payload-reuse
-     *  helper short-circuits to an empty manifest when null. */
-    private val driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
+    /** The heal redistribute path's existing payload and thumbnail bytes, as stored; null (tests) skips re-attaching. */
+    private val resendBytes: ResendPayloadByteSource? = null,
     /** Used by the heal redistribute path to spill the encrypted payload bytes
      *  to a temp file for upload. Same nullable-for-tests rationale as above. */
     private val fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
@@ -2456,11 +2453,11 @@ class ConversationService(
     private suspend fun reuseExistingPayloadsForResend(
         file: HomebaseFile,
     ): Pair<List<PayloadFile>, List<ThumbnailFile>> {
-        val dfp = driveFileProvider
+        val dfp = resendBytes
         val fop = fileOperationsProvider
         if (dfp == null || fop == null) {
             Logger.d(tag = "HealAudit") {
-                "reuseExistingPayloadsForResend: skipping payload re-attach (driveFileProvider=${dfp != null}, fileOperationsProvider=${fop != null}) — likely test fixture"
+                "reuseExistingPayloadsForResend: skipping payload re-attach (resendBytes=${dfp != null}, fileOperationsProvider=${fop != null}) — likely test fixture"
             }
             return emptyList<PayloadFile>() to emptyList()
         }

@@ -659,7 +659,7 @@ class ChatMessageSenderService(
         val recovered = resendablePayloads(
             file = file,
             driveId = chatDrive,
-            byteSource = payloadReader,
+            byteSource = payloadReader.resendSource(),
             fileOps = fileOperationsProvider,
             excludeKeys = setOf(ChatProtocol.DefaultPayloadKey),
             tempPrefix = "retry",

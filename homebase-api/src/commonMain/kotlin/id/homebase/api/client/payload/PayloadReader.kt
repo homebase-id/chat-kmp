@@ -35,15 +35,12 @@ sealed interface PayloadLocation {
     }
 }
 
-/**
- * Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Reads that show
- * nothing still go around it: message text, clipboard copy, sticker send, the agent UI tree, Filesync's shared files.
- */
+/** Every payload read, from our own drive or a followed identity's; the temporal drive API is the one read around it. */
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
     private val fileOps: FileOperationsProvider,
-) : ResendPayloadByteSource {
+) {
     /** The payload, or the range of it, decrypted; null when it isn't there. */
     suspend fun bytes(
         at: PayloadLocation,
@@ -163,13 +160,15 @@ class PayloadReader(
         }
     }
 
-    // A resend re-attaches our own payloads and thumbs as stored, still encrypted.
-    override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
-        own.getPayloadBytesEncrypted(driveId, fileId, key)
+    /** Our own payloads and thumbs as stored, still encrypted, for a resend to re-attach. */
+    fun resendSource(): ResendPayloadByteSource = object : ResendPayloadByteSource {
+        override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
+            own.getPayloadBytesEncrypted(driveId, fileId, key)
 
-    override suspend fun getThumbBytesEncrypted(
-        driveId: Uuid, fileId: Uuid, payloadKey: String, width: Int, height: Int, lastModified: Long?,
-    ): ByteArray? = own.getThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, lastModified)
+        override suspend fun getThumbBytesEncrypted(
+            driveId: Uuid, fileId: Uuid, payloadKey: String, width: Int, height: Int, lastModified: Long?,
+        ): ByteArray? = own.getThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, lastModified)
+    }
 
     /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */
     suspend fun bytesWithServerKey(at: PayloadLocation.Own, key: String): ByteArray? =

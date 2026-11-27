@@ -1,9 +1,7 @@
 package id.homebase.core.feed
 
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.payload.PayloadReader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.core.TestTempDirs
+import id.homebase.core.testPayloadReader
 import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.auth.ApiCredentials
@@ -87,11 +85,7 @@ class FeedTestEnv(
     private val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
     private val driveCache = DriveFileProviderCached(http, credentialsManager, fileOps)
     val driveFileProvider: DriveFileProvider = DriveFileProvider(http, credentialsManager, driveCache)
-    val payloadReader = PayloadReader(
-        driveFileProvider,
-        PeerFileByGlobalTransitProvider(http, credentialsManager, DriveFileHttpProvider(http, credentialsManager), driveCache),
-        fileOps,
-    )
+    val payloadReader = testPayloadReader(http, credentialsManager, driveCache, fileOps, own = driveFileProvider)
 
     val payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
 
