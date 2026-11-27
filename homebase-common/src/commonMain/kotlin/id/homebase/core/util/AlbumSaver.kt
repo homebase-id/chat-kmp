@@ -9,7 +9,6 @@ import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.video.playableContentType
 import id.homebase.api.video.playableFileName
-import id.homebase.api.video.writePlayable
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext

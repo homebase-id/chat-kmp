@@ -11,7 +11,6 @@ import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.writePlayable
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
 import kotlinx.coroutines.flow.Flow
@@ -95,15 +94,13 @@ class PayloadDownloadService(
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
-        payloadReader.stream(PayloadLocation.Own(driveId, fileId), key, keyHeader, cache = false, onProgress) {
-            fileOperationsProvider.writeDownload(path, it)
-        }
+        payloadReader.toFile(PayloadLocation.Own(driveId, fileId), key, keyHeader, path, cache = false, onProgress)
     }
 
     /**
-     * [payload] exported as a file people can open, for handing to another app or player ([writePlayable]); an HLS
+     * [payload] exported as a file people can open, for handing to another app or player ([PayloadReader.writePlayable]); an HLS
      * video's ends in `.mp4` whatever [destination]'s suffix, and its type is [playableContentType]. Null when it
-     * can't be. [cache] keeps the downloaded payload for the next export, as for [PayloadReader.toFile].
+     * can't be. [cache] as for [PayloadReader.toFile].
      */
     suspend fun exportPlayable(
         driveId: Uuid,

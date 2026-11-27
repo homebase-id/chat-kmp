@@ -292,8 +292,7 @@ class VaultUploaderService(
         }
     }
 
-    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. */
-    /** [cache] keeps the downloaded payload for the next open: the gallery's video preview. */
+    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. [cache] keeps the payload for the next open. */
     suspend fun downloadPayload(file: VaultEntry, payloadKey: String, cache: Boolean = false): VaultDownload? {
         return try {
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }

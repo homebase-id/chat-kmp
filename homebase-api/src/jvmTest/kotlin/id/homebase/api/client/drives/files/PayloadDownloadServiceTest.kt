@@ -100,7 +100,6 @@ class PayloadDownloadServiceTest {
                 sharedSecret = SecureByteArray(ByteArray(32) { 0x01 }),
             )
         )
-        val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
         service = PayloadDownloadService(payloadReaderOver(httpClient, credentialsManager, fileOps), fileOps)
 
         nextStatus = HttpStatusCode.OK
