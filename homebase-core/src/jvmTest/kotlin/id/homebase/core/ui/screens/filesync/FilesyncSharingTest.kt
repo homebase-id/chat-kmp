@@ -41,7 +41,6 @@ import io.ktor.http.headersOf
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.youauth.DrivePermissionSet
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.encoding.Base64
@@ -155,8 +154,7 @@ class FilesyncSharingTest {
 
     // The server's ceiling: a Write row on Sam's own circle only while the editors circle gives him Write.
     private var ceiling = false
-    private val editors: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    @Volatile private var samsWriteRowLanded = false
+    @Volatile private var editors = emptySet<String>()
     private var rowsRefused = false
     private val rowsArrived = CompletableDeferred<Unit>()
     private var rowsLand = CompletableDeferred(Unit)
@@ -167,28 +165,22 @@ class FilesyncSharingTest {
         val body = when {
             ceiling && path.endsWith("/connections/circles/add-many") -> {
                 val (circleId, added) = call.addedTo()
-                if (circleId == editorsCircle.toString()) editors += added
+                if (circleId == editorsCircle.toString()) editorsAre(*(editors + added).toTypedArray())
                 """{"enrolled":${added.size},"deposited":0,"skipped":0,"outcomes":[]}"""
             }
             ceiling && path.endsWith("/connections/circles/revoke") -> "{}".also {
-                val revoked = decrypted(call, filesyncSecret).jsonObject
-                if (revoked["circleId"]!!.jsonPrimitive.content == editorsCircle.toString()) editors -= revoked["odinId"]!!.jsonPrimitive.content
+                val (circleId, odinId) = call.revoked()
+                if (circleId == editorsCircle.toString()) editorsAre(*(editors - odinId).toTypedArray())
             }
-            ceiling && path.endsWith("/circles/with-members") -> """[
-                {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
-                {"circle":{"id":"$editorsCircle","name":"Filesync editors","slug":"${FilesyncProtocol.EditorsCircleSlug}","appId":"$appId"},"members":[${editors.joinToString { "\"$it\"" }}]}
-            ]"""
-            ceiling && path.endsWith("/query-batch") ->
-                """{"searchResults":[${if (samsWriteRowLanded) sharedFile("plan.pdf", samsCircle, "readWrite") else ""}],"hasMoreRows":false}"""
             ceiling && path.endsWith("/shares") && request.method != HttpMethod.Get -> {
                 rowsArrived.complete(Unit)
                 rowsLand.await()
                 val rows = decrypted(call, filesyncSecret).jsonObject["shares"]!!.jsonArray.map { it.jsonObject }
-                val samsWrite = rows.any { it["circleId"]!!.jsonPrimitive.content == samsCircle.toString() && it["permissions"]!!.jsonPrimitive.int and 2 != 0 }
+                val samsWrite = rows.any { it["circleId"]!!.jsonPrimitive.content == samsCircle.toString() && it["permissions"]!!.jsonPrimitive.int and DrivePermission.Write.value != 0 }
                 if (rowsRefused || samsWrite && "sam.test" !in editors) {
                     return@MockEngine respond("""{"title":"Individual circle's member isn't granted the drive","errorCode":"argumentError"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
                 }
-                samsWriteRowLanded = samsWriteRowLanded || samsWrite
+                if (samsWrite) sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "readWrite")}],"hasMoreRows":false}"""
                 "{}"
             }
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
@@ -297,6 +289,12 @@ class FilesyncSharingTest {
         body["circleId"]!!.jsonPrimitive.content to body["odinIds"]!!.jsonArray.map { it.jsonPrimitive.content }
     }
 
+    private suspend fun Call.revoked(): Pair<String, String> = decrypted(this, filesyncSecret).jsonObject.let { body ->
+        body["circleId"]!!.jsonPrimitive.content to body["odinId"]!!.jsonPrimitive.content
+    }
+
+    private suspend fun revocations() = calls.filter { it.path.endsWith("/revoke") }.map { it.revoked() }
+
     @Test
     fun addingToAGroupLetsTheNewMemberInAndNamesThemForTelling() = runTest {
         unsealed = listOf("merry.test")
@@ -314,9 +312,7 @@ class FilesyncSharingTest {
     fun removingFromAGroupRevokesOnlyThem() = runTest {
         sharing.setGroupMembers(hiking.copy(members = listOf(merry, sam)), listOf(merry))
 
-        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
-        assertEquals(listOf("sam.test"), revoked.map { it["odinId"]!!.jsonPrimitive.content })
-        assertEquals(listOf(groupCircle.toString()), revoked.map { it["circleId"]!!.jsonPrimitive.content })
+        assertEquals(listOf(groupCircle.toString() to "sam.test"), revocations())
         assertTrue(calls.none { it.path.endsWith("/add-many") || it.path.endsWith("/files") })
     }
 
@@ -351,28 +347,19 @@ class FilesyncSharingTest {
 
     @Test
     fun anEditShareLetsSamWriteThroughTheEditorsCircleAndAViewShareDoesnt() = runTest {
+        ceiling = true
         sharing.share(listOf(file), toSam, FilesyncAccess.View, expiresAt = null)
         assertTrue(calls.filter { it.path.endsWith("/add-many") }.none { it.addedTo().first == editorsCircle.toString() })
 
         sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
 
+        assertEquals(setOf("sam.test"), editors)
         assertEquals(editorsCircle.toString() to listOf("sam.test"), calls.filter { it.path.endsWith("/add-many") }.last().addedTo())
         val created = calls.filter { it.path.endsWith("/circles/create") }.map { decrypted(it, filesyncSecret).jsonObject }
             .single { it["slug"]!!.jsonPrimitive.content == FilesyncProtocol.EditorsCircleSlug }
         val granted = created["driveGrants"]!!.jsonArray.single().jsonObject["permissionedDrive"]!!.jsonObject["permission"]!!
         assertEquals(setOf(DrivePermission.Write), Json.decodeFromJsonElement(DrivePermissionsSerializer, granted).values.toSet())
         assertTrue(created["grantOn"].let { it == null || it.jsonPrimitive.content == "none" })
-    }
-
-    @Test
-    fun anEditShareWithSomeoneNewGivesThemWriteBeforeTheRowsThatAskIt() = runTest {
-        ceiling = true
-
-        sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
-
-        assertEquals(setOf("sam.test"), editors)
-        val enrolled = calls.indexOfFirst { it.path.endsWith("/add-many") && it.addedTo().first == editorsCircle.toString() }
-        assertTrue(enrolled in 0 until calls.indexOfFirst { it.path.endsWith("/shares") })
     }
 
     @Test
@@ -403,6 +390,7 @@ class FilesyncSharingTest {
     }
 
     private fun editorsAre(vararg members: String) {
+        editors = members.toSet()
         circles = """[
             {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
             {"circle":{"id":"$groupCircle","name":"Hiking","slug":"g0123456789abc","appId":"$appId"},"members":["merry.test","sam.test"]},
@@ -421,8 +409,7 @@ class FilesyncSharingTest {
         val asked = decrypted(calls.first { it.path.endsWith("/query-batch") }, filesyncSecret).jsonObject["queryParams"]!!.jsonObject
         assertEquals(setOf(samsCircle.toString(), groupCircle.toString()), asked["sharedWith"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet())
         assertEquals(listOf(editorsCircle.toString() to listOf("merry.test")), calls.filter { it.path.endsWith("/add-many") }.map { it.addedTo() })
-        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
-        assertEquals(listOf(editorsCircle.toString() to "pippin.test"), revoked.map { it["circleId"]!!.jsonPrimitive.content to it["odinId"]!!.jsonPrimitive.content })
+        assertEquals(listOf(editorsCircle.toString() to "pippin.test"), revocations())
     }
 
     @Test
@@ -430,7 +417,7 @@ class FilesyncSharingTest {
         editorsAre("sam.test")
         sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"hasMoreRows":false}"""
         sharing.syncEditors()
-        assertEquals(listOf("sam.test"), calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject["odinId"]!!.jsonPrimitive.content })
+        assertEquals(listOf("sam.test"), revocations().map { it.second })
 
         calls.clear()
         editorsAre()
@@ -458,7 +445,7 @@ class FilesyncSharingTest {
 
         sharedPages += """{"searchResults":[${sharedFile("plan.pdf", samsCircle, "read")}],"hasMoreRows":false}"""
         sharing.syncEditors()
-        assertEquals(listOf("sam.test"), calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject["odinId"]!!.jsonPrimitive.content })
+        assertEquals(listOf("sam.test"), revocations().map { it.second })
     }
 
     @Test
@@ -922,8 +909,7 @@ class FilesyncSharingTest {
 
         sharing.withdraw(mapOf(node to handle), toSam)
 
-        val revoked = calls.filter { it.path.endsWith("/revoke") }.map { decrypted(it, filesyncSecret).jsonObject }
-        assertEquals(listOf(editorsCircle.toString() to "sam.test"), revoked.map { it["circleId"]!!.jsonPrimitive.content to it["odinId"]!!.jsonPrimitive.content })
+        assertEquals(listOf(editorsCircle.toString() to "sam.test"), revocations())
     }
 
     @Test

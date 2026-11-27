@@ -246,14 +246,15 @@ class FilesyncSharing(
         }
         if (access == FilesyncAccess.Edit) {
             try {
-                // The server takes an individual circle's Write row only from someone already holding Write through another
-                // circle; locked so a concurrent syncEditors can't take them out before the rows are there.
+                // The server takes a Write row only from someone already holding Write; locked so syncEditors can't remove them first.
                 editing.withLock {
                     enroll(editorsCircle(), members)
                     writeRows()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is CancellationException) editorsMayHaveChanged(removalsOnly = true)
+                editorsMayHaveChanged(removalsOnly = true)
                 throw e
             }
         } else {
