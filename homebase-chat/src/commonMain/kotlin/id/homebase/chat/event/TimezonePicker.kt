@@ -77,7 +77,12 @@ internal fun friendlyZoneLabel(zoneId: String, now: Instant = Clock.System.now()
  */
 internal fun currentOffsetLabel(zoneId: String, now: Instant = Clock.System.now()): String {
     val tz = runCatching { TimeZone.of(zoneId) }.getOrNull() ?: return "GMT"
-    val totalMinutes = now.offsetIn(tz).totalSeconds / 60
+    return offsetLabel(now, tz)
+}
+
+/** [zone]'s offset at [at], as `GMT±H` or `GMT±H:MM`. */
+fun offsetLabel(at: Instant, zone: TimeZone): String {
+    val totalMinutes = at.offsetIn(zone).totalSeconds / 60
     val sign = if (totalMinutes < 0) "-" else "+"
     val absMin = kotlin.math.abs(totalMinutes)
     val hours = absMin / 60

@@ -1,13 +1,16 @@
 package id.homebase.photobase.info
 
 import id.homebase.api.client.location.WebMercator
+import id.homebase.api.client.drives.files.DescriptorContentV1
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.media.MediaLocation
+import id.homebase.chat.event.offsetLabel
+import id.homebase.common.util.formatDecimal
 import id.homebase.common.util.formatBytes
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import kotlin.time.Instant
 
 class PhotoInfoFormatTest {
@@ -27,10 +30,10 @@ class PhotoInfoFormatTest {
 
     @Test
     fun apertureAndFocalLengthDropAZeroDecimal() {
-        assertEquals("1.8", aperture(1.8))
-        assertEquals("2", aperture(2.0))
-        assertEquals("4.2", focalLength(4.24))
-        assertEquals("26", focalLength(26.0))
+        assertEquals("1.8", formatDecimal(1.8, 1))
+        assertEquals("2", formatDecimal(2.0, 1))
+        assertEquals("4.2", formatDecimal(4.24, 1))
+        assertEquals("26", formatDecimal(26.0, 1))
     }
 
     @Test
@@ -43,10 +46,10 @@ class PhotoInfoFormatTest {
         val winter = Instant.parse("2026-01-15T12:00:00Z")
         val summer = Instant.parse("2026-07-15T12:00:00Z")
 
-        assertEquals("GMT", zoneLabel(winter, TimeZone.UTC))
-        assertEquals("GMT-8", zoneLabel(winter, TimeZone.of("America/Los_Angeles")))
-        assertEquals("GMT-7", zoneLabel(summer, TimeZone.of("America/Los_Angeles")))
-        assertEquals("GMT+5:30", zoneLabel(winter, TimeZone.of("Asia/Kolkata")))
+        assertEquals("GMT+0", offsetLabel(winter, TimeZone.UTC))
+        assertEquals("GMT-8", offsetLabel(winter, TimeZone.of("America/Los_Angeles")))
+        assertEquals("GMT-7", offsetLabel(summer, TimeZone.of("America/Los_Angeles")))
+        assertEquals("GMT+5:30", offsetLabel(winter, TimeZone.of("Asia/Kolkata")))
     }
 
     @Test
@@ -64,18 +67,26 @@ class PhotoInfoFormatTest {
     }
 
     @Test
-    fun thePinIsOnThePlaceAndTheMapCentredOnIt() {
-        val at = MediaLocation(37.7749, -122.4194)
-        val focus = MapFocus(at)
-        val (x, y) = WebMercator.latLonToUnit(at.latitude, at.longitude)
+    fun theMapIsCentredOnThePinAndOneTileAcross() {
+        val (x, y) = WebMercator.latLonToUnit(37.7749, -122.4194)
+        val box = mapBox(x, y)
 
-        assertEquals(x, focus.x)
-        assertEquals(y, focus.y)
-        assertEquals(x, (focus.bbox[0] + focus.bbox[2]) / 2, 1e-12)
-        assertEquals(y, (focus.bbox[1] + focus.bbox[3]) / 2, 1e-12)
-        // One tile across at the map's zoom.
-        assertEquals(1.0 / (1 shl MAP_ZOOM), focus.bbox[2] - focus.bbox[0], 1e-12)
-        val (back, _) = WebMercator.unitToLatLon(focus.x, focus.y)
-        assertTrue(kotlin.math.abs(back - at.latitude) < 1e-9)
+        assertEquals(x, (box[0] + box[2]) / 2, 1e-12)
+        assertEquals(y, (box[1] + box[3]) / 2, 1e-12)
+        assertEquals(1.0 / (1 shl MAP_ZOOM), box[2] - box[0], 1e-12)
+        assertEquals(box[2] - box[0], box[3] - box[1], 1e-12)
+    }
+
+    @Test
+    fun theFilesNameSizeAndResolutionComeFromItsDescriptor() {
+        val image = PayloadDescriptor(
+            key = "img",
+            contentType = "image/heic",
+            bytesWritten = 2_400_000,
+            descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG_0001.HEIC", pixelWidth = 4032, pixelHeight = 3024).encode(),
+        )
+
+        assertEquals(FileFacts("IMG_0001.HEIC", 4032, 3024, 2_400_000), fileFacts(image))
+        assertEquals(FileFacts(null, null, null, null), fileFacts(PayloadDescriptor(key = "img", contentType = "image/jpeg")))
     }
 }

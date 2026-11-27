@@ -3,7 +3,6 @@ package id.homebase.photobase.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
@@ -584,8 +583,7 @@ private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverla
     fileId = fileId,
     driveId = driveId,
     payloadKey = video.key,
-    // The player decrypts with exactly this header, and each payload has its own IV.
-    keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    keyHeader = video.keyHeaderIn(keyHeader),
     payload = video,
 )
 

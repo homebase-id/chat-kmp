@@ -5,6 +5,7 @@ import id.homebase.api.serialization.LenientBase64BytesSerializer
 import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.HomebaseProtocol
+import id.homebase.api.client.KeyHeader
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoMetadata
@@ -148,6 +149,9 @@ data class PayloadDescriptor(
     fun appContent(): String? = descriptorContent?.let { content ->
         if (DescriptorContentV1.isCurrentFormat(content)) current?.appContent else content
     }
+
+    /** The key header to decrypt this payload with: the file's key, and this payload's own IV when it has one. */
+    fun keyHeaderIn(file: KeyHeader): KeyHeader = iv?.let { KeyHeader(iv = it.bytes, aesKey = file.aesKey) } ?: file
 
     fun isImage(): Boolean = contentType?.startsWith("image/") == true
 

@@ -29,9 +29,8 @@ data class PhotoGalleryItem(
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
 
-    /** Where it was taken, from its header; parsed each call. */
-    fun location(): MediaLocation? =
-        parseRecord<PhotoContent>(content, "photo $fileId")?.let { c -> c.latitude?.let { lat -> c.longitude?.let { MediaLocation(lat, it, c.altitude) } } }
+    /** Where it was taken, from its header; parsed each call, so read it once. */
+    fun location(): MediaLocation? = parseRecord<PhotoContent>(content, "photo $fileId")?.location
 
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload

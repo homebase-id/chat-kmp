@@ -3,22 +3,24 @@ package id.homebase.photobase.info
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.location.LocationPreviewProvider
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.readImageMetadata
+import id.homebase.api.media.MediaLocation
 import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.uuid.Uuid
 
 /** What the Info sheet reads beyond the photo's header. */
 interface PhotoInfoReader {
@@ -31,10 +33,7 @@ interface PhotoInfoReader {
     suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray?
 }
 
-/**
- * The camera details from the original's EXIF, and the place's name and map tiles from OpenStreetMap, each read when
- * the sheet opens: a stand-in until how they load is decided.
- */
+/** The camera details from the whole original's EXIF, and the place's name and map tiles from OpenStreetMap. */
 class PhotoInfoDrives(
     private val drive: VideoPrefetchDriveAccess,
     private val peer: PeerFileByGlobalTransitProvider,
@@ -43,8 +42,7 @@ class PhotoInfoDrives(
     override suspend fun camera(item: PhotoGalleryItem, owner: OdinId?): ImageMetadata? {
         val payload = item.payload
         if (!payload.isImage()) return null
-        // Each payload has its own IV.
-        val keyHeader = payload.iv?.let { KeyHeader(iv = it.bytes, aesKey = item.keyHeader.aesKey) } ?: item.keyHeader
+        val keyHeader = payload.keyHeaderIn(item.keyHeader)
         val original = if (owner == null) {
             drive.getPayloadBytesDecrypted(item.driveId, item.fileId, payload.key, keyHeader, null, null, null)
         } else {
@@ -67,39 +65,56 @@ sealed interface InfoPart<out T> {
 }
 
 data class PhotoInfoUiState(
+    val fileId: Uuid,
+    val location: MediaLocation?,
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
     val place: InfoPart<String> = InfoPart.Loading,
 )
 
-/** [item]'s camera details and place, each read once and on its own: one failing leaves the other. */
-class PhotoInfoViewModel(
-    private val item: PhotoGalleryItem,
-    private val owner: OdinId?,
-    val reader: PhotoInfoReader,
-) : ViewModel() {
-    private val _uiState = MutableStateFlow(PhotoInfoUiState(place = if (item.location() == null) InfoPart.Read(null) else InfoPart.Loading))
-    val uiState: StateFlow<PhotoInfoUiState> = _uiState.asStateFlow()
+/** The open sheet's photo: its camera details and place, each read on its own, so one failing leaves the other. */
+class PhotoInfoViewModel(private val reader: PhotoInfoReader) : ViewModel() {
+    private val _uiState = MutableStateFlow<PhotoInfoUiState?>(null)
+    /** Null while no sheet is open. */
+    val uiState: StateFlow<PhotoInfoUiState?> = _uiState.asStateFlow()
 
-    init {
-        viewModelScope.launch {
-            val camera = read("camera details") { reader.camera(item, owner) }
-            _uiState.update { it.copy(camera = camera) }
-        }
-        item.location()?.let { at ->
-            viewModelScope.launch {
-                val place = read("place") { reader.place(at.latitude, at.longitude) }
-                _uiState.update { it.copy(place = place) }
+    private var reading: Job? = null
+
+    /** Reads [item]'s details, dropping what was being read for the photo before. */
+    fun show(item: PhotoGalleryItem, owner: OdinId?) {
+        reading?.cancel()
+        val location = item.location()
+        _uiState.value = PhotoInfoUiState(item.fileId, location)
+        reading = viewModelScope.launch {
+            launch {
+                val camera = read(item.fileId, "camera details") { reader.camera(item, owner) }
+                update(item.fileId) { it.copy(camera = camera) }
+            }
+            location?.let { at ->
+                launch {
+                    val place = read(item.fileId, "place") { reader.place(at.latitude, at.longitude) }
+                    update(item.fileId) { it.copy(place = place) }
+                }
             }
         }
     }
 
-    private suspend fun <T> read(what: String, block: suspend () -> T?): InfoPart<T> =
+    /** Stops the reads: a download nobody's looking at isn't worth finishing. */
+    fun close() {
+        reading?.cancel()
+        _uiState.value = null
+    }
+
+    // A read finishing as it's cancelled mustn't land on the next photo's sheet.
+    private fun update(fileId: Uuid, change: (PhotoInfoUiState) -> PhotoInfoUiState) =
+        _uiState.update { state -> state?.takeIf { it.fileId == fileId }?.let(change) ?: state }
+
+    private suspend fun <T> read(fileId: Uuid, what: String, block: suspend () -> T?): InfoPart<T> =
         try {
             InfoPart.Read(block())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Logger.w(tag = TAG, throwable = e) { "${item.fileId}'s $what not read" }
+            Logger.w(tag = TAG, throwable = e) { "$fileId's $what not read" }
             InfoPart.Failed
         }
 

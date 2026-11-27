@@ -29,7 +29,8 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,12 +42,14 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import id.homebase.api.client.drives.files.DescriptorContent
+import id.homebase.api.client.location.WebMercator
 import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
-import id.homebase.chat.widget.buildGeoUri
+import id.homebase.chat.event.offsetLabel
+import id.homebase.core.location.buildGeoUri
 import id.homebase.common.util.formatBytes
+import id.homebase.common.util.formatDecimal
 import id.homebase.core.location.map.TiledMapView
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.formatTime
@@ -93,8 +96,11 @@ fun PhotoInfoSheet(
     addedBy: OdinId?,
     onDismiss: () -> Unit,
 ) {
-    val viewModel = viewModel(key = "photo-info-${item.fileId}") { PhotoInfoViewModel(item, owner, reader) }
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
+    val viewModel = viewModel(key = "photo-info") { PhotoInfoViewModel(reader) }
+    LaunchedEffect(viewModel, item.fileId) { viewModel.show(item, owner) }
+    DisposableEffect(viewModel) { onDispose { viewModel.close() } }
+    val uiState = viewModel.uiState.collectAsStateWithLifecycle().value?.takeIf { it.fileId == item.fileId }
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -103,9 +109,9 @@ fun PhotoInfoSheet(
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
             )
             WhenRow(item.capturedAtMs)
-            item.location()?.let { at -> WhereSection(at, uiState.place, viewModel.reader) }
+            uiState?.location?.let { at -> WhereSection(at, uiState.place, reader) }
             FileRow(item)
-            CameraRow(uiState.camera)
+            CameraRow(uiState?.camera ?: InfoPart.Loading)
             if (albums.isNotEmpty()) InfoRow(Icons.Outlined.PhotoAlbum, stringResource(MR.string.photobase_info_albums), albums.joinToString(", "))
             if (owner == null) InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), stringResource(MR.string.photobase_info_backed_up_body))
             addedBy?.let { InfoRow(Icons.Outlined.Person, stringResource(MR.string.photobase_photo_added_by, it.domainName), null) }
@@ -116,7 +122,7 @@ fun PhotoInfoSheet(
 @Composable
 private fun WhenRow(capturedAtMs: Long) {
     val at = remember(capturedAtMs) { Instant.fromEpochMilliseconds(capturedAtMs) }
-    val time = stringResource(MR.string.photobase_info_date_time, formatTime(at), zoneLabel(at, TimeZone.currentSystemDefault()))
+    val time = stringResource(MR.string.photobase_info_date_time, formatTime(at), offsetLabel(at, TimeZone.currentSystemDefault()))
     InfoRow(Icons.Outlined.CalendarToday, formatMediumDate(at), time)
 }
 
@@ -125,14 +131,14 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<String>, reader: Pho
     val uriHandler = LocalUriHandler.current
     val name = (place as? InfoPart.Read)?.value
     val openMap = stringResource(MR.string.photobase_info_open_map)
-    val focus = remember(at) { MapFocus(at) }
+    val (x, y) = remember(at) { WebMercator.latLonToUnit(at.latitude, at.longitude) }
     val pin = stringResource(MR.string.cd_location_pin)
     Box(
         Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))
             .clickable(onClickLabel = openMap, role = Role.Button) { uriHandler.openUri(buildGeoUri(at.latitude, at.longitude, name.orEmpty())) },
     ) {
         TiledMapView(
-            bbox = focus.bbox,
+            bbox = remember(x, y) { mapBox(x, y) },
             showMapTiles = true,
             fetchTile = reader::tile,
             interactive = false,
@@ -145,7 +151,7 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<String>, reader: Pho
                         tint = MaterialTheme.colorScheme.primary,
                         // The pin's point, at the bottom of the icon, on the photo's place.
                         modifier = Modifier.size(PIN).offset {
-                            val point = project(focus.x, focus.y)
+                            val point = project(x, y)
                             val size = PIN.toPx()
                             IntOffset((point.x - size / 2).roundToInt(), (point.y - size).roundToInt())
                         },
@@ -156,34 +162,22 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<String>, reader: Pho
     }
     val headline = when (place) {
         InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
-        InfoPart.Failed -> stringResource(MR.string.photobase_info_place_failed)
-        is InfoPart.Read -> place.value ?: stringResource(MR.string.photobase_info_place_failed)
+        else -> name ?: stringResource(MR.string.photobase_info_place_failed)
     }
     InfoRow(Icons.Outlined.Place, headline, coordinates(at))
 }
 
 @Composable
 private fun FileRow(item: PhotoGalleryItem) {
-    val payload = item.payload
-    val (width, height) = when (val info = payload.descriptorInfo()) {
-        is DescriptorContent.ImageFile -> info.pixelWidth to info.pixelHeight
-        is DescriptorContent.VideoFile -> info.widthPx.takeIf { it > 0 } to info.heightPx.takeIf { it > 0 }
-        else -> null to null
-    }
-    val name = when (val info = payload.descriptorInfo()) {
-        is DescriptorContent.ImageFile -> info.name
-        is DescriptorContent.VideoFile -> info.name
-        else -> null
-    }
+    val file = remember(item.payload) { fileFacts(item.payload) }
     val details = buildList {
-        if (width != null && height != null) {
-            add(stringResource(MR.string.photobase_info_megapixels, megapixels(width, height)))
-            add(stringResource(MR.string.photobase_info_dimensions, width, height))
+        if (file.width != null && file.height != null) {
+            add(stringResource(MR.string.photobase_info_megapixels, megapixels(file.width, file.height)))
+            add(stringResource(MR.string.photobase_info_dimensions, file.width, file.height))
         }
-        payload.bytesWritten?.takeIf { it > 0 }?.let { add(formatBytes(it)) }
+        file.bytes?.let { add(formatBytes(it)) }
     }
-    if (name == null && details.isEmpty()) return
-    InfoRow(Icons.Outlined.Image, name ?: details.first(), details.drop(if (name == null) 1 else 0).joinToString(" · ").ifEmpty { null })
+    InfoRow(Icons.Outlined.Image, file.name, details)
 }
 
 @Composable
@@ -194,16 +188,21 @@ private fun CameraRow(camera: InfoPart<ImageMetadata>) {
         is InfoPart.Read -> {
             val exif = camera.value ?: return
             val settings = buildList {
-                exif.fNumber?.let { add(stringResource(MR.string.photobase_info_aperture, aperture(it))) }
+                exif.fNumber?.let { add(stringResource(MR.string.photobase_info_aperture, formatDecimal(it, 1))) }
                 exif.exposureTimeSeconds?.let { add(stringResource(MR.string.photobase_info_shutter, shutter(it))) }
-                exif.focalLengthMm?.let { add(stringResource(MR.string.photobase_info_focal_length, focalLength(it))) }
+                exif.focalLengthMm?.let { add(stringResource(MR.string.photobase_info_focal_length, formatDecimal(it, 1))) }
                 exif.iso?.let { add(stringResource(MR.string.photobase_info_iso, it)) }
             }
-            val camera = cameraName(exif.cameraMake, exif.cameraModel)
-            if (camera == null && settings.isEmpty()) return
-            InfoRow(Icons.Outlined.PhotoCamera, camera ?: settings.first(), settings.drop(if (camera == null) 1 else 0).joinToString(" · ").ifEmpty { null })
+            InfoRow(Icons.Outlined.PhotoCamera, cameraName(exif.cameraMake, exif.cameraModel), settings)
         }
     }
+}
+
+/** [title] over [details]; with no title the first detail leads, and with neither the row is left out. */
+@Composable
+private fun InfoRow(icon: ImageVector, title: String?, details: List<String>) {
+    val headline = title ?: details.firstOrNull() ?: return
+    InfoRow(icon, headline, details.drop(if (title == null) 1 else 0).joinToString(" · ").ifEmpty { null })
 }
 
 @Composable

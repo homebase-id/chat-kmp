@@ -1,20 +1,12 @@
 package id.homebase.api.image
 
 /**
- * Pure-Kotlin EXIF orientation reader (tag 0x0112) for JPEG bytes.
- *
- * The web image decoder needs the orientation before it decodes, and browsers
- * expose no EXIF reader. Returns null when the bytes aren't JPEG or carry no orientation.
+ * A JPEG's EXIF orientation, 1..8; null when the bytes aren't JPEG or carry none. The web image decoder needs it
+ * before it decodes, and browsers expose no EXIF reader.
  */
-fun readJpegExifOrientation(bytes: ByteArray): Int? =
-    jpegExifTiff(bytes)?.let { (tiffStart, end) -> Tiff.at(bytes, tiffStart, end)?.ifd0()?.long(0x0112)?.takeIf { it in 1..8 } }
+fun readJpegExifOrientation(bytes: ByteArray): Int? = readJpegExifCamera(bytes)?.orientation
 
-/**
- * The camera fields of a JPEG's EXIF ([ImageMetadata.cameraMake], [ImageMetadata.cameraModel],
- * [ImageMetadata.fNumber], [ImageMetadata.exposureTimeSeconds], [ImageMetadata.focalLengthMm],
- * [ImageMetadata.iso]) and its orientation; null when the bytes aren't a JPEG with EXIF. Web's
- * [readImageMetadata], since browsers expose no EXIF reader.
- */
+/** A JPEG's camera EXIF and orientation, in pure Kotlin; null when the bytes aren't a JPEG with EXIF. */
 fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val (tiffStart, end) = jpegExifTiff(bytes) ?: return null
     val tiff = Tiff.at(bytes, tiffStart, end) ?: return null
@@ -69,6 +61,8 @@ private fun jpegExifTiff(bytes: ByteArray): Pair<Int, Int>? {
 private class Tiff(val bytes: ByteArray, val start: Int, val end: Int, val littleEndian: Boolean) {
     fun u16(at: Int) = u16(bytes, at, littleEndian)
     fun u32(at: Int) = u32(bytes, at, littleEndian)
+    fun u32long(at: Int): Long = u32raw(bytes, at, littleEndian)
+    fun s32(at: Int): Long = u32raw(bytes, at, littleEndian).toInt().toLong()
 
     fun ifd0(): Directory? = directory(u32(start + 4))
 
@@ -121,9 +115,9 @@ private class Directory(val tiff: Tiff, val at: Int) {
         if (type != 5 && type != 10) return null
         val value = tiff.start + tiff.u32(entry + 8)
         if (value < tiff.start || value + 8 > tiff.end) return null
-        val numerator = if (type == 10) tiff.u32signed(value) else tiff.u32long(value)
-        val denominator = if (type == 10) tiff.u32signed(value + 4) else tiff.u32long(value + 4)
-        return if (denominator == 0L) null else numerator.toDouble() / denominator
+        val read = if (type == 10) tiff::s32 else tiff::u32long
+        val denominator = read(value + 4)
+        return if (denominator == 0L) null else read(value).toDouble() / denominator
     }
 
     /** An ASCII value, trimmed; null when blank. */
@@ -136,10 +130,6 @@ private class Directory(val tiff: Tiff, val at: Int) {
         return tiff.bytes.copyOfRange(value, value + count).decodeToString().trimEnd('\u0000').trim().takeIf { it.isNotEmpty() }
     }
 }
-
-private fun Tiff.u32long(at: Int): Long = u32raw(bytes, at, littleEndian)
-
-private fun Tiff.u32signed(at: Int): Long = u32raw(bytes, at, littleEndian).toInt().toLong()
 
 /** True for the orientations that swap width and height (90°/270° rotations). */
 fun jpegOrientationSwapsDimensions(orientation: Int): Boolean = orientation in 5..8

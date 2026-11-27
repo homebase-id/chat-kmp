@@ -14,6 +14,9 @@ data class PhotoContent(
     val longitude: Double? = null,
     val altitude: Double? = null,
 ) {
+    val location: MediaLocation?
+        get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitude) else null
+
     companion object {
         const val CURRENT_VERSION = 1
 

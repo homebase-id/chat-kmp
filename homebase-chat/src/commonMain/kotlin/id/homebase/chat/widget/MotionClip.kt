@@ -16,7 +16,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -53,7 +52,7 @@ internal fun FullScreenOverlay.ViewMessageData.motionPlayer(clip: PayloadDescrip
     fileId = fileId,
     driveId = driveId,
     payloadKey = clip.key,
-    keyHeader = clip.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    keyHeader = clip.keyHeaderIn(keyHeader),
     payload = clip,
     isEncrypted = isEncrypted,
     remoteOdinId = remoteOdinId,
