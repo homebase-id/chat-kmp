@@ -193,4 +193,5 @@ internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
  * both of iOS's paths, so they agree and a backup reads no more of each photo.
  */
 internal fun ImageMetadata.withJpegComment(bytes: ByteArray): ImageMetadata =
-    if (jpegExifLittleEndian(bytes) != null) copy(userComment = readJpegExifCamera(bytes)?.userComment) else this
+    // ImageIO's own where the shared reader can't reach it, past the bytes given or behind a broken IFD.
+    if (jpegExifLittleEndian(bytes) != null) copy(userComment = readJpegExifCamera(bytes)?.userComment ?: userComment.takeUnless { jpegExifCommentIsJis(bytes) }) else this

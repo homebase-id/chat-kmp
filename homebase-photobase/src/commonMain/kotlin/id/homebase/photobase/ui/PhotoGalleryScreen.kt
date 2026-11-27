@@ -386,6 +386,7 @@ private fun GalleryViewer(
     val showUI = remember { mutableStateOf(true) }
     // The day and slot of a page whose day is still being read: when it arrives, that photo becomes the open one.
     val awaiting = remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    val following = rememberUpdatedState(moving)
     LaunchedEffect(layout, loaded) {
         if (layout.photoCount == 0) {
             close()
@@ -416,7 +417,8 @@ private fun GalleryViewer(
         }
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val place = layout.locate(page)
-            onAction(PhotoGalleryUiAction.Showing(place.first, place.first))
+            // Following the open photo to its new day: that day is the one to read, not the page it left.
+            if (following.value?.fileId != opened) onAction(PhotoGalleryUiAction.Showing(place.first, place.first))
             val item = layout.photoAt(page, loaded)
             awaiting.value = if (item == null) place else null
             onUnreadPage(awaiting.value)

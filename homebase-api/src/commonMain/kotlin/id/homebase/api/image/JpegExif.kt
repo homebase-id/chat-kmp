@@ -53,6 +53,14 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     )
 }
 
+/** Whether a JPEG's UserComment says it's JIS, which the shared rule drops: a platform keeping one can drop it too. */
+internal fun jpegExifCommentIsJis(bytes: ByteArray): Boolean {
+    val (start, end) = jpegExifTiff(bytes) ?: return false
+    val tiff = Tiff.at(bytes, start, end) ?: return false
+    val code = tiff.ifd0()?.long(0x8769)?.let(tiff::directory)?.bytes(0x9286)?.takeIf { it.size >= 8 } ?: return false
+    return code.copyOfRange(0, 3).decodeToString() == "JIS"
+}
+
 /** The byte order of a JPEG's EXIF, for readers that decode a field without saying it; null when it has none. */
 internal fun jpegExifLittleEndian(bytes: ByteArray): Boolean? = jpegExifTiff(bytes)?.let { (start, end) -> Tiff.at(bytes, start, end)?.littleEndian }
 

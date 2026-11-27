@@ -168,7 +168,7 @@ fun PhotoInfoSheet(
     albums: List<String>,
     backedUp: Boolean,
     editable: Boolean,
-    /** A new time is being saved: the photo may move to another day. */
+    /** A new time is saved: the photo may move to another day. */
     onTimeSaved: (Instant) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -236,9 +236,8 @@ fun PhotoInfoSheet(
                 zone = opened.offset?.asTimeZone() ?: TimeZone.currentSystemDefault(),
                 onSave = { newAt ->
                     editing = null
-                    onTimeSaved(newAt)
                     // A photo with no zone keeps none: the device's is only the clock it was picked on.
-                    viewModel.save(PhotoEdit.Time(newAt, opened.offset))
+                    viewModel.save(PhotoEdit.Time(newAt, opened.offset)) { onTimeSaved(newAt) }
                 },
                 onDismiss = { editing = null },
             )

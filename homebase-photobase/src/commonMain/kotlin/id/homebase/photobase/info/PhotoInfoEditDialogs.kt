@@ -102,8 +102,13 @@ internal fun EditTimeDialogs(at: Instant, zone: TimeZone, onSave: (Instant) -> U
             confirmButton = {
                 TextButton(onClick = {
                     val chosen = LocalDateTime(picked, LocalTime(state.hour, state.minute, local.second))
-                    // In the zone, not at today's offset: a day across a change of clock gets that day's.
-                    onSave(chosen.toInstant(zone))
+                    // Nothing changed is nothing to save: it would mark the time as set by hand.
+                    if (chosen.date == local.date && chosen.hour == local.hour && chosen.minute == local.minute) {
+                        onDismiss()
+                    } else {
+                        // In the zone, not at today's offset: a day across a change of clock gets that day's.
+                        onSave(chosen.toInstant(zone))
+                    }
                 }) { Text(stringResource(MR.string.save)) }
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },

@@ -3605,7 +3605,7 @@
     <string name="photobase_info_scene_night">Night scene</string>
     <string name="photobase_info_processed">Processed in camera</string>
     <string name="photobase_info_color_srgb">sRGB</string>
-    <string name="photobase_info_color_wide">Wide colour</string>
+    <string name="photobase_info_color_wide">Other colour profile</string>
     <string name="photobase_info_subject_distance">Subject %1$s m away</string>
     <string name="photobase_info_description">Description</string>
     <string name="photobase_info_artist">By %1$s</string>

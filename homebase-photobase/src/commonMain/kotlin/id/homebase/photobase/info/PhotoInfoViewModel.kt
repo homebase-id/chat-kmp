@@ -153,18 +153,24 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         if (moved) lookUpPlace(item.fileId, facts.location)
     }
 
-    fun save(edit: PhotoEdit) {
+    /** [onSaved] runs once the server has it. */
+    fun save(edit: PhotoEdit, onSaved: () -> Unit = {}) {
         val item = item ?: return
         val before = _uiState.value.takeIf { it.fileId == item.fileId && !it.saving }?.facts() ?: return
         update(item.fileId) { it.copy(saving = true, saveFailed = false) }
         viewModelScope.launch {
             val ok = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
+            // A newer copy that came while it saved is the one the edit lands on.
+            val base = this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId && it.changedAtMs > item.changedAtMs }?.headerFacts() ?: before
             // Kept whatever the sheet shows by now: closed or on another photo, this one reopens with it.
-            val after = if (!ok) before else when (edit) {
-                is PhotoEdit.Time -> before.copy(capturedAtMs = edit.at.toEpochMilliseconds(), timeByHand = true, offsetByHand = edit.offset)
-                is PhotoEdit.Place -> before.copy(location = edit.at, placeByHand = true)
+            val after = if (!ok) base else when (edit) {
+                is PhotoEdit.Time -> base.copy(capturedAtMs = edit.at.toEpochMilliseconds(), timeByHand = true, offsetByHand = edit.offset)
+                is PhotoEdit.Place -> base.copy(location = edit.at, placeByHand = true)
             }
-            if (ok) saved[item.fileId] = item.changedAtMs to after
+            if (ok) {
+                saved[item.fileId] = (this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId } ?: item).changedAtMs to after
+                onSaved()
+            }
             update(item.fileId) { state ->
                 state.copy(saving = false, saveFailed = !ok, place = if (ok && edit is PhotoEdit.Place) placeUnread() else state.place).with(after)
             }

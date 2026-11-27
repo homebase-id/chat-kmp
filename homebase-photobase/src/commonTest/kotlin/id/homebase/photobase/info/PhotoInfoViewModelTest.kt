@@ -246,4 +246,19 @@ class PhotoInfoViewModelTest {
         assertEquals(MediaLocation(48.85, 2.35), viewModel.uiState.value.location)
         assertEquals("Paris", viewModel.uiState.value.place.address())
     }
+
+    @Test
+    fun theGalleryHearsOfANewTimeOnlyOnceItsSaved() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        var heard = 0
+        val failing = PhotoInfoViewModel(Reader(camera = { null }, place = { null }, save = { error("offline") }))
+        failing.show(item(located))
+        failing.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), null)) { heard++ }
+        assertEquals(0, heard)
+
+        val saving = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+        saving.show(item(located))
+        saving.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), null)) { heard++ }
+        assertEquals(1, heard)
+    }
 }
