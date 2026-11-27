@@ -743,7 +743,7 @@ private fun roundTo5Decimals(value: Double): String {
  * Builds an Android-compatible `geo:` URI that iOS's `Maps.app` and Android's map handlers both
  * accept. Includes the address as a query so the receiving map app can show a labeled pin.
  */
-private fun buildGeoUri(lat: Double, lon: Double, address: String): String {
+fun buildGeoUri(lat: Double, lon: Double, address: String): String {
     val q = "$lat,$lon"
     return if (address.isBlank()) "geo:$q" else "geo:$q?q=$q(${urlEncode(address)})"
 }

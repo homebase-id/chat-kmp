@@ -33,6 +33,11 @@ data class ImageMetadata(
     val pixelHeight: Int? = null,
     val cameraMake: String? = null,
     val cameraModel: String? = null,
+    /** The aperture, as its f-number: 1.8 for f/1.8. */
+    val fNumber: Double? = null,
+    val exposureTimeSeconds: Double? = null,
+    val focalLengthMm: Double? = null,
+    val iso: Int? = null,
 ) {
     val location: MediaLocation?
         get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitudeMeters) else null
@@ -44,6 +49,9 @@ data class ImageMetadata(
  *
  * Returns null only when the bytes cannot be parsed at all. If the image has
  * no metadata, an [ImageMetadata] with all-null fields is returned.
+ *
+ * Web reads a JPEG's camera fields and orientation only ([readJpegExifCamera]), and null for
+ * anything else: browsers expose no EXIF reader.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 

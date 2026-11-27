@@ -9,12 +9,18 @@ import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFRetain
 import platform.CoreFoundation.CFStringRef
 import platform.Foundation.CFBridgingRelease
+import platform.Foundation.NSArray
+import platform.Foundation.firstObject
 import platform.Foundation.NSDictionary
 import platform.Foundation.NSNumber
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyExifDateTimeOriginal
 import platform.ImageIO.kCGImagePropertyExifDictionary
+import platform.ImageIO.kCGImagePropertyExifExposureTime
+import platform.ImageIO.kCGImagePropertyExifFNumber
+import platform.ImageIO.kCGImagePropertyExifFocalLength
+import platform.ImageIO.kCGImagePropertyExifISOSpeedRatings
 import platform.ImageIO.kCGImagePropertyExifOffsetTimeOriginal
 import platform.ImageIO.kCGImagePropertyExifPixelXDimension
 import platform.ImageIO.kCGImagePropertyExifPixelYDimension
@@ -108,8 +114,16 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
             ?.trim()?.takeIf { it.isNotEmpty() },
         cameraModel = (tiff?.objectForKey(kCGImagePropertyTIFFModel.ns) as? String)
             ?.trim()?.takeIf { it.isNotEmpty() },
+        fNumber = exif?.positiveDouble(kCGImagePropertyExifFNumber),
+        exposureTimeSeconds = exif?.positiveDouble(kCGImagePropertyExifExposureTime),
+        focalLengthMm = exif?.positiveDouble(kCGImagePropertyExifFocalLength),
+        iso = ((exif?.objectForKey(kCGImagePropertyExifISOSpeedRatings.ns) as? NSArray)?.firstObject as? NSNumber)
+            ?.intValue?.takeIf { it > 0 },
     )
 }
+
+private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? =
+    (objectForKey(key.ns) as? NSNumber)?.doubleValue?.takeIf { it > 0 }
 
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
 internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!

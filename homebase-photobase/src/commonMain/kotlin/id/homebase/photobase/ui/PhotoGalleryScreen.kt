@@ -98,6 +98,8 @@ import id.homebase.core.image.forGridTile
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.PhotoGalleryItem
+import id.homebase.photobase.info.InfoButton
+import id.homebase.photobase.info.PhotoInfoSheet
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
 import kotlinx.datetime.LocalDate
@@ -289,8 +291,25 @@ fun PhotoGalleryScreen(
         }
     }
     var commentsOn by remember { mutableStateOf<Uuid?>(null) }
+    var infoOn by remember { mutableStateOf<PhotoGalleryItem?>(null) }
     // The sheet goes with its photo, or it opens again over the next one viewed.
-    LaunchedEffect(uiState.openedFileId) { commentsOn = null }
+    LaunchedEffect(uiState.openedFileId) {
+        commentsOn = null
+        infoOn = null
+    }
+    val reader = viewModel.photoInfo
+    val item = infoOn
+    if (item != null && reader != null && uiState.openedFileId != null) {
+        val albums by viewModel.albums.collectAsStateWithLifecycle()
+        PhotoInfoSheet(
+            item = item,
+            owner = null,
+            reader = reader,
+            albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
+            addedBy = null,
+            onDismiss = { infoOn = null },
+        )
+    }
     commentsOn?.takeIf { uiState.openedFileId != null }?.let { photoId ->
         PhotoCommentsSheet(
             photoId = photoId,
@@ -317,6 +336,7 @@ fun PhotoGalleryScreen(
                         photoActions = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
                         onAddToAlbum = { picking = AlbumPick(it) },
                         onComments = { id: Uuid -> commentsOn = id }.takeIf { viewModel.canComment && gallery != PhotoGallery.Bin },
+                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { viewModel.photoInfo != null },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -358,6 +378,7 @@ private fun GalleryViewer(
     photoActions: Boolean?,
     onAddToAlbum: (Uuid) -> Unit,
     onComments: ((photoId: Uuid) -> Unit)?,
+    onInfo: ((PhotoGalleryItem) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -426,7 +447,7 @@ private fun GalleryViewer(
             is FullScreenOverlay.ViewMessageData -> FullScreenMediaViewer(
                 data = viewer,
                 onDelete = onMoveToBin,
-                extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments) },
+                extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments, onInfo) },
                 onDismiss = close,
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
@@ -436,7 +457,7 @@ private fun GalleryViewer(
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
-                FullScreenVideoPlayer(data = viewer, onDismiss = close, extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments) })
+                FullScreenVideoPlayer(data = viewer, onDismiss = close, extraActions = { PhotoActions(item, photoActions, onAction, onAddToAlbum, onComments, onInfo) })
             } else {
                 VideoStill(item)
             }
@@ -452,6 +473,7 @@ private fun PhotoActions(
     onAction: (PhotoGalleryUiAction) -> Unit,
     onAddToAlbum: (Uuid) -> Unit,
     onComments: ((photoId: Uuid) -> Unit)?,
+    onInfo: ((PhotoGalleryItem) -> Unit)?,
 ) {
     if (enabled != null) {
         FavoriteButton(item.favorite, enabled) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
@@ -459,6 +481,7 @@ private fun PhotoActions(
     }
     val photoId = item.globalTransitId
     if (onComments != null && photoId != null) CommentsButton { onComments(photoId) }
+    if (onInfo != null) InfoButton { onInfo(item) }
 }
 
 @Composable

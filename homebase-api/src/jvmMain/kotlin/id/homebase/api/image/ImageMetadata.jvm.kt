@@ -67,6 +67,10 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         pixelHeight = pixelHeight,
         cameraMake = ifd0?.getString(ExifIFD0Directory.TAG_MAKE)?.trim()?.takeIf { it.isNotEmpty() },
         cameraModel = ifd0?.getString(ExifIFD0Directory.TAG_MODEL)?.trim()?.takeIf { it.isNotEmpty() },
+        fNumber = sub?.positiveDouble(ExifSubIFDDirectory.TAG_FNUMBER),
+        exposureTimeSeconds = sub?.positiveDouble(ExifSubIFDDirectory.TAG_EXPOSURE_TIME),
+        focalLengthMm = sub?.positiveDouble(ExifSubIFDDirectory.TAG_FOCAL_LENGTH),
+        iso = sub?.getInteger(ExifSubIFDDirectory.TAG_ISO_EQUIVALENT)?.takeIf { it > 0 },
     )
 }
 
@@ -75,3 +79,6 @@ private fun firstNonNullInt(vararg values: Int?): Int? =
 
 private fun com.drew.metadata.Directory.getRationalOrNull(tag: Int): com.drew.lang.Rational? =
     if (containsTag(tag)) getRational(tag) else null
+
+private fun com.drew.metadata.Directory.positiveDouble(tag: Int): Double? =
+    getRationalOrNull(tag)?.takeIf { it.denominator != 0L }?.toDouble()?.takeIf { it > 0 }

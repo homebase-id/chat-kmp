@@ -24,6 +24,7 @@ import id.homebase.photobase.gallery.syncedSoFar
 import id.homebase.photobase.gallery.toGalleryItem
 import kotlin.math.abs
 import kotlin.time.Instant
+import id.homebase.photobase.info.PhotoInfoReader
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -171,6 +172,7 @@ class PhotoGalleryViewModel(
     private val albumSource: PhotoAlbumSource? = null,
     private val comments: PhotoCommentsService? = null,
     private val actions: PhotoActionService? = null,
+    val photoInfo: PhotoInfoReader? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private val album = gallery as? PhotoGallery.Album

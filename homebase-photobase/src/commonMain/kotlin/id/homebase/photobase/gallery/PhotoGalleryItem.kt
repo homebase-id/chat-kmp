@@ -3,6 +3,9 @@ package id.homebase.photobase.gallery
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.media.MediaLocation
+import id.homebase.photobase.backup.PhotoContent
+import id.homebase.photobase.parseRecord
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
@@ -21,8 +24,14 @@ data class PhotoGalleryItem(
     val uniqueId: Uuid? = null,
     /** What its comments and reactions point at. */
     val globalTransitId: Uuid? = null,
+    /** Its header content, a [PhotoContent]: read only when asked for, see [location]. */
+    val content: String? = null,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
+
+    /** Where it was taken, from its header; parsed each call. */
+    fun location(): MediaLocation? =
+        parseRecord<PhotoContent>(content, "photo $fileId")?.let { c -> c.latitude?.let { lat -> c.longitude?.let { MediaLocation(lat, it, c.altitude) } } }
 
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload
@@ -51,5 +60,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         tags = localTags().toSet(),
         uniqueId = appData.uniqueId,
         globalTransitId = fileMetadata.globalTransitId,
+        content = appData.content,
     )
 }

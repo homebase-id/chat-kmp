@@ -43,5 +43,12 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         pixelHeight = pixelHeight,
         cameraMake = getAttribute(ExifInterface.TAG_MAKE)?.trim()?.takeIf { it.isNotEmpty() },
         cameraModel = getAttribute(ExifInterface.TAG_MODEL)?.trim()?.takeIf { it.isNotEmpty() },
+        fNumber = positiveDouble(ExifInterface.TAG_F_NUMBER),
+        exposureTimeSeconds = positiveDouble(ExifInterface.TAG_EXPOSURE_TIME),
+        focalLengthMm = positiveDouble(ExifInterface.TAG_FOCAL_LENGTH),
+        iso = getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, 0).takeIf { it > 0 },
     )
 }
+
+private fun ExifInterface.positiveDouble(tag: String): Double? =
+    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { it > 0 } else null

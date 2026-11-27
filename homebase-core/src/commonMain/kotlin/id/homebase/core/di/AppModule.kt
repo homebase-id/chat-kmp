@@ -209,6 +209,8 @@ import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.photobase.gallery.HttpPhotoMoveServer
 import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.info.PhotoInfoDrives
+import id.homebase.photobase.info.PhotoInfoReader
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
@@ -1583,7 +1585,7 @@ val appModule = module {
     viewModel { BackupSettingsViewModel(get()) }
     viewModel { PhotobaseSettingsViewModel(get()) }
     viewModel { SharedWithMeViewModel(get()) }
-    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get(), get()) }
+    viewModel { (owner: OdinId, albumId: Uuid) -> SharedAlbumViewModel(owner, albumId, get(), get(), get(), get(), get(), get(), get()) }
     viewModel { (albumId: Uuid) ->
         val credentials = get<CredentialsManager>()
         AlbumShareViewModel(
@@ -1650,6 +1652,7 @@ val appModule = module {
         PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get(), get())
     }
     single { PhotoCommentsService(get(), get(), get(), get(), get()) }
+    factory<PhotoInfoReader> { PhotoInfoDrives(get(), get(), get()) }
     single { PeerReactionProvider(get(), get()) }
     single { PhotoActionService(get(), get(), get()) }
     // The tab's own gallery has no parameter.
@@ -1897,5 +1900,6 @@ private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryView
         albumSource = get(),
         comments = get(),
         actions = get(),
+        photoInfo = get(),
     )
 }
