@@ -48,9 +48,10 @@ class PayloadReaderTest {
 
     private val cacheDir = "/tmp/payload-reader-test-${Uuid.random()}"
 
+    // The web's in-memory file system refuses to delete the cache's open journal, and needs no cleanup.
     @AfterTest
     fun removeCache() {
-        systemFileSystem.deleteRecursively(cacheDir.toPath())
+        runCatching { systemFileSystem.deleteRecursively(cacheDir.toPath()) }
     }
 
     private val fileOps = object : FileOperationsProvider {
