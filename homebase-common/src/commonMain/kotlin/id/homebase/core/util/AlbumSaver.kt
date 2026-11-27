@@ -1,8 +1,9 @@
 package id.homebase.core.util
 
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
@@ -151,7 +152,7 @@ fun PayloadDescriptor.receivedSaveName(dateMs: Long, zone: TimeZone = TimeZone.c
  * video becomes an `.mp4`. The one save path for media people receive.
  */
 suspend fun AlbumSaver.saveReceived(
-    driveFileProvider: DriveFileProvider,
+    payloadReader: PayloadReader,
     fileOps: FileOperationsProvider,
     driveId: Uuid,
     fileId: Uuid,
@@ -163,6 +164,6 @@ suspend fun AlbumSaver.saveReceived(
 ): AlbumSaveResult {
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"
     return saveWritten(name, scratch, fileOps, asked) { path ->
-        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOps, path)
+        payloadReader.writePlayable(PayloadLocation.Own(driveId, fileId), payload, keyHeader, path, cache = false)
     }
 }

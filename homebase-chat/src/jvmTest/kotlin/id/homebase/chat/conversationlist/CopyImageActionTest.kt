@@ -92,7 +92,6 @@ class CopyImageActionTest {
             scope = scope.backgroundScope,
             uiState = MutableStateFlow(ConversationListUiState(ownerSession = owner)),
             messagesUiState = messages,
-            driveFileProvider = server.provider,
             payloadReader = server.payloadReader,
             fileOperationsProvider = server.fileOps,
             chatMessageActionService = service,

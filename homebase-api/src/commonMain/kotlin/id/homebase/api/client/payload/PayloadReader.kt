@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
@@ -34,7 +35,7 @@ sealed interface PayloadLocation {
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
-    private val fileOps: FileOperationsProvider,
+    internal val fileOps: FileOperationsProvider,
 ) {
     /** The payload, or the range of it, decrypted; null when it isn't there. */
     suspend fun bytes(
@@ -70,6 +71,19 @@ class PayloadReader(
     suspend fun encryptedChunk(at: PayloadLocation, key: String, chunkStart: Long, chunkLength: Long): ByteArray? = when (at) {
         is PayloadLocation.Own -> own.getPayloadBytesEncryptedChunk(at.driveId, at.fileId, key, chunkStart, chunkLength)
         is PayloadLocation.Peer -> peer.getPayloadChunkEncryptedOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, chunkStart, chunkLength)
+    }
+
+    /** The whole payload, decrypted, to [consume] as it streams in, at any size; false when it isn't there. [cache] as for [toFile]. */
+    suspend fun stream(
+        at: PayloadLocation,
+        key: String,
+        keyHeader: KeyHeader,
+        cache: Boolean,
+        onProgress: ((Float) -> Unit)? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = when (at) {
+        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, consume)
+        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, consume)
     }
 
     /**

@@ -360,8 +360,9 @@ public class DriveFileProvider(
         key: String,
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
+        cache: Boolean = false,
         consume: suspend (Flow<ByteArray>) -> Unit,
-    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume = consume)
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache, consume)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

@@ -6,6 +6,7 @@ import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.encryptedPayloadHash
@@ -100,7 +101,7 @@ class PayloadDownloadServiceTest {
             )
         )
         val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
-        service = PayloadDownloadService(DriveFileProvider(httpClient, credentialsManager, driveCache), fileOps)
+        service = PayloadDownloadService(payloadReaderOver(httpClient, credentialsManager, fileOps), fileOps)
 
         nextStatus = HttpStatusCode.OK
         nextBody = ByteArray(0)
@@ -148,6 +149,23 @@ class PayloadDownloadServiceTest {
         assertTrue(path.contains("share_outbound"), "must land in the sequestered share dir: $path")
         assertTrue(path.endsWith(".zip"))
         assertContentEquals(plaintext, File(path).readBytes(), "streamed decrypt must be byte-exact")
+    }
+
+    @Test
+    fun `a cached playable export downloads once across opens, an uncached one every time`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(200_000)
+        nextHeaders = headersOf(*(nextHeaders.entries().map { it.key to it.value }.toTypedArray()), HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val video = PayloadDescriptor(key = key, contentType = "video/mp4", descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""")
+        val preview = ExportDestination.UploadTemp("share_", ".mp4")
+
+        repeat(2) { service.exportPlayable(driveId, fileId, video, keyHeader, preview, cache = false) }
+        assertEquals(2, mockEngine.requestHistory.size, "an export, a share or a save fetches each time")
+
+        repeat(2) {
+            val path = assertNotNull(service.exportPlayable(driveId, fileId, video, keyHeader, preview, cache = true))
+            assertContentEquals(plaintext, File(path).readBytes())
+        }
+        assertEquals(3, mockEngine.requestHistory.size, "a preview that keeps its payload reopens from the cache")
     }
 
     @Test

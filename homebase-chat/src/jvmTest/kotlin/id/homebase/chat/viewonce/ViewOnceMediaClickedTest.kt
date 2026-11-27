@@ -67,7 +67,6 @@ class ViewOnceMediaClickedTest {
             scope = scope.backgroundScope,
             uiState = ui,
             messagesUiState = messages,
-            driveFileProvider = server.provider,
             payloadReader = server.payloadReader,
             fileOperationsProvider = server.fileOps,
             chatMessageActionService = service,

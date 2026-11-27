@@ -4,6 +4,7 @@ import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.query.DriveQueryProvider
@@ -17,5 +18,5 @@ internal fun testFilesyncRepository(http: HttpClient, credentials: CredentialsMa
     val cache = DriveFileProviderCached(http, credentials, fileOps)
     val files = DriveFileProvider(http, credentials, cache)
     val peerFiles = PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cache)
-    return FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(files, fileOps), fileOps, files, peerFiles, credentials)
+    return FilesyncRepository(DriveQueryProvider(http, credentials), PayloadDownloadService(PayloadReader(files, peerFiles, fileOps), fileOps), fileOps, files, peerFiles, credentials)
 }

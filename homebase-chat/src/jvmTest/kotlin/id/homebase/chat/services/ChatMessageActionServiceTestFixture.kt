@@ -1,5 +1,7 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
@@ -18,6 +20,7 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -249,7 +252,14 @@ class ChatMessageActionServiceTestFixture(
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
             fileProvider = fileProvider,
-            payloadDownloadService = PayloadDownloadService(fileProvider, NoopFileOperationsProvider()),
+            payloadDownloadService = PayloadDownloadService(
+                PayloadReader(
+                    fileProvider,
+                    PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+                    NoopFileOperationsProvider(),
+                ),
+                NoopFileOperationsProvider(),
+            ),
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,

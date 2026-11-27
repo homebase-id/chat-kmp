@@ -5,6 +5,9 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
+import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.OkioFileOperationsProvider
@@ -109,13 +112,13 @@ class HlsDownloadTest {
 
         tsUses.clear() // the fixture's own segmenting writes one
         val mp4 = File(cache, "saved.mp4")
-        assertTrue(server(stored).downloadHlsAsMp4(DRIVE, FILE, "chat_web0", keyHeader, fileOps, mp4.absolutePath))
+        assertTrue(server(stored).downloadHlsAsMp4(PayloadLocation.Own(DRIVE, FILE), "chat_web0", keyHeader, mp4.absolutePath, cache = false))
         assertSameMedia(fileOps, source, mp4)
         assertEquals(emptyList(), tsUses, "the download is remuxed as it arrives, with no .ts written or read")
     }
 
-    /** A provider whose server holds [stored]: whole, or the byte range a request asks for. */
-    private suspend fun server(stored: ByteArray): DriveFileProvider {
+    /** A reader whose server holds [stored]: whole, or the byte range a request asks for. */
+    private suspend fun server(stored: ByteArray): PayloadReader {
         val credentials = CredentialsManager().also {
             it.setActiveCredentials(ApiCredentials.create(OdinId("frodobaggins.me"), "t", SecureByteArray(ByteArray(32) { 1 })))
         }
@@ -132,7 +135,7 @@ class HlsDownloadTest {
                 ),
             )
         }).also { clients += it }
-        return DriveFileProvider(http, credentials, DriveFileProviderCached(http, credentials, fileOps))
+        return payloadReaderOver(http, credentials, fileOps)
     }
 
     private companion object {

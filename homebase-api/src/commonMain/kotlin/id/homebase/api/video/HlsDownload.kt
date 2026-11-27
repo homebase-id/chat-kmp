@@ -2,31 +2,29 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.drives.files.DescriptorContent
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.CONTENT_TYPE_MP4
-import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.util.safeFileName
 import id.homebase.api.util.splitExtension
-import kotlin.uuid.Uuid
 
 /**
- * A received HLS video, downloaded and remuxed into an MP4 at [outputPath] (a file, or a `content://` entry [fileOps]
- * can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; a file at [outputPath] is then
- * deleted, a `content://` entry is the caller's to discard. A failed download, decrypt or write throws.
+ * A received HLS video, downloaded and remuxed into an MP4 at [outputPath] (a file, or a `content://` entry the reader's
+ * file operations can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; a file at
+ * [outputPath] is then deleted, a `content://` entry is the caller's to discard. A failed download, decrypt or write throws.
  */
-suspend fun DriveFileProvider.downloadHlsAsMp4(
-    driveId: Uuid,
-    fileId: Uuid,
+suspend fun PayloadReader.downloadHlsAsMp4(
+    at: PayloadLocation,
     payloadKey: String,
     keyHeader: KeyHeader,
-    fileOps: FileOperationsProvider,
     outputPath: String,
+    cache: Boolean,
 ): Boolean {
-    val label = "payload $payloadKey of file $fileId"
+    val label = "payload $payloadKey at $at"
     var remuxed = false
-    val found = streamPayloadDecrypted(driveId, fileId, payloadKey, keyHeader) { ts ->
+    val found = stream(at, payloadKey, keyHeader, cache) { ts ->
         remuxed = VideoCompressionService.remuxTsToMp4(fileOps, ts, outputPath, label)
     }
     if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
@@ -47,17 +45,17 @@ fun PayloadDescriptor.playableFileName(name: String?): String? =
 
 /**
  * This payload decrypted to [outputPath] as a file people can open: an HLS video remuxed into an MP4
- * ([downloadHlsAsMp4]), anything else as it is. False when it isn't there or can't be remuxed.
+ * ([downloadHlsAsMp4]), anything else as it is. False when it isn't there or can't be remuxed. [cache] as for
+ * [PayloadReader.toFile].
  */
-suspend fun DriveFileProvider.writePlayable(
-    driveId: Uuid,
-    fileId: Uuid,
+suspend fun PayloadReader.writePlayable(
+    at: PayloadLocation,
     payload: PayloadDescriptor,
     keyHeader: KeyHeader,
-    fileOps: FileOperationsProvider,
     outputPath: String,
+    cache: Boolean,
 ): Boolean = if (payload.isHlsVideo) {
-    downloadHlsAsMp4(driveId, fileId, payload.key, keyHeader, fileOps, outputPath)
+    downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache)
 } else {
-    streamPayloadDecryptedToPath(driveId, fileId, payload.key, keyHeader, outputPath, fileOps)
+    toFile(at, payload.key, keyHeader, outputPath, cache)
 }

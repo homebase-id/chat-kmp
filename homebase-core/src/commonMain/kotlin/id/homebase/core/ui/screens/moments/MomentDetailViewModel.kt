@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments
 
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.video.isHlsVideo
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -82,6 +83,7 @@ class MomentDetailViewModel(
     conversationStream: ConversationStream,
     private val contactService: ContactService,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
     private val recipientLookup: MomentsRecipientLookupService,
     private val payloadDownloadService: PayloadDownloadService,
@@ -721,7 +723,7 @@ class MomentDetailViewModel(
         viewModelScope.launch {
             try {
                 val saved = withContext(ioDispatcher) {
-                    albumSaver.saveReceived(driveFileProvider, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader, moment.userDateMs)
+                    albumSaver.saveReceived(payloadReader, fileOperationsProvider, moment.driveId, moment.fileId, payload, keyHeader, moment.userDateMs)
                 }
                 when (saved) {
                     is AlbumSaveResult.Saved -> _events.tryEmit(MomentDetailUiEvent.MediaSaved(saved.location))

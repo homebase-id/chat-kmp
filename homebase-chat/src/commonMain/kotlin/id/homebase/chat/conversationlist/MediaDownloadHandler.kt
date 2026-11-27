@@ -1,6 +1,5 @@
 package id.homebase.chat.conversationlist
 
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.video.isHlsVideo
@@ -79,7 +78,6 @@ internal class MediaDownloadHandler(
     private val scope: CoroutineScope,
     private val uiState: MutableStateFlow<ConversationListUiState>,
     private val messagesUiState: MutableStateFlow<MessageListUiState>,
-    private val driveFileProvider: DriveFileProvider,
     private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
     private val chatMessageActionService: ChatMessageActionService,
@@ -240,7 +238,7 @@ internal class MediaDownloadHandler(
 
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
+                        payloadReader, fileOperationsProvider, chatTargetDrive.alias, message.fileId, payload,
                         KeyHeader(payloadIv, message.keyHeader.aesKey),
                         message.userDate.toEpochMilliseconds(),
                     )
@@ -273,7 +271,7 @@ internal class MediaDownloadHandler(
             try {
                 val saved = withContext(ioDispatcher) {
                     albumSaver.saveReceived(
-                        driveFileProvider, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader, dateMs,
+                        payloadReader, fileOperationsProvider, chatTargetDrive.alias, action.fileId, action.payload, action.keyHeader, dateMs,
                     )
                 }
                 report(saved, if (action.payload.isHlsVideo) MR.string.chat_error_convert_video else MR.string.chat_error_download_file)
