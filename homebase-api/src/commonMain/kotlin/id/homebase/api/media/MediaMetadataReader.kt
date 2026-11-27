@@ -18,7 +18,8 @@ internal const val TAG = "MediaMetadata"
  *
  * Null, or empty, when the file has none, can't be read or isn't a format this knows; only cancellation and errors
  * such as running out of memory are thrown.
- * The web has no EXIF reader, so an image there reads as null.
+ * The web has no EXIF reader of its own: a JPEG there reads its camera fields, capture offset and orientation only
+ * (see [readImageMetadata]), and any other image as null.
  */
 class MediaMetadataReader(private val fileOps: FileOperationsProvider) {
 

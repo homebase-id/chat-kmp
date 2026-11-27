@@ -12,12 +12,15 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.offsetAt
 
-internal fun megapixels(width: Int, height: Int): String = formatDecimal(width.toLong() * height / 1_000_000.0, 1)
+// Null under 0.05, where it would read "0".
+internal fun megapixels(width: Int, height: Int): String? =
+    (width.toLong() * height / 1_000_000.0).takeIf { it >= 0.05 }?.let { formatDecimal(it, 1) }
 
-/** An exposure that's a whole fraction of a second as one, "1/250"; any other as seconds, "0.8" or "2.5". */
+/** As cameras show it: a fraction, "1/250", up to a third of a second or for a whole fraction; else seconds, "0.8". */
 internal fun shutter(seconds: Double): String {
     val denominator = 1.0 / seconds
-    return if (seconds < 1.0 && abs(denominator - denominator.roundToLong()) < 0.05) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
+    val whole = abs(denominator - denominator.roundToLong()) < 0.05
+    return if (seconds < 1.0 && (denominator >= 3 || whole)) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
 }
 
 /**

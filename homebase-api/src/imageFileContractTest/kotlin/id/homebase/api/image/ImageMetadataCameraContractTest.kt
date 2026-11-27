@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -22,6 +23,10 @@ class ImageMetadataCameraContractTest {
         assertEquals(1.0 / 250, assertNotNull(exif.exposureTimeSeconds), 1e-9)
         assertEquals(50.0, exif.focalLengthMm)
         assertEquals(400, exif.iso)
+        assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
+
+        val twoIsos = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoTwice = true), jpeg)))
+        assertEquals(400, twoIsos.iso, "an ISO of two values reads as its first")
 
         val manual = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, manualLens = true), jpeg)))
         assertNull(manual.fNumber, "a manual lens's 0 is unknown, as the common reader has it")

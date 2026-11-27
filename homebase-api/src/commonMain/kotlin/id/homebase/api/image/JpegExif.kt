@@ -13,6 +13,7 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val ifd0 = tiff.ifd0() ?: return null
     val exif = ifd0.long(0x8769)?.let(tiff::directory)
     return ImageMetadata(
+        captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011)),
         orientation = ifd0.long(0x0112)?.takeIf { it in 1..8 },
         cameraMake = ifd0.ascii(0x010F),
         cameraModel = ifd0.ascii(0x0110),
@@ -103,7 +104,8 @@ private class Directory(val tiff: Tiff, val at: Int) {
         val entry = entry(tag) ?: return null
         return when (tiff.u16(entry + 2)) {
             3 -> tiff.u16(entry + 8)
-            4 -> tiff.u32(entry + 8)
+            // 13 is IFD: a pointer some encoders type that way.
+            4, 13 -> tiff.u32(entry + 8)
             else -> null
         }
     }

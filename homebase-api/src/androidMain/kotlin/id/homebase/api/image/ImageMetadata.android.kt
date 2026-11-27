@@ -46,7 +46,8 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         fNumber = positiveDouble(ExifInterface.TAG_F_NUMBER),
         exposureTimeSeconds = positiveDouble(ExifInterface.TAG_EXPOSURE_TIME),
         focalLengthMm = positiveDouble(ExifInterface.TAG_FOCAL_LENGTH),
-        iso = getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, 0).takeIf { it > 0 },
+        // getAttributeInt gives up on a tag of several values; the attribute is them joined by commas.
+        iso = getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)?.substringBefore(',')?.trim()?.toIntOrNull()?.takeIf { it > 0 },
     )
 }
 

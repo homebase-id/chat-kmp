@@ -88,12 +88,14 @@ import kotlin.time.Instant
 @Composable
 fun PhotoInfoSheet(
     item: PhotoGalleryItem,
-    /** Whose album someone shares it in; null in this identity's own library, where it's backed up. */
+    /** Whose album someone shares it in; null in this identity's own library. */
     owner: OdinId?,
     reader: PhotoInfoReader,
     albums: List<String>,
     /** Who added it to an album someone shares, when not its owner. */
     addedBy: OdinId?,
+    /** In this identity's library and not in its Bin, waiting to be deleted. */
+    backedUp: Boolean,
     onDismiss: () -> Unit,
 ) {
     // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
@@ -113,7 +115,7 @@ fun PhotoInfoSheet(
             FileRow(item)
             CameraRow(uiState?.camera ?: InfoPart.Loading)
             if (albums.isNotEmpty()) InfoRow(Icons.Outlined.PhotoAlbum, stringResource(MR.string.photobase_info_albums), albums.joinToString(", "))
-            if (owner == null) InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), stringResource(MR.string.photobase_info_backed_up_body))
+            if (backedUp) InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), stringResource(MR.string.photobase_info_backed_up_body))
             addedBy?.let { InfoRow(Icons.Outlined.Person, stringResource(MR.string.photobase_photo_added_by, it.domainName), null) }
         }
     }
@@ -183,7 +185,7 @@ private fun FileRow(item: PhotoGalleryItem) {
     val file = remember(item.payload) { fileFacts(item.payload) }
     val details = buildList {
         if (file.width != null && file.height != null) {
-            add(stringResource(MR.string.photobase_info_megapixels, megapixels(file.width, file.height)))
+            megapixels(file.width, file.height)?.let { add(stringResource(MR.string.photobase_info_megapixels, it)) }
             add(stringResource(MR.string.photobase_info_dimensions, file.width, file.height))
         }
         file.bytes?.let { add(formatBytes(it)) }

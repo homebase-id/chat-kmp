@@ -125,6 +125,7 @@ fun SharedAlbumScreen(
                 reader = viewModel.photoInfo,
                 albums = listOfNotNull(uiState.album?.name),
                 addedBy = photo.addedBy,
+                backedUp = false,
                 onDismiss = { infoOn = null },
             )
         }

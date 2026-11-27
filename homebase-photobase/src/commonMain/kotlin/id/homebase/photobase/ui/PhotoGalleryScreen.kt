@@ -307,6 +307,7 @@ fun PhotoGalleryScreen(
             reader = reader,
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             addedBy = null,
+            backedUp = gallery != PhotoGallery.Bin,
             onDismiss = { infoOn = null },
         )
     }

@@ -22,6 +22,7 @@ class PhotoInfoFormatTest {
     fun megapixelsAreToOneDecimal() {
         assertEquals("12.2", megapixels(4032, 3024))
         assertEquals("48", megapixels(8000, 6000))
+        assertNull(megapixels(200, 200), "a sticker isn't 0 MP")
     }
 
     @Test
@@ -30,7 +31,10 @@ class PhotoInfoFormatTest {
         assertEquals("1/3", shutter(1.0 / 3))
         assertEquals("1/2", shutter(0.5))
         assertEquals("0.8", shutter(0.8))
-        assertEquals("0.3", shutter(0.3))
+        assertEquals("1/3", shutter(0.3))
+        assertEquals("0.4", shutter(0.4))
+        assertEquals("1/81", shutter(0.0123))
+        assertEquals("1/3817", shutter(0.000262))
         assertEquals("2.5", shutter(2.5))
         assertEquals("1", shutter(1.0))
     }

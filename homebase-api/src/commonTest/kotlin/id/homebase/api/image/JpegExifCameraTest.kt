@@ -1,5 +1,6 @@
 package id.homebase.api.image
 
+import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -18,7 +19,14 @@ class JpegExifCameraTest {
             assertEquals(1.0 / 250, exif.exposureTimeSeconds)
             assertEquals(50.0, exif.focalLengthMm)
             assertEquals(400, exif.iso)
+            assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
         }
+    }
+
+    @Test
+    fun anIsoOfTwoValuesIsItsFirstAndAnIfdTypedPointerIsFollowed() {
+        assertEquals(400, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = true, isoTwice = true)))?.iso)
+        assertEquals(1.8, readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, exifPointerType = 13)))?.fNumber)
     }
 
     @Test
@@ -30,7 +38,7 @@ class JpegExifCameraTest {
     fun valuesPastTheBytesGivenAreLeftOutAndTheRestRead() {
         val tiff = CameraExifFixture.tiff(littleEndian = true)
         // Cut inside the values: the names and rationals lie past the end, the IFDs and ISO don't.
-        val head = CameraExifFixture.inJpeg(tiff).let { it.copyOf(it.size - 2 - (tiff.size - 120)) }
+        val head = CameraExifFixture.inJpeg(tiff).let { it.copyOf(it.size - 2 - (tiff.size - CameraExifFixture.MAKE_AT - 4)) }
 
         val exif = assertNotNull(readJpegExifCamera(head))
 
@@ -72,8 +80,7 @@ class JpegExifCameraTest {
 
     @Test
     fun aNameEndsAtItsFirstNul() {
-        // Make's value starts right after the two IFDs, at 116: "Ca\u0000on\u0000".
-        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[118] = 0 }
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.MAKE_AT + 2] = 0 }
 
         assertEquals("Ca", assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).cameraMake)
     }

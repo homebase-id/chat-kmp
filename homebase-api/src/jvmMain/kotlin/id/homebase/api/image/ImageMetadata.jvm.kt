@@ -70,7 +70,8 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         fNumber = sub?.positiveDouble(ExifSubIFDDirectory.TAG_FNUMBER),
         exposureTimeSeconds = sub?.positiveDouble(ExifSubIFDDirectory.TAG_EXPOSURE_TIME),
         focalLengthMm = sub?.positiveDouble(ExifSubIFDDirectory.TAG_FOCAL_LENGTH),
-        iso = sub?.getInteger(ExifSubIFDDirectory.TAG_ISO_EQUIVALENT)?.takeIf { it > 0 },
+        // getInteger is null for a tag of several values.
+        iso = sub?.getIntArray(ExifSubIFDDirectory.TAG_ISO_EQUIVALENT)?.firstOrNull()?.takeIf { it > 0 },
     )
 }
 
