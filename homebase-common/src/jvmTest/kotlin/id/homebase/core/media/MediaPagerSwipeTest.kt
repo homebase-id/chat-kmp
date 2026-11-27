@@ -28,7 +28,7 @@ import kotlin.test.assertEquals
 class MediaPagerSwipeTest {
 
     @Composable
-    private fun ZoomablePhoto(zoomedTo: Float? = null) {
+    private fun ZoomablePhoto(zoomedTo: Float?) {
         val zoomState = rememberZoomState()
         if (zoomedTo != null) {
             LaunchedEffect(Unit) {
@@ -39,57 +39,50 @@ class MediaPagerSwipeTest {
         Box(Modifier.fillMaxSize().zoom(zoomState.zoomable))
     }
 
-    private fun settledPageAfterSwipe(fraction: Float, millis: Long, page: @Composable () -> Unit): Int {
-        var settled = -1
+    private fun settledPageAfterSwipe(
+        fraction: Float,
+        millis: Long,
+        zoomedTo: Float? = null,
+        pager: @Composable (PagerState, Modifier, @Composable () -> Unit) -> Unit = { state, modifier, photo ->
+            HorizontalPager(state, modifier, pageSpacing = 24.dp) { MediaPager(pageCount = 1) { photo() } }
+        },
+    ): Int {
+        lateinit var state: PagerState
         runComposeUiTest {
-            lateinit var state: PagerState
             setContent {
                 state = rememberPagerState { 3 }
-                HorizontalPager(state, Modifier.fillMaxSize().testTag("viewer"), pageSpacing = 24.dp) { page() }
+                pager(state, Modifier.fillMaxSize().testTag("viewer")) { ZoomablePhoto(zoomedTo) }
             }
             onNodeWithTag("viewer").performTouchInput {
                 val start = width * 0.8f
                 swipeLeft(startX = start, endX = start - width * fraction, durationMillis = millis)
             }
             waitForIdle()
-            settled = state.settledPage
         }
-        return settled
+        return state.settledPage
     }
 
     @Test
     fun aShortFlickOnAOnePhotoViewerTurnsToTheNextPhoto() {
-        assertEquals(1, settledPageAfterSwipe(0.15f, 80) { MediaPager(pageCount = 1) { ZoomablePhoto() } })
-        assertEquals(1, settledPageAfterSwipe(0.25f, 100) { MediaPager(pageCount = 1) { ZoomablePhoto() } })
+        assertEquals(1, settledPageAfterSwipe(0.15f, 80))
+        assertEquals(1, settledPageAfterSwipe(0.25f, 100))
     }
 
     @Test
     fun aSmallSlowDragSpringsBack() {
-        assertEquals(0, settledPageAfterSwipe(0.10f, 1000) { MediaPager(pageCount = 1) { ZoomablePhoto() } })
+        assertEquals(0, settledPageAfterSwipe(0.10f, 1000))
     }
 
     @Test
     fun dragsOnAZoomedPhotoPanItAndKeepThePhoto() {
-        assertEquals(0, settledPageAfterSwipe(0.25f, 100) { MediaPager(pageCount = 1) { ZoomablePhoto(zoomedTo = 3f) } })
-        assertEquals(0, settledPageAfterSwipe(0.30f, 1000) { MediaPager(pageCount = 1) { ZoomablePhoto(zoomedTo = 3f) } })
+        assertEquals(0, settledPageAfterSwipe(0.25f, 100, zoomedTo = 3f))
+        assertEquals(0, settledPageAfterSwipe(0.30f, 1000, zoomedTo = 3f))
     }
 
     @Test
     fun aShortFlickStillTurnsThePhotosOfOneMessage() {
-        var settled = -1
-        runComposeUiTest {
-            lateinit var state: PagerState
-            setContent {
-                state = rememberPagerState { 2 }
-                MediaPager(pageCount = 2, modifier = Modifier.testTag("viewer"), state = state) { ZoomablePhoto() }
-            }
-            onNodeWithTag("viewer").performTouchInput {
-                val start = width * 0.8f
-                swipeLeft(startX = start, endX = start - width * 0.15f, durationMillis = 80)
-            }
-            waitForIdle()
-            settled = state.settledPage
-        }
-        assertEquals(1, settled)
+        assertEquals(1, settledPageAfterSwipe(0.15f, 80) { state, modifier, photo ->
+            MediaPager(pageCount = 3, modifier = modifier, state = state) { photo() }
+        })
     }
 }
