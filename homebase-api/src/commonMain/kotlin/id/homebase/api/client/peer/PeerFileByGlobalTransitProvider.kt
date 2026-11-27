@@ -117,9 +117,9 @@ class PeerFileByGlobalTransitProvider(
         val creds = requireCreds()
         val base = "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey"
         // The by-gtid route takes the size as query params; the peer broker takes it as path segments.
-        val remotePath = "$base/thumb?width=$width&height=$height"
+        // The route ignores lastModified, but the CDN caches by URL, so an edit must ask for a new one.
+        val remotePath = "$base/thumb?width=$width&height=$height" + lastModified?.let { "&lastModified=$it" }.orEmpty()
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height")
-        // An edit replaces the image under the same key; lastModified tells the versions apart.
         val cacheKey =
             peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height, lastModified)
         val response = try {
@@ -240,10 +240,12 @@ class PeerFileByGlobalTransitProvider(
         cdnUrlFor(peer, remotePath)?.let { cdnUrl ->
             try {
                 Logger.i(tag = TAG) { "CDN GET $cdnUrl" }
+                // An error body downloads too: only a read that succeeded may say it's done.
                 val response = requestBytes(maxBytes) {
-                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress) }
+                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress?.let { report -> { if (it < 1f) report(it) } }) }
                 }
                 throwForFailure(response)
+                onDownloadProgress?.invoke(1f)
                 return response
             } catch (e: CancellationException) {
                 throw e

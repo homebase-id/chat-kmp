@@ -40,6 +40,8 @@ class PayloadReaderTest {
     private val key = "vid_payload"
     private val body = ByteArray(64) { it.toByte() }
     private var served = body
+    private var cdnStatus = HttpStatusCode.OK
+    private val events = mutableListOf<String>()
 
     private val own = PayloadLocation.Own(driveId, fileId)
     private val peers = PayloadLocation.Peer(PeerFileRef(peer, globalTransitId), driveId)
@@ -74,7 +76,13 @@ class PayloadReaderTest {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("frodo.dotyou.cloud"), "token", SecureByteArray(ByteArray(16) { 5 })))
         val http = HttpClient(MockEngine { request ->
-            requests += request.url.toString().decodeURLQueryComponent()
+            val url = request.url.toString().decodeURLQueryComponent()
+            requests += url
+            events += "GET $url"
+            if (request.url.host.startsWith("cdn.") && cdnStatus != HttpStatusCode.OK) {
+                val error = "{\"error\":\"no\"}".encodeToByteArray()
+                return@MockEngine respond(error, cdnStatus, headersOf(HttpHeaders.ContentLength to listOf("${error.size}")))
+            }
             respond(
                 served,
                 HttpStatusCode.OK,
@@ -138,6 +146,8 @@ class PayloadReaderTest {
         val afterTheEdit = reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 2)
 
         assertContentEquals(byteArrayOf(2), afterTheEdit?.bytes)
+        // The CDN caches by URL: an edit must ask for a different one, or it serves the old thumb.
+        assertTrue(requests.last().contains("lastModified=2"), "${requests.last()}")
     }
 
     @Test
@@ -160,6 +170,18 @@ class PayloadReaderTest {
             assertEquals(1f, reader.progressReading(at).lastOrNull(), "whole payload, $at")
             assertEquals(1f, reader.progressReading(at, chunkStart = 0).lastOrNull(), "range, $at")
         }
+    }
+
+    @Test
+    fun aFailedCdnReadReportsNoProgressBeforeTheAuthorsServerAnswers() = runTest {
+        cdnStatus = HttpStatusCode.NotFound
+
+        reader().bytes(peers, key, KeyHeader.empty(), onProgress = { events += "progress $it" })
+
+        val peerRequest = events.indexOfFirst { it.startsWith("GET") && "/peer/" in it }
+        assertTrue(peerRequest >= 0, "$events")
+        assertTrue(events.take(peerRequest).none { it.startsWith("progress") }, "the CDN's error body isn't the download: $events")
+        assertEquals("progress 1.0", events.last { it.startsWith("progress") })
     }
 
     @Test
