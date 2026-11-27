@@ -142,8 +142,7 @@ internal fun parseExifUtcOffset(raw: String?): UtcOffset? {
     }
 }
 
-// The rules every platform's reader applies to the fields of [ImageMetadata] after [ImageMetadata.iso], so they're
-// written once.
+// The rules for the fields of [ImageMetadata] after [ImageMetadata.iso], on every platform.
 internal fun exifName(raw: String?): String? = raw?.substringBefore('\u0000')?.trim()?.takeIf { it.isNotEmpty() }
 internal fun exifExposureBias(raw: Double?): Double? = raw?.takeIf { it.isFinite() }
 internal fun exifExposureProgram(raw: Int?): Int? = raw?.takeIf { it in 1..8 }

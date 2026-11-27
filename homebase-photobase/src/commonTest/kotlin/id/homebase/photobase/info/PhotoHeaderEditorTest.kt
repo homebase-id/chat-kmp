@@ -76,4 +76,11 @@ class PhotoHeaderEditorTest {
         assertEquals("-14400", timed["offsetSeconds"]?.jsonPrimitive?.content)
         assertEquals("1", timed["v"]?.jsonPrimitive?.content)
     }
+
+    @Test
+    fun aNewerAppsVersionStays() {
+        val edited = Json.parseToJsonElement(editedContent("""{"v":2,"latitude":1.0,"longitude":2.0}""", PhotoEdit.Place(null))).jsonObject
+
+        assertEquals("2", edited["v"]?.jsonPrimitive?.content)
+    }
 }

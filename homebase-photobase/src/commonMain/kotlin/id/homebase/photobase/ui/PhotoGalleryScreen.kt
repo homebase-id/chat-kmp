@@ -445,7 +445,7 @@ private fun GalleryViewer(
                 showUIState = showUI,
                 // A native video view can't follow the open and close flight, so a Live photo's clip waits for it to end.
                 isFocused = settled && !animatedVisibilityScope.transition.isRunning,
-                motionReplay = motionReplay,
+                motionReplay = if (settled) motionReplay else 0,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             // The open video caches itself as it plays; preloading it too would download it twice.

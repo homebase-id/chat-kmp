@@ -114,13 +114,12 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
         onDismissRequest = onDismiss,
         title = { Text(stringResource(MR.string.photobase_info_edit_location)) },
         text = {
-            if (source.mapsOnline) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (source.mapsOnline) {
                     Text(stringResource(MR.string.photobase_info_edit_location_hint), style = MaterialTheme.typography.bodyMedium)
                     Box(Modifier.fillMaxWidth().height(280.dp).clip(RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
                         val box = remember(at) { at?.let { WebMercator.latLonToUnit(it.latitude, it.longitude) }?.let { (x, y) -> mapBox(x, y) } ?: WORLD }
-                        TiledMapView(bbox = box, showMapTiles = true, fetchTile = source::tile, cameraState = camera, modifier = Modifier.fillMaxWidth().height(280.dp))
-                        // Its point on the middle.
+                        TiledMapView(bbox = box, showMapTiles = true, fetchTile = source::tile, cameraState = camera, modifier = Modifier.matchParentSize())
                         Icon(
                             Icons.Filled.LocationOn,
                             contentDescription = stringResource(MR.string.cd_location_pin),
@@ -128,9 +127,7 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
                             modifier = Modifier.size(PIN).offset(y = -PIN / 2),
                         )
                     }
-                }
-            } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                } else {
                     OutlinedTextField(
                         latitude, { latitude = it },
                         label = { Text(stringResource(MR.string.photobase_info_latitude)) },
@@ -161,11 +158,8 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
     )
 }
 
-internal fun typedLocation(latitude: String, longitude: String): MediaLocation? {
-    val lat = latitude.trim().toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return null
-    val lon = longitude.trim().toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return null
-    return MediaLocation(lat, lon)
-}
+internal fun typedLocation(latitude: String, longitude: String): MediaLocation? =
+    MediaLocation.of(latitude.trim().toDoubleOrNull(), longitude.trim().toDoubleOrNull())
 
 private val WORLD = doubleArrayOf(0.0, 0.0, 1.0, 1.0)
 private val PIN = 32.dp

@@ -105,7 +105,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
                 capturedAtMs = item.capturedAtMs,
                 offsetByHand = content?.offsetSeconds?.let { UtcOffset(seconds = it) },
                 location = location,
-                place = if (source.mapsOnline) InfoPart.Loading else InfoPart.Read(null),
+                place = placeUnread(),
             )
         }
         reading = viewModelScope.launch {
@@ -123,11 +123,13 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
             val saved = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
             update(item.fileId) { state ->
                 val done = state.copy(saving = false, saveFailed = !saved)
-                when {
-                    !saved -> done
-                    edit is PhotoEdit.Time -> done.copy(capturedAtMs = edit.at.toEpochMilliseconds(), offsetByHand = edit.offset)
-                    edit is PhotoEdit.Place -> done.copy(location = edit.at, place = if (source.mapsOnline) InfoPart.Loading else InfoPart.Read(null))
-                    else -> done
+                if (!saved) {
+                    done
+                } else {
+                    when (edit) {
+                        is PhotoEdit.Time -> done.copy(capturedAtMs = edit.at.toEpochMilliseconds(), offsetByHand = edit.offset)
+                        is PhotoEdit.Place -> done.copy(location = edit.at, place = placeUnread())
+                    }
                 }
             }
             if (saved && edit is PhotoEdit.Place) lookUpPlace(item.fileId, edit.at)
@@ -141,6 +143,9 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         item = null
         _uiState.update { PhotoInfoUiState() }
     }
+
+    // Read(null) with maps offline: nothing will be looked up.
+    private fun placeUnread(): InfoPart<String> = if (source.mapsOnline) InfoPart.Loading else InfoPart.Read(null)
 
     private fun lookUpPlace(fileId: Uuid, at: MediaLocation?) {
         placing?.cancel()

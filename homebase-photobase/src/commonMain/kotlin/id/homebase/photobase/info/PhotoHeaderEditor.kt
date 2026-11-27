@@ -1,18 +1,14 @@
 package id.homebase.photobase.info
 
-import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
-import id.homebase.api.client.OdinClientErrorCode
 import id.homebase.api.client.drives.HomebaseFile
-import id.homebase.api.client.drives.upload.FileUpdateInstructionSet
 import id.homebase.api.client.drives.upload.UpdateFileByFileIdRequest
-import id.homebase.api.client.drives.upload.UpdateLocale
-import id.homebase.api.client.drives.upload.UpdateManifest
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.media.MediaLocation
 import id.homebase.photobase.backup.PhotoContent
+import id.homebase.photobase.headerOnlyUpdate
+import id.homebase.photobase.mergedContent
+import id.homebase.photobase.retryingConflicts
 import kotlinx.datetime.UtcOffset
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -23,7 +19,6 @@ import kotlin.uuid.Uuid
 
 /** A change to a photo's header: the original file and its EXIF stay as the camera wrote them. */
 sealed interface PhotoEdit {
-    /** Sets `userDate` to [at], taken at [offset]. */
     data class Time(val at: Instant, val offset: UtcOffset) : PhotoEdit
 
     /** Null removes it. */
@@ -38,18 +33,11 @@ class PhotoHeaderEditor(
     private val sync: () -> Unit,
 ) {
     suspend fun save(driveId: Uuid, fileId: Uuid, edit: PhotoEdit) {
-        repeat(MAX_CONFLICT_RETRIES) {
+        retryingConflicts("photo $fileId") {
             val existing = header(driveId, fileId) ?: throw IllegalStateException("photo $fileId is gone")
-            try {
-                update(request(existing, edit))
-                sync()
-                return
-            } catch (e: ClientException) {
-                if (e.errorCode != OdinClientErrorCode.VersionTagMismatch) throw e
-                Logger.i(tag = TAG) { "save: ${e.errorCode}, retrying" }
-            }
+            update(request(existing, edit))
         }
-        throw IllegalStateException("Could not save photo $fileId after $MAX_CONFLICT_RETRIES conflicts")
+        sync()
     }
 
     private suspend fun request(existing: HomebaseFile, edit: PhotoEdit): UpdateFileByFileIdRequest {
@@ -76,40 +64,30 @@ class PhotoHeaderEditor(
             driveId = existing.driveId,
             fileId = existing.fileId,
             keyHeader = keyHeader,
-            instructions = FileUpdateInstructionSet(
-                transferIv = ByteArrayUtil.getRndByteArray(16),
-                locale = UpdateLocale.Local,
-                recipients = emptyList(),
-                manifest = UpdateManifest.build(payloads = null, toDeletePayloads = null, thumbnails = null, generatePayloadIv = false),
-            ),
+            instructions = headerOnlyUpdate(),
             metadata = metadata.encryptContent(keyHeader),
         )
     }
-
-    private companion object {
-        const val TAG = "PhotoHeaderEditor"
-        const val MAX_CONFLICT_RETRIES = 5
-    }
 }
 
-/** [stored] PhotoContent with [edit] applied; fields this version doesn't know are kept, so a newer app's survive. */
+/** [stored] PhotoContent with [edit] applied. A moved place drops the old altitude, which was the old place's. */
 internal fun editedContent(stored: String?, edit: PhotoEdit): String {
-    val fields = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }.orEmpty().toMutableMap()
-    fields.getOrPut("v") { JsonPrimitive(PhotoContent.CURRENT_VERSION) }
-    when (edit) {
-        is PhotoEdit.Time -> fields["offsetSeconds"] = JsonPrimitive(edit.offset.totalSeconds)
+    // A newer app's version stays, so this one can't mark its content older than it is.
+    val versioned = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject.containsKey("v") }.getOrNull() } == true
+    val version = if (versioned) emptyMap() else mapOf("v" to JsonPrimitive(PhotoContent.CURRENT_VERSION))
+    return when (edit) {
+        is PhotoEdit.Time -> mergedContent(stored, JsonObject(version + ("offsetSeconds" to JsonPrimitive(edit.offset.totalSeconds))))
         is PhotoEdit.Place -> {
-            fields.remove("altitude")
             val at = edit.at
-            if (at == null) {
-                fields.remove("latitude")
-                fields.remove("longitude")
-            } else {
-                fields["latitude"] = JsonPrimitive(at.latitude)
-                fields["longitude"] = JsonPrimitive(at.longitude)
-                at.altitude?.let { fields["altitude"] = JsonPrimitive(it) }
+            val set = buildMap {
+                putAll(version)
+                if (at != null) {
+                    put("latitude", JsonPrimitive(at.latitude))
+                    put("longitude", JsonPrimitive(at.longitude))
+                    at.altitude?.let { put("altitude", JsonPrimitive(it)) }
+                }
             }
+            mergedContent(stored, JsonObject(set), remove = setOf("latitude", "longitude", "altitude"))
         }
     }
-    return JsonObject(fields).toString()
 }

@@ -160,7 +160,9 @@ fun PhotoInfoSheet(
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value.takeIf { it.fileId == item.fileId }
     val exif = (uiState?.camera as? InfoPart.Read)?.value
     var editing by remember { mutableStateOf<Editing?>(null) }
-    val taken = takenAt(uiState?.capturedAtMs ?: item.capturedAtMs, exif, uiState?.offsetByHand)
+    val capturedAtMs = uiState?.capturedAtMs ?: item.capturedAtMs
+    val taken = remember(capturedAtMs, exif, uiState?.offsetByHand) { takenAt(capturedAtMs, exif, uiState?.offsetByHand) }
+    val canEdit = editable && uiState != null
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -177,11 +179,11 @@ fun PhotoInfoSheet(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
             }
-            WhenRow(taken, onEdit = { editing = Editing.Time }.takeIf { editable && uiState != null })
+            WhenRow(taken, onEdit = { editing = Editing.Time }.takeIf { canEdit })
             val location = uiState?.location
             if (location != null) {
-                WhereSection(location, uiState.place, source, onEdit = { editing = Editing.Place }.takeIf { editable })
-            } else if (editable && uiState != null) {
+                WhereSection(location, uiState.place, source, onEdit = { editing = Editing.Place }.takeIf { canEdit })
+            } else if (canEdit) {
                 InfoRow(Icons.Outlined.AddLocationAlt, stringResource(MR.string.photobase_info_add_location), null, Modifier.clickable { editing = Editing.Place })
             }
             LocationDetailsRow(location, exif)
@@ -260,12 +262,9 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<String>, source: Pho
         runCatching { uriHandler.openUri(mapsUrl(at)) }.onFailure { Logger.w(tag = "PhotoInfoSheet", throwable = it) { "maps link not opened" } }
         Unit
     }
-    Column {
-        Column(Modifier.clickable(onClickLabel = openMap, role = Role.Button, onClick = open)) {
-            PlaceMap(at, source)
-        }
-        InfoRow(Icons.Outlined.Place, headline, coordinates(at), Modifier.clickable(onClickLabel = openMap, role = Role.Button, onClick = open), trailing)
-    }
+    val opens = Modifier.clickable(onClickLabel = openMap, role = Role.Button, onClick = open)
+    PlaceMap(at, source, opens)
+    InfoRow(Icons.Outlined.Place, headline, coordinates(at), opens, trailing)
 }
 
 @Composable
@@ -282,7 +281,7 @@ private fun LocationDetailsRow(location: MediaLocation?, exif: ImageMetadata?) {
 }
 
 @Composable
-private fun PlaceMap(at: MediaLocation, source: PhotoInfoSource) {
+private fun PlaceMap(at: MediaLocation, source: PhotoInfoSource, modifier: Modifier) {
     val (x, y) = remember(at) { WebMercator.latLonToUnit(at.latitude, at.longitude) }
     val pin = stringResource(MR.string.cd_location_pin)
     TiledMapView(
@@ -291,7 +290,7 @@ private fun PlaceMap(at: MediaLocation, source: PhotoInfoSource) {
         fetchTile = source::tile,
         interactive = false,
         resetViewportOn = at,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)),
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)),
         markerContent = { project, ready ->
             if (ready) {
                 Icon(
@@ -376,7 +375,6 @@ private fun CameraSection(camera: InfoPart<ImageMetadata>) {
 private fun EditedRow(exif: ImageMetadata) {
     val modified = exif.modifiedAt?.takeIf { it != exif.capturedAt }
     val software = exif.software
-    if (software == null && modified == null) return
     // EXIF's clock has no zone: read in this device's, it shows as written.
     val modifiedText = modified?.let { stringResource(MR.string.photobase_info_modified, formatMediumDate(it.toInstant(TimeZone.currentSystemDefault()))) }
     val headline = software?.let { stringResource(MR.string.photobase_info_edited_with, it) } ?: modifiedText ?: return
