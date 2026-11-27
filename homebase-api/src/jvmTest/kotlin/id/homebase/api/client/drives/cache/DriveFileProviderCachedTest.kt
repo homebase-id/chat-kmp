@@ -450,18 +450,6 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
-    fun `a view-once mp4 is never prefetched into the cache`() = runTest {
-        val fileProvider = servePlainMp4()
-        provider.markEphemeral(fileId)
-
-        fileProvider.prefetchPayload(driveId, fileId, key, onDownloadProgress = null)
-        assertContentEquals(nextBody, streamed())
-
-        assertEquals(1, requestCount, "only the play itself may fetch")
-        assertEquals(0L, statsSize(provider.getCacheStats(), "drive_payloads"), "a view-once payload must never be cached")
-    }
-
-    @Test
     fun `a played mp4 is cached as it streams and the next play makes no request`() = runTest {
         servePlainMp4()
 
@@ -550,12 +538,14 @@ class DriveFileProviderCachedTest {
     }
 
     @Test
-    fun `a view-once mp4 is played but never cached`() = runTest {
-        servePlainMp4()
+    fun `a view-once mp4 is neither prefetched nor kept by its play`() = runTest {
+        val fileProvider = servePlainMp4()
         provider.markEphemeral(fileId)
 
+        fileProvider.prefetchPayload(driveId, fileId, key, onDownloadProgress = null)
         assertContentEquals(nextBody, streamed(cache = true))
 
+        assertEquals(1, requestCount, "only the play itself may fetch")
         assertEquals(0L, cachedPayloadBytes())
     }
 

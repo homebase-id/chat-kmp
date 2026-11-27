@@ -138,7 +138,6 @@ suspend fun resolveVideoContent(
                 keyHeader = data.keyHeader,
                 outputPath = outputPath,
                 onProgress = onDownloadProgress,
-                cache = true,
             )
         }
         if (!ok) error("Failed to download video")

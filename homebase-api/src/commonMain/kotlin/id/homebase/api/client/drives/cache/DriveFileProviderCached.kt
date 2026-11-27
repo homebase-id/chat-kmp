@@ -410,49 +410,32 @@ class DriveFileProviderCached(
             } else {
                 null
             }
-            if (editor == null) return@streamPayloadBody consume(body.decrypted(keyHeader))
+            val sink = editor?.let { e ->
+                runCatching { fileSystem.sink(e.data).buffer().apply { writeEntryHeader(200, body.contentType, body.encrypted) } }
+                        .onFailure { e.abortQuietly() }
+                        .getOrNull()
+            }
+            if (editor == null || sink == null) return@streamPayloadBody consume(body.decrypted(keyHeader))
 
             var written = 0L
-            var sink: okio.BufferedSink? = null
-            try {
-                sink = fileSystem.sink(editor.data).buffer().apply {
-                    writeInt(200)
-                    writeInt(body.contentType.length)
-                    writeUtf8(body.contentType)
-                    writeByte(if (body.encrypted) 1 else 0)
-                }
-            } catch (e: Exception) {
-                Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED to open key=$cacheKey" }
-            }
+            var ok = true
             val teed = body.bytes.onEach { chunk ->
-                val out = sink ?: return@onEach
-                try {
-                    written += chunk.size
-                    check(written <= PayloadSizePolicy.RENDER_LIMIT_BYTES) { "over the render limit" }
-                    out.write(chunk)
-                } catch (e: Exception) {
-                    Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED key=$cacheKey" }
-                    runCatching { out.close() }
-                    sink = null
-                }
+                if (!ok) return@onEach
+                written += chunk.size
+                ok = written <= PayloadSizePolicy.RENDER_LIMIT_BYTES && runCatching { sink.write(chunk) }.isSuccess
             }
             try {
-                consume(StreamedBody(body.contentType, size, body.encrypted, teed).decrypted(keyHeader))
+                consume(body.copy(bytes = teed).decrypted(keyHeader))
             } catch (e: Throwable) {
-                sink?.let { runCatching { it.close() } }
-                editor.abortQuietly()
+                ok = false
                 throw e
-            }
-            val complete = sink?.let { out -> runCatching { out.close() }.isSuccess } == true && (size == null || written == size)
-            if (!complete || generation != startedGeneration) {
-                editor.abortQuietly()
-            } else {
-                try {
-                    editor.commit()
-                    if (generation != startedGeneration) payloadDiskCache.remove(cacheKey.toDiskKey())
-                } catch (e: Exception) {
+            } finally {
+                ok = runCatching { sink.close() }.isSuccess && ok
+                if (ok && (size == null || written == size)) {
+                    commitUnlessCleared(payloadDiskCache, editor, cacheKey, startedGeneration, "PayloadIO")
+                } else {
                     editor.abortQuietly()
-                    Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED to commit key=$cacheKey" }
+                    Logger.d(tag = "PayloadIO") { "cache-write SKIPPED ($written of ${size ?: "?"} bytes) key=$cacheKey" }
                 }
             }
         }
@@ -568,12 +551,10 @@ class DriveFileProviderCached(
                     check(result.status in 200..299) {
                         "Unexpected non-2xx status ${result.status} reached disk cache write — not caching"
                     }
-                    // clearCaches bumps generation before clearing disk: a write landing before the
-                    // clear is wiped by it, one landing after is caught by this re-check.
                     if (generation == startedGeneration) {
                         beforeCacheWrite?.invoke()
                         writeToDiskCache(cache, cacheKey, logTag, result)
-                        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
+                        removeIfCleared(cache, cacheKey, startedGeneration)
                     }
                     result
                 } catch (e: NotFoundException) {
@@ -701,6 +682,31 @@ class DriveFileProviderCached(
         }
     }
 
+    // clearCaches bumps generation before clearing disk: a write landing before the clear is wiped by it, one landing
+    // after is caught by this re-check.
+    private fun removeIfCleared(cache: DiskCache, cacheKey: String, startedGeneration: Int) {
+        if (generation != startedGeneration) cache.remove(cacheKey.toDiskKey())
+    }
+
+    private fun commitUnlessCleared(cache: DiskCache, editor: DiskCache.Editor, cacheKey: String, startedGeneration: Int, logTag: String) {
+        if (generation != startedGeneration) return editor.abortQuietly()
+        try {
+            editor.commit()
+            removeIfCleared(cache, cacheKey, startedGeneration)
+        } catch (e: Exception) {
+            editor.abortQuietly()
+            Logger.e(tag = logTag, throwable = e) { "cache-write FAILED to commit key=$cacheKey" }
+        }
+    }
+
+    // The entry format readBytesResponse and the stream's hit path read.
+    private fun okio.BufferedSink.writeEntryHeader(status: Int, contentType: String, encrypted: Boolean) {
+        writeInt(status)
+        writeInt(contentType.length)
+        writeUtf8(contentType)
+        writeByte(if (encrypted) 1 else 0)
+    }
+
     private fun writeBytesResponse(filePath: String, value: ByteApiResponse): Boolean {
         val path = filePath.toPath()
 
@@ -709,11 +715,7 @@ class DriveFileProviderCached(
                 value.headers["payloadencrypted"]?.equals("true", ignoreCase = true) == true
 
         fileSystem.write(path) {
-            writeInt(value.status)
-            writeInt(value.contentType.length)
-            writeUtf8(value.contentType)
-            // Store whether the payload is encrypted (1 = true, 0 = false)
-            writeByte(if (payloadEncrypted) 1 else 0)
+            writeEntryHeader(value.status, value.contentType, payloadEncrypted)
             write(value.bytes)
         }
 

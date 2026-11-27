@@ -616,7 +616,7 @@ public class DriveFileHttpProvider(
 }
 
 /** A payload body as it streams in: [bytes] are encrypted when [encrypted]. */
-internal class StreamedBody(val contentType: String, val contentLength: Long?, val encrypted: Boolean, val bytes: Flow<ByteArray>) {
+internal data class StreamedBody(val contentType: String, val contentLength: Long?, val encrypted: Boolean, val bytes: Flow<ByteArray>) {
     fun decrypted(keyHeader: KeyHeader): Flow<ByteArray> =
         if (encrypted) AesCbc.streamDecryptWithCbc(bytes, keyHeader.aesKey, keyHeader.iv) else bytes
 }

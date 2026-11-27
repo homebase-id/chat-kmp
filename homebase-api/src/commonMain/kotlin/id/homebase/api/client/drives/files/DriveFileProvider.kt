@@ -369,9 +369,8 @@ public class DriveFileProvider(
         keyHeader: KeyHeader,
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
-        cache: Boolean,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress, cache = cache)
+        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress, cache = true)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,
