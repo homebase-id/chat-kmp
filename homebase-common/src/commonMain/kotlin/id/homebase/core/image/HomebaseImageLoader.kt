@@ -220,14 +220,14 @@ class HomebaseImageLoader(
     }
 
     private fun fullPayloadCacheKey(data: HomebaseImageData): String =
-        "${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
+        "${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.version ?: 0}"
 
     private suspend fun fetchFullPayloadUncached(
         data: HomebaseImageData, retryConfig: RetryConfig
     ): CachedImage? {
         return withRetry(retryConfig, TAG) {
             val response = try {
-                payloadReader.bytes(data.location, data.payloadKey, data.keyHeader)
+                payloadReader.bytes(data.location, data.payloadKey, data.keyHeader, version = data.version)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PayloadTooLargeException) {

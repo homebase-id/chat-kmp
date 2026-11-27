@@ -34,6 +34,7 @@ data class HomebaseImageData(
     val isEncrypted: Boolean = true,
     /** Last modification timestamp for cache validation */
     val lastModified: Long? = null,
+    val payloadUid: Long? = null,
     /** Local pending file (for images being uploaded/sent) */
     val pendingFileUri: String? = null,
     /**
@@ -59,6 +60,9 @@ data class HomebaseImageData(
     val peer: PeerFileRef? = null,
 ) {
     val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, peer)
+
+    /** As [PayloadDescriptor.version]: a payload overwritten under its key must not be read from the old one's cache. */
+    val version: Long? get() = payloadUid ?: lastModified
 
     // Peer images share driveId/fileId space with ours, so a cache key names the author too.
     val peerKeyPrefix: String get() = peer?.let { "${it.odinId}@" }.orEmpty()
@@ -102,6 +106,7 @@ data class HomebaseImageData(
                 loadFullPayload = loadFullPayload,
                 isEncrypted = isEncrypted,
                 lastModified = lastModified,
+                payloadUid = descriptor.uid,
                 pendingFileUri = pendingFileUri,
                 payloadContentType = payloadContentType,
                 keyHeader = keyHeader,

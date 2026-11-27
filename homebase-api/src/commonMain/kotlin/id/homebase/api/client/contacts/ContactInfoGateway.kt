@@ -94,7 +94,7 @@ class ContactInfoGateway internal constructor(
             at = PayloadLocation.Own(ref.driveId, ref.fileId),
             key = ref.payload.key,
             keyHeader = ref.payloadKeyHeader() ?: KeyHeader.empty(),
-            lastModified = ref.payload.lastModified,
+            version = ref.payload.version,
         )).bytes
     }
 

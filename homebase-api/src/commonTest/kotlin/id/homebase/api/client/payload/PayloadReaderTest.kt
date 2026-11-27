@@ -151,11 +151,11 @@ class PayloadReaderTest {
     private suspend fun assertAnEditedPayloadIsReadAgain(at: PayloadLocation) {
         val reader = reader()
         served = byteArrayOf(1)
-        reader.bytes(at, key, KeyHeader.empty(), lastModified = 1)
+        reader.bytes(at, key, KeyHeader.empty(), version = 1)
         served = byteArrayOf(2)
 
-        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), lastModified = 2)?.bytes)
-        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), lastModified = 2)?.bytes, "and keeps it")
+        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), version = 2)?.bytes)
+        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), version = 2)?.bytes, "and keeps it")
         assertTrue(requests.last().contains("lastModified=2"), "${requests.last()}")
     }
 

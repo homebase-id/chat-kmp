@@ -16,8 +16,8 @@ class HomebaseImageKeyer : Keyer<HomebaseImageData> {
 
     override fun key(data: HomebaseImageData, options: Options): String? {
         if (data.isPending) return null
-        val variant = if (data.loadFullPayload) "full" else "thumb"
-        return "homebase/${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/$variant/${data.lastModified ?: 0}"
+        if (!data.loadFullPayload) return thumbnailCacheKey(data)
+        return "homebase/${data.peerKeyPrefix}${data.driveId}/${data.fileId}/${data.payloadKey}/full/${data.version ?: 0}"
     }
 
     companion object {

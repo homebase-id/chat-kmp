@@ -41,7 +41,10 @@ class PayloadReader(
     private val peer: PeerFileByGlobalTransitProvider,
     private val fileOps: FileOperationsProvider,
 ) {
-    /** The payload, or the range of it, decrypted; null when it isn't there. */
+    /**
+     * The payload, or the range of it, decrypted; null when it isn't there. [version] ([PayloadDescriptor.version]) keys
+     * the cache and the URL, so a payload overwritten under its key isn't read from the old one's copy.
+     */
     suspend fun bytes(
         at: PayloadLocation,
         key: String,
@@ -49,13 +52,13 @@ class PayloadReader(
         chunkStart: Long? = null,
         chunkLength: Long? = null,
         onProgress: ((Float) -> Unit)? = null,
-        lastModified: Long? = null,
+        version: Long? = null,
     ): BytesResponse? = when (at) {
-        is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress, lastModified)
+        is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress, version)
         is PayloadLocation.Peer -> if (chunkStart == null && chunkLength == null) {
-            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified)
+            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, version)
         } else {
-            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength, onProgress, lastModified)
+            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength, onProgress, version)
         }
     }
 
@@ -84,11 +87,11 @@ class PayloadReader(
         keyHeader: KeyHeader,
         cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
-        lastModified: Long? = null,
+        version: Long? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, lastModified, consume)
-        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified, consume)
+        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, version, consume)
+        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, version, consume)
     }
 
     /**
@@ -102,12 +105,12 @@ class PayloadReader(
         outputPath: String,
         cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
-        lastModified: Long? = null,
+        version: Long? = null,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, lastModified)
+        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, version)
         is PayloadLocation.Peer -> {
             var wroteAnything = false
-            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified) { bytes ->
+            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, version) { bytes ->
                 fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
             }
             if (!found || !wroteAnything) {
@@ -128,11 +131,11 @@ class PayloadReader(
         keyHeader: KeyHeader,
         outputPath: String,
         cache: Boolean,
-        lastModified: Long? = null,
+        version: Long? = null,
     ): Boolean {
         val label = "payload $payloadKey at $at"
         var remuxed = false
-        val found = stream(at, payloadKey, keyHeader, cache, lastModified = lastModified) { ts ->
+        val found = stream(at, payloadKey, keyHeader, cache, version = version) { ts ->
             remuxed = VideoCompressionService.remuxTsToMp4(fileOps, ts, outputPath, label)
         }
         if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
@@ -152,11 +155,11 @@ class PayloadReader(
         cache: Boolean,
     ): Boolean {
         // Only a kept read is versioned: the player, preloader and seeds keep payloads under the plain key, which a save reuses.
-        val version = payload.lastModified.takeIf { cache }
+        val version = payload.version.takeIf { cache }
         return if (payload.isHlsVideo) {
             downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, version)
         } else {
-            toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = version)
+            toFile(at, payload.key, keyHeader, outputPath, cache, version = version)
         }
     }
 
