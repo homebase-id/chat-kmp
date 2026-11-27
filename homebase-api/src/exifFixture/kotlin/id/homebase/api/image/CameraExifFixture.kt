@@ -2,13 +2,14 @@ package id.homebase.api.image
 
 /**
  * A camera's EXIF TIFF block: IFD0 with Make "Canon", Model "Canon EOS R5" and Orientation 6, pointing at an Exif IFD
- * with FNumber 18/10, ExposureTime 1/250, FocalLength 50/1 and ISO 400.
+ * with FNumber 18/10, ExposureTime 1/250, FocalLength 50/1 and ISO 400. With [manualLens], FNumber and FocalLength
+ * are 0/1, as a lens that can't tell the camera writes them.
  */
 internal object CameraExifFixture {
     const val MAKE = "Canon"
     const val MODEL = "Canon EOS R5"
 
-    fun tiff(littleEndian: Boolean): ByteArray {
+    fun tiff(littleEndian: Boolean, manualLens: Boolean = false): ByteArray {
         fun u16(v: Int) = if (littleEndian) byteArrayOf(v.toByte(), (v shr 8).toByte()) else byteArrayOf((v shr 8).toByte(), v.toByte())
         fun u32(v: Int) = if (littleEndian) ByteArray(4) { (v ushr (8 * it)).toByte() } else ByteArray(4) { (v ushr (8 * (3 - it))).toByte() }
         fun entry(tag: Int, type: Int, count: Int, value: ByteArray) = u16(tag) + u16(type) + u32(count) + value.copyOf(4)
@@ -37,7 +38,7 @@ internal object CameraExifFixture {
             entry(0x920A, 5, 1, u32(focalAt)) +
             u32(0)
         val header = (if (littleEndian) "II" else "MM").encodeToByteArray() + u16(42) + u32(8)
-        return header + ifd0 + exif + make + model + u32(18) + u32(10) + u32(1) + u32(250) + u32(50) + u32(1)
+        return header + ifd0 + exif + make + model + u32(if (manualLens) 0 else 18) + u32(if (manualLens) 1 else 10) + u32(1) + u32(250) + u32(if (manualLens) 0 else 50) + u32(1)
     }
 
     /** [tiff] as the EXIF APP1 of [jpeg], right after its SOI. */

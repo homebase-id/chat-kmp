@@ -16,9 +16,10 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
         orientation = ifd0.long(0x0112)?.takeIf { it in 1..8 },
         cameraMake = ifd0.ascii(0x010F),
         cameraModel = ifd0.ascii(0x0110),
-        fNumber = exif?.rational(0x829D),
-        exposureTimeSeconds = exif?.rational(0x829A),
-        focalLengthMm = exif?.rational(0x920A),
+        // A manual lens writes 0: unknown, as every platform's reader has it.
+        fNumber = exif?.rational(0x829D)?.takeIf { it > 0 },
+        exposureTimeSeconds = exif?.rational(0x829A)?.takeIf { it > 0 },
+        focalLengthMm = exif?.rational(0x920A)?.takeIf { it > 0 },
         iso = exif?.long(0x8827)?.takeIf { it > 0 },
     )
 }
@@ -68,9 +69,10 @@ private class Tiff(val bytes: ByteArray, val start: Int, val end: Int, val littl
 
     /** The directory [offset] bytes into the TIFF block, or null when it lies outside it. */
     fun directory(offset: Int): Directory? {
-        val at = start + offset
+        // In Long: a corrupt offset near Int.MAX_VALUE would wrap past the bounds check.
+        val at = start.toLong() + offset
         if (offset < 0 || at + 2 > end) return null
-        return Directory(this, at)
+        return Directory(this, at.toInt())
     }
 
     companion object {
@@ -113,8 +115,7 @@ private class Directory(val tiff: Tiff, val at: Int) {
         val entry = entry(tag) ?: return null
         val type = tiff.u16(entry + 2)
         if (type != 5 && type != 10) return null
-        val value = tiff.start + tiff.u32(entry + 8)
-        if (value < tiff.start || value + 8 > tiff.end) return null
+        val value = (tiff.start.toLong() + tiff.u32(entry + 8)).takeIf { it + 8 <= tiff.end }?.toInt() ?: return null
         val read = if (type == 10) tiff::s32 else tiff::u32long
         val denominator = read(value + 4)
         return if (denominator == 0L) null else read(value).toDouble() / denominator
@@ -125,9 +126,9 @@ private class Directory(val tiff: Tiff, val at: Int) {
         val entry = entry(tag) ?: return null
         if (tiff.u16(entry + 2) != 2) return null
         val count = tiff.u32(entry + 4)
-        val value = if (count <= 4) entry + 8 else tiff.start + tiff.u32(entry + 8)
-        if (value < tiff.start || count < 0 || value + count > tiff.end) return null
-        return tiff.bytes.copyOfRange(value, value + count).decodeToString().trimEnd('\u0000').trim().takeIf { it.isNotEmpty() }
+        val value = if (count <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
+        if (value + count > tiff.end) return null
+        return tiff.bytes.copyOfRange(value.toInt(), value.toInt() + count).decodeToString().trimEnd('\u0000').trim().takeIf { it.isNotEmpty() }
     }
 }
 

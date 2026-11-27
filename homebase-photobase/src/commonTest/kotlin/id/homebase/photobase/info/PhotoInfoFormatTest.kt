@@ -23,7 +23,10 @@ class PhotoInfoFormatTest {
     @Test
     fun aShortExposureIsAFractionAndALongOneSeconds() {
         assertEquals("1/250", shutter(1.0 / 250))
-        assertEquals("1/3", shutter(0.3))
+        assertEquals("1/3", shutter(1.0 / 3))
+        assertEquals("1/2", shutter(0.5))
+        assertEquals("0.8", shutter(0.8))
+        assertEquals("0.3", shutter(0.3))
         assertEquals("2.5", shutter(2.5))
         assertEquals("1", shutter(1.0))
     }
@@ -56,8 +59,14 @@ class PhotoInfoFormatTest {
     fun theMakeIsNotSaidTwice() {
         assertEquals("Canon EOS R5", cameraName("Canon", "Canon EOS R5"))
         assertEquals("Apple iPhone 15", cameraName("Apple", "iPhone 15"))
+        assertEquals("NIKON D850", cameraName("NIKON CORPORATION", "NIKON D850"))
         assertEquals("Apple", cameraName("Apple", null))
         assertNull(cameraName(null, null))
+    }
+
+    @Test
+    fun theMapLinkSearchesForThePoint() {
+        assertEquals("https://www.google.com/maps/search/?api=1&query=37.7749,-122.4194", mapsUrl(MediaLocation(37.7749, -122.4194)))
     }
 
     @Test

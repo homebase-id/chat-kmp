@@ -22,7 +22,7 @@ class PhotoInfoViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private class Reader(val camera: suspend () -> ImageMetadata?, val place: () -> String?) : PhotoInfoReader {
+    private class Reader(val camera: suspend () -> ImageMetadata?, val place: () -> String?, override val mapsOnline: Boolean = true) : PhotoInfoReader {
         var placeReads = 0
         override suspend fun camera(item: PhotoGalleryItem, owner: OdinId?) = camera()
         override suspend fun place(latitude: Double, longitude: Double): String? = place().also { placeReads++ }
@@ -67,6 +67,19 @@ class PhotoInfoViewModelTest {
 
         assertNull(viewModel.uiState.value?.location)
         assertEquals(0, reader.placeReads)
+    }
+
+    @Test
+    fun mapsOfflineLooksNoPlaceUp() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val reader = Reader(camera = { null }, place = { "San Francisco" }, mapsOnline = false)
+        val viewModel = PhotoInfoViewModel(reader)
+
+        viewModel.show(item(located), owner = null)
+
+        assertEquals(InfoPart.Read(null), viewModel.uiState.value?.place)
+        assertEquals(0, reader.placeReads)
+        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value?.location, "its coordinates still show")
     }
 
     @Test

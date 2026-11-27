@@ -10,16 +10,24 @@ import kotlin.math.roundToLong
 /** Megapixels to one decimal: 4032 × 3024 is "12.2". */
 internal fun megapixels(width: Int, height: Int): String = formatDecimal(width.toLong() * height / 1_000_000.0, 1)
 
-/** An exposure under a second as its fraction, "1/250"; longer ones as seconds, "2.5". */
-internal fun shutter(seconds: Double): String =
-    if (seconds < 1.0) "1/${(1.0 / seconds).roundToLong()}" else formatDecimal(seconds, 1)
+/** An exposure that's a whole fraction of a second as one, "1/250"; any other as seconds, "0.8" or "2.5". */
+internal fun shutter(seconds: Double): String {
+    val denominator = 1.0 / seconds
+    return if (seconds < 1.0 && abs(denominator - denominator.roundToLong()) < 0.05) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
+}
 
-/** "Canon EOS 5D", not "Canon Canon EOS 5D": most cameras' model already names the make. */
+/**
+ * "Canon EOS 5D", not "Canon Canon EOS 5D", and "NIKON D850", not "NIKON CORPORATION NIKON D850": most cameras' model
+ * already names the make, or its first word.
+ */
 internal fun cameraName(make: String?, model: String?): String? = when {
     model == null -> make
-    make == null || model.startsWith(make, ignoreCase = true) -> model
+    make == null || model.startsWith(make.substringBefore(' '), ignoreCase = true) -> model
     else -> "$make $model"
 }
+
+/** A map app's search for the point, as an https link every platform opens: in the maps app where there is one. */
+internal fun mapsUrl(at: MediaLocation): String = "https://www.google.com/maps/search/?api=1&query=${at.latitude},${at.longitude}"
 
 /** "37.77490, -122.41940". */
 internal fun coordinates(at: MediaLocation): String = "${fiveDecimals(at.latitude)}, ${fiveDecimals(at.longitude)}"

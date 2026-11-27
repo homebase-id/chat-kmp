@@ -10,6 +10,8 @@ import id.homebase.api.image.ImageMetadata
 import id.homebase.api.image.readImageMetadata
 import id.homebase.api.media.MediaLocation
 import id.homebase.api.video.VideoPrefetchDriveAccess
+import id.homebase.core.location.LocationMapProvider
+import id.homebase.core.location.LocationPreferences
 import id.homebase.photobase.gallery.PhotoGalleryItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,9 @@ import kotlin.uuid.Uuid
 
 /** What the Info sheet reads beyond the photo's header. */
 interface PhotoInfoReader {
+    /** Whether the map and the place's name may be looked up online: the Maps setting isn't None. */
+    val mapsOnline: Boolean
+
     /** The EXIF of [item]'s original, read from [owner]'s drive over peer when given; null for a video. */
     suspend fun camera(item: PhotoGalleryItem, owner: OdinId?): ImageMetadata?
 
@@ -38,7 +43,10 @@ class PhotoInfoDrives(
     private val drive: VideoPrefetchDriveAccess,
     private val peer: PeerFileByGlobalTransitProvider,
     private val places: LocationPreviewProvider,
+    private val locationPreferences: LocationPreferences,
 ) : PhotoInfoReader {
+    override val mapsOnline: Boolean get() = locationPreferences.mapProvider.value == LocationMapProvider.OpenStreetMap
+
     override suspend fun camera(item: PhotoGalleryItem, owner: OdinId?): ImageMetadata? {
         val payload = item.payload
         if (!payload.isImage()) return null
@@ -68,6 +76,7 @@ data class PhotoInfoUiState(
     val fileId: Uuid,
     val location: MediaLocation?,
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
+    /** Read(null) when the place has no name, or isn't looked up because maps are offline. */
     val place: InfoPart<String> = InfoPart.Loading,
 )
 
@@ -83,13 +92,13 @@ class PhotoInfoViewModel(private val reader: PhotoInfoReader) : ViewModel() {
     fun show(item: PhotoGalleryItem, owner: OdinId?) {
         reading?.cancel()
         val location = item.location()
-        _uiState.value = PhotoInfoUiState(item.fileId, location)
+        _uiState.value = PhotoInfoUiState(item.fileId, location, place = if (reader.mapsOnline) InfoPart.Loading else InfoPart.Read(null))
         reading = viewModelScope.launch {
             launch {
                 val camera = read(item.fileId, "camera details") { reader.camera(item, owner) }
                 update(item.fileId) { it.copy(camera = camera) }
             }
-            location?.let { at ->
+            location?.takeIf { reader.mapsOnline }?.let { at ->
                 launch {
                     val place = read(item.fileId, "place") { reader.place(at.latitude, at.longitude) }
                     update(item.fileId) { it.copy(place = place) }

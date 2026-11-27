@@ -3620,7 +3620,7 @@
     <string name="photobase_info_title">Details</string>
     <string name="photobase_info_date_time">%1$s · %2$s</string>
     <string name="photobase_info_location">Location</string>
-    <string name="photobase_info_place_failed">Couldn't find the place's name.</string>
+    <string name="photobase_info_place_failed">Couldn't look up the place.</string>
     <string name="photobase_info_open_map">Open in maps</string>
     <string name="photobase_info_megapixels">%1$s MP</string>
     <string name="photobase_info_dimensions">%1$d × %2$d</string>

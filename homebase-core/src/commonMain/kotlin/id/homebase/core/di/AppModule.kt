@@ -1652,7 +1652,7 @@ val appModule = module {
         PhotoMemberWrites(BackupRequestBuilder(get(), AssetHasher(null, get()), settings = { backup.settings.value }), get(), get(), get(), get(), get())
     }
     single { PhotoCommentsService(get(), get(), get(), get(), get()) }
-    factory<PhotoInfoReader> { PhotoInfoDrives(get(), get(), get()) }
+    factory<PhotoInfoReader> { PhotoInfoDrives(get(), get(), get(), get()) }
     single { PeerReactionProvider(get(), get()) }
     single { PhotoActionService(get(), get(), get()) }
     // The tab's own gallery has no parameter.

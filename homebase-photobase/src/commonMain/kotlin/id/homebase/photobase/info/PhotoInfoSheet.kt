@@ -1,9 +1,7 @@
 package id.homebase.photobase.info
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -47,7 +45,6 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
 import id.homebase.chat.event.offsetLabel
-import id.homebase.core.location.buildGeoUri
 import id.homebase.common.util.formatBytes
 import id.homebase.common.util.formatDecimal
 import id.homebase.core.location.map.TiledMapView
@@ -129,42 +126,45 @@ private fun WhenRow(capturedAtMs: Long) {
 @Composable
 private fun WhereSection(at: MediaLocation, place: InfoPart<String>, reader: PhotoInfoReader) {
     val uriHandler = LocalUriHandler.current
-    val name = (place as? InfoPart.Read)?.value
     val openMap = stringResource(MR.string.photobase_info_open_map)
+    // As the event dialog's map link does: a platform with nothing to open it with mustn't take the sheet down.
+    Column(Modifier.clickable(onClickLabel = openMap, role = Role.Button) { runCatching { uriHandler.openUri(mapsUrl(at)) } }) {
+        if (reader.mapsOnline) PlaceMap(at, reader)
+        val headline = when (place) {
+            InfoPart.Failed -> stringResource(MR.string.photobase_info_place_failed)
+            InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
+            is InfoPart.Read -> place.value ?: stringResource(MR.string.photobase_info_location)
+        }
+        InfoRow(Icons.Outlined.Place, headline, coordinates(at))
+    }
+}
+
+@Composable
+private fun PlaceMap(at: MediaLocation, reader: PhotoInfoReader) {
     val (x, y) = remember(at) { WebMercator.latLonToUnit(at.latitude, at.longitude) }
     val pin = stringResource(MR.string.cd_location_pin)
-    Box(
-        Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp))
-            .clickable(onClickLabel = openMap, role = Role.Button) { uriHandler.openUri(buildGeoUri(at.latitude, at.longitude, name.orEmpty())) },
-    ) {
-        TiledMapView(
-            bbox = remember(x, y) { mapBox(x, y) },
-            showMapTiles = true,
-            fetchTile = reader::tile,
-            interactive = false,
-            modifier = Modifier.fillMaxSize(),
-            markerContent = { project, ready ->
-                if (ready) {
-                    Icon(
-                        Icons.Filled.LocationOn,
-                        contentDescription = pin,
-                        tint = MaterialTheme.colorScheme.primary,
-                        // The pin's point, at the bottom of the icon, on the photo's place.
-                        modifier = Modifier.size(PIN).offset {
-                            val point = project(x, y)
-                            val size = PIN.toPx()
-                            IntOffset((point.x - size / 2).roundToInt(), (point.y - size).roundToInt())
-                        },
-                    )
-                }
-            },
-        )
-    }
-    val headline = when (place) {
-        InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
-        else -> name ?: stringResource(MR.string.photobase_info_place_failed)
-    }
-    InfoRow(Icons.Outlined.Place, headline, coordinates(at))
+    TiledMapView(
+        bbox = remember(x, y) { mapBox(x, y) },
+        showMapTiles = true,
+        fetchTile = reader::tile,
+        interactive = false,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(180.dp).clip(RoundedCornerShape(12.dp)),
+        markerContent = { project, ready ->
+            if (ready) {
+                Icon(
+                    Icons.Filled.LocationOn,
+                    contentDescription = pin,
+                    tint = MaterialTheme.colorScheme.primary,
+                    // The pin's point, at the bottom of the icon, on the photo's place.
+                    modifier = Modifier.size(PIN).offset {
+                        val point = project(x, y)
+                        val size = PIN.toPx()
+                        IntOffset((point.x - size / 2).roundToInt(), (point.y - size).roundToInt())
+                    },
+                )
+            }
+        },
+    )
 }
 
 @Composable
