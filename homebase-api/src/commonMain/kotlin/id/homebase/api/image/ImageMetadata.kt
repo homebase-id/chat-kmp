@@ -35,8 +35,8 @@ data class ImageMetadata(
     val cameraModel: String? = null,
     /**
      * The aperture as its f-number (1.8 for f/1.8), the exposure, the focal length and the ISO: on every platform, null
-     * unless finite and above 0, as a manual lens writes 0 and a broken rational x/0. A tag of several values reads as
-     * its first.
+     * unless finite and above 0, as a manual lens writes 0 and a broken rational x/0. An ISO of several values reads as
+     * its first; the others of several are unknown.
      */
     val fNumber: Double? = null,
     val exposureTimeSeconds: Double? = null,
@@ -55,7 +55,7 @@ data class ImageMetadata(
  * no metadata, an [ImageMetadata] with all-null fields is returned.
  *
  * Web reads a JPEG's camera fields, capture time and offset and orientation only ([readJpegExifCamera]):
- * no GPS or size, and null for anything else, since browsers expose no EXIF reader.
+ * no GPS or size, and null for anything else, a JPEG without EXIF too, since browsers expose no EXIF reader.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 

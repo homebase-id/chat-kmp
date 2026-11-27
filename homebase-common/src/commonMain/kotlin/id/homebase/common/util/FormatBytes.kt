@@ -34,7 +34,8 @@ private fun formatUnit(value: Double, suffix: String): String {
 // 500.0 -> "500", 0.10 -> "0.1": at most [places] decimals, no trailing zeros
 fun formatDecimal(value: Double, places: Int): String {
     val factor = 10.0.pow(places).toLong()
-    val scaled = (value * factor).roundToLong()
+    val scaled = abs((value * factor).roundToLong())
+    val sign = if (value < 0 && scaled != 0L) "-" else ""
     val fraction = (scaled % factor).toString().padStart(places, '0').trimEnd('0')
-    return if (fraction.isEmpty()) "${scaled / factor}" else "${scaled / factor}.$fraction"
+    return if (fraction.isEmpty()) "$sign${scaled / factor}" else "$sign${scaled / factor}.$fraction"
 }

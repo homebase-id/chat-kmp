@@ -33,6 +33,22 @@ class JpegExifCameraTest {
     }
 
     @Test
+    fun withoutTheOriginalsTheFileTimeAndPlainOffsetAreRead() {
+        val exif = assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = true, plainTimes = true))))
+
+        assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), exif.capturedAt)
+        assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
+    }
+
+    @Test
+    fun aRationalOfSeveralValuesIsUnknown() {
+        // FNumber's count, the Exif IFD's second entry.
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.EXIF_AT + 2 + 12 + 4] = 2 }
+
+        assertNull(assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).fNumber)
+    }
+
+    @Test
     fun theOrientationReaderReadsTheSameBlock() {
         assertEquals(6, readJpegExifOrientation(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false))))
     }

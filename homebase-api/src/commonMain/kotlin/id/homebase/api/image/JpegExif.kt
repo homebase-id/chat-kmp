@@ -14,8 +14,8 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val ifd0 = tiff.ifd0() ?: return null
     val exif = ifd0.long(0x8769)?.let(tiff::directory)
     return ImageMetadata(
-        capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003)),
-        captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011)),
+        capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003) ?: ifd0.ascii(0x0132)),
+        captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011) ?: exif?.ascii(0x9010)),
         orientation = ifd0.orientation(),
         cameraMake = ifd0.ascii(0x010F),
         cameraModel = ifd0.ascii(0x0110),
@@ -128,7 +128,7 @@ private class Directory(val tiff: Tiff, val at: Int) {
     fun rational(tag: Int): Double? {
         val entry = entry(tag) ?: return null
         val type = tiff.u16(entry + 2)
-        if (type != 5 && type != 10) return null
+        if (type != 5 && type != 10 || tiff.u32(entry + 4) != 1) return null
         val value = valueAt(entry, 8, 8) ?: return null
         val read = if (type == 10) tiff::s32 else tiff::u32long
         val denominator = read(value + 4)
