@@ -65,11 +65,13 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.uuid.Uuid
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -241,13 +243,26 @@ class FilesyncSharing(
         sealCircleKey(circleId, points)
 
         val permissions = DrivePermission.combine(access.permissions)
-        files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
+        suspend fun writeRows() = files.chunked(DriveShareProvider.MAX_SHARES_PER_REQUEST).forEach { chunk ->
             filesyncShares.share(FilesyncProtocol.DriveAlias, chunk.map { shareRequest(it.fileId, it.keyHeader, circleId, permissions, expiresAt) })
         }
-        // After the rows, so a concurrent syncEditors that read them before can't take the members out again.
-        if (access == FilesyncAccess.Edit) editing.withLock { enroll(editorsCircle(), members) }
-        // Sharing as View may have replaced someone's Edit.
-        else editorsMayHaveChanged(removalsOnly = true)
+        if (access == FilesyncAccess.Edit) {
+            try {
+                // The server takes a Write row only from someone already holding Write; locked so syncEditors can't remove them first.
+                editing.withLock {
+                    enroll(editorsCircle(), members).takeIf { it.isNotEmpty() }?.let { throw FilesyncSharingException.RecipientNotAdded(it.toList()) }
+                    writeRows()
+                }
+            } catch (e: Exception) {
+                // A cancelled share mustn't leave anyone Write on the whole drive.
+                withContext(NonCancellable) { editorsMayHaveChanged(removalsOnly = true) }
+                throw e
+            }
+        } else {
+            writeRows()
+            // Sharing as View may have replaced someone's Edit.
+            editorsMayHaveChanged(removalsOnly = true)
+        }
         return FilesyncShared(circleId, waiting = members.filter { keys[it] == RecipientKey.NoDrive })
     }
 
