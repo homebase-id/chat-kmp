@@ -1,5 +1,8 @@
 package id.homebase.core.feed
 
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.payload.PayloadReader
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.core.TestTempDirs
 import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.db.SqlDriver
@@ -81,14 +84,14 @@ class FeedTestEnv(
     )
 
     // Over a MockEngine that 500s — only reached by a payload-bearing send's cache seed.
-    val driveFileProvider: DriveFileProvider = run {
-        val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
-        DriveFileProvider(
-            httpClient = http,
-            credentialsManager = credentialsManager,
-            driveCache = DriveFileProviderCached(http, credentialsManager, fileOps),
-        )
-    }
+    private val http = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
+    private val driveCache = DriveFileProviderCached(http, credentialsManager, fileOps)
+    val driveFileProvider: DriveFileProvider = DriveFileProvider(http, credentialsManager, driveCache)
+    val payloadReader = PayloadReader(
+        driveFileProvider,
+        PeerFileByGlobalTransitProvider(http, credentialsManager, DriveFileHttpProvider(http, credentialsManager), driveCache),
+        fileOps,
+    )
 
     val payloadCacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
 

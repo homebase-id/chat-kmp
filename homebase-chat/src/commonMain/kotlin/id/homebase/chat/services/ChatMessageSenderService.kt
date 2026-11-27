@@ -1,4 +1,6 @@
 package id.homebase.chat.services
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.upload.PayloadCacheSeeder
 import id.homebase.upload.PayloadBundleEncryptor
 import id.homebase.upload.thumbnailDescriptorsFor
@@ -62,6 +64,7 @@ class ChatMessageSenderService(
     private val optimisticWriter: OptimisticWriter,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val payloadCacheSeeder: PayloadCacheSeeder,
     private val uploadService: UploadService,
     private val payloadDownloadService: PayloadDownloadService,
@@ -656,7 +659,7 @@ class ChatMessageSenderService(
         val recovered = resendablePayloads(
             file = file,
             driveId = chatDrive,
-            byteSource = driveFileProvider,
+            byteSource = payloadReader,
             fileOps = fileOperationsProvider,
             excludeKeys = setOf(ChatProtocol.DefaultPayloadKey),
             tempPrefix = "retry",
@@ -960,10 +963,9 @@ class ChatMessageSenderService(
             descriptor.thumbnails?.forEach { thumb ->
                 val width = thumb.pixelWidth ?: return@forEach
                 val height = thumb.pixelHeight ?: return@forEach
-                val thumbResponse = driveFileProvider.getThumbBytesDecrypted(
-                    driveId = chatDrive,
-                    fileId = source.fileId,
-                    payloadKey = descriptor.key,
+                val thumbResponse = payloadReader.thumb(
+                    at = PayloadLocation.Own(chatDrive, source.fileId),
+                    key = descriptor.key,
                     keyHeader = keyHeader,
                     width = width,
                     height = height

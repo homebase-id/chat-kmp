@@ -184,6 +184,12 @@ class ChatMessageActionServiceTestFixture(
             NoopFileOperationsProvider(),
         )
         val fileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
+        val readerFileOps = NoopFileOperationsProvider()
+        val payloadReader = PayloadReader(
+            fileProvider,
+            PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+            readerFileOps,
+        )
         val reactionProvider = DriveFileGroupReactionProvider(httpClient, credentialsManager)
 
         // captureHttp=true wires the REAL DriveOutboxUploader so we exercise the
@@ -252,17 +258,8 @@ class ChatMessageActionServiceTestFixture(
             messageLookup = messageLookup,
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
-            fileProvider = fileProvider,
-            payloadDownloadService = NoopFileOperationsProvider().let { fileOps ->
-                PayloadDownloadService(
-                    PayloadReader(
-                        fileProvider,
-                        PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-                        fileOps,
-                    ),
-                    fileOps,
-                )
-            },
+            payloadReader = payloadReader,
+            payloadDownloadService = PayloadDownloadService(payloadReader, readerFileOps),
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,

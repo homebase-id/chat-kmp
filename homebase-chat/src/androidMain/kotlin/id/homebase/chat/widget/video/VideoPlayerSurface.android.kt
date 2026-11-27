@@ -323,7 +323,7 @@ actual fun VideoPlayerSurface(
                                 strippedPlaylist = content.originalPlaylist.lines()
                                     .filter { !it.startsWith("#EXT-X-KEY") }
                                     .joinToString("\n"),
-                                driveFileProvider = videoAccess,
+                                videoAccess = videoAccess,
                                 driveId = data.driveId,
                                 fileId = data.fileId,
                                 payloadKey = data.payloadKey,
@@ -564,7 +564,7 @@ private fun isTenBitFormat(format: Format?): Boolean {
 @UnstableApi
 private class HomebaseVideoDataSource(
     private val strippedPlaylist: String,
-    private val driveFileProvider: VideoPrefetchDriveAccess,
+    private val videoAccess: VideoPrefetchDriveAccess,
     private val driveId: Uuid,
     private val fileId: Uuid,
     private val payloadKey: String,
@@ -585,7 +585,7 @@ private class HomebaseVideoDataSource(
             val chunkLength = if (dataSpec.length == C.LENGTH_UNSET.toLong()) null else dataSpec.length
             Logger.d(tag = "VideoHLS") { "exo chunk request: fileId=$fileId key=$payloadKey chunkStart=$chunkStart chunkLength=$chunkLength path=$path" }
             runBlocking(Dispatchers.IO) {
-                driveFileProvider.getPayloadBytesDecrypted(
+                videoAccess.getPayloadBytesDecrypted(
                     driveId = driveId,
                     fileId = fileId,
                     key = payloadKey,

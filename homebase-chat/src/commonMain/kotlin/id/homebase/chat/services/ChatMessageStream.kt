@@ -12,6 +12,8 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.query.TimeRowCursor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.withRetry
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.time.UnixTimeUtc
@@ -52,6 +54,7 @@ class ChatMessageStream(
     private val eventBus: EventBus,
     private val scope: CoroutineScope,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val optimisticWriter: OptimisticWriter,
     private val serverHistory: ChatServerHistory,
     // Where headers are mapped to messages; tests pass their own dispatcher to stay in virtual time.
@@ -1001,9 +1004,8 @@ class ChatMessageStream(
         val fullMessage = withRetry(tag = "ChatMessageStream") {
 
 
-            val response = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = chatDrive,
-                fileId = header.fileId,
+            val response = payloadReader.bytes(
+                at = PayloadLocation.Own(chatDrive, header.fileId),
                 key = descriptor.key,
                 keyHeader = KeyHeader(
                     iv = payloadIv,

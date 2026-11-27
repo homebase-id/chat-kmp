@@ -322,6 +322,7 @@ internal fun testChatMessageSenderService(
         optimisticWriter = optimisticWriter,
         fileOperationsProvider = fileOps,
         driveFileProvider = driveFileProvider,
+        payloadReader = payloadReader,
         payloadCacheSeeder = cacheSeeder,
         uploadService = UploadService(
             encryptor = encryptor,

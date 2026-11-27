@@ -6,6 +6,7 @@ import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -346,7 +347,7 @@ class PayloadDownloadServiceTest {
         val (keyHeader, plaintext) = encryptedFixture(150_000)
         val received = java.io.ByteArrayOutputStream()
 
-        val found = service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) { data ->
+        val found = service.streamVerified(PayloadLocation.Own(driveId, fileId), key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) { data ->
             data.collect { received.write(it) }
         }
 
@@ -361,7 +362,7 @@ class PayloadDownloadServiceTest {
         var received = 0
 
         assertFailsWith<PayloadDamagedException> {
-            service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Sha256, otherContent, keyHeader)) { data ->
+            service.streamVerified(PayloadLocation.Own(driveId, fileId), key, keyHeader, hashOf(PayloadHashAlgorithm.Sha256, otherContent, keyHeader)) { data ->
                 data.collect { received += it.size }
             }
         }
@@ -374,7 +375,7 @@ class PayloadDownloadServiceTest {
         nextStatus = HttpStatusCode.NotFound
         var consumed = false
 
-        val found = service.streamVerified(driveId, fileId, key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) {
+        val found = service.streamVerified(PayloadLocation.Own(driveId, fileId), key, keyHeader, hashOf(PayloadHashAlgorithm.Blake3, plaintext, keyHeader)) {
             consumed = true
         }
 

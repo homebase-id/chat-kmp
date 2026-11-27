@@ -3,7 +3,6 @@ package id.homebase.chat.services
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.CredentialsManager
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadDownloadService
@@ -16,6 +15,8 @@ import id.homebase.api.client.drives.upload.PayloadDeleteKey
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UpdateLocalMetadataTagsOutboxRequest
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -51,7 +52,7 @@ class ChatMessageActionService(
     private val messageLookup: MessageLookup,
     private val reactionProvider: DriveFileGroupReactionProvider,
     private val credentialsManager: CredentialsManager,
-    private val fileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val payloadDownloadService: PayloadDownloadService,
     private val dbm: DatabaseManager,
     private val outboxSync: OutboxSync,
@@ -573,9 +574,7 @@ class ChatMessageActionService(
     suspend fun getPayloadBytes(
         fileId: Uuid, payloadKey: String, keyHeader: KeyHeader
     ): ByteArray? {
-        val response = fileProvider.getPayloadBytesDecrypted(
-            chatTargetDrive.alias, fileId, payloadKey, keyHeader
-        )
+        val response = payloadReader.bytes(PayloadLocation.Own(chatTargetDrive.alias, fileId), payloadKey, keyHeader)
         return response?.bytes
     }
 

@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
@@ -42,7 +43,7 @@ class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
     private val fileOps: FileOperationsProvider,
-) {
+) : ResendPayloadByteSource {
     /** The payload, or the range of it, decrypted; null when it isn't there. */
     suspend fun bytes(
         at: PayloadLocation,
@@ -161,6 +162,14 @@ class PayloadReader(
             toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = version)
         }
     }
+
+    // A resend re-attaches our own payloads and thumbs as stored, still encrypted.
+    override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
+        own.getPayloadBytesEncrypted(driveId, fileId, key)
+
+    override suspend fun getThumbBytesEncrypted(
+        driveId: Uuid, fileId: Uuid, payloadKey: String, width: Int, height: Int, lastModified: Long?,
+    ): ByteArray? = own.getThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, lastModified)
 
     /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */
     suspend fun bytesWithServerKey(at: PayloadLocation.Own, key: String): ByteArray? =
