@@ -95,11 +95,13 @@ class PeerFileByGlobalTransitProvider(
         payloadKey: String,
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         return driveFileHttpProvider.streamDecrypted(
-            "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey", keyHeader, onProgress, consume,
+            "/peer/$peer/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey${versionQuery(lastModified)}",
+            keyHeader, onProgress, consume,
         )
     }
 

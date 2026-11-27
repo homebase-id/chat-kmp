@@ -1,5 +1,6 @@
 package id.homebase.chat.widget
 
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.core.clipboard.canCopyImageToClipboard
 import id.homebase.api.video.playableContentType
 import id.homebase.api.video.playableFileName
@@ -30,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.backhandler.BackHandler
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.extensionForContentType
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -280,7 +280,7 @@ fun rememberSharedMediaSaver(
     snackbarHostState: SnackbarHostState,
 ): (SharedMediaItem) -> Unit {
     val scope: CoroutineScope = rememberCoroutineScope()
-    val driveFileProvider = org.koin.compose.koinInject<DriveFileProvider>()
+    val payloadReader = org.koin.compose.koinInject<PayloadReader>()
     val fileOps = org.koin.compose.koinInject<FileOperationsProvider>()
     val albumSaver = org.koin.compose.koinInject<AlbumSaver>()
     val fileSystemHandler = getUriHandler()
@@ -290,7 +290,7 @@ fun rememberSharedMediaSaver(
                 try {
                     val iv = item.payload.iv?.bytes ?: return@launch
                     val saved = albumSaver.saveReceived(
-                        driveFileProvider, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
+                        payloadReader, fileOps, driveId, item.fileId, item.payload, KeyHeader(iv, item.keyHeader.aesKey),
                         item.date.toEpochMilliseconds(),
                     )
                     when (saved) {

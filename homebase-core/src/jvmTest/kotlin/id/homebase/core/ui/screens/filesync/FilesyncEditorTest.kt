@@ -13,6 +13,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.TestTempDirs
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -59,7 +60,7 @@ class FilesyncEditorTest {
             val (status, body) = reply()
             respond(body, status, headers)
         }
-        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("filesync-editor").toString())
+        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, TestTempDirs.dir("filesync-editor").toString())
         val http = HttpClient(engine)
         editor = FilesyncEditor(
             testFilesyncRepository(http, credentials),

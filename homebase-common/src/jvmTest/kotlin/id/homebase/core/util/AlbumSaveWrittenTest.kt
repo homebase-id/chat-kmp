@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import id.homebase.api.file.OkioFileOperationsProvider
+import id.homebase.common.TestTempDirs
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
@@ -14,7 +15,7 @@ import okio.FileSystem
 
 /** [saveFile] and [saveWritten], the one way every platform saves: in place, or handed over as a finished file. */
 class AlbumSaveWrittenTest {
-    private val dir: File = Files.createTempDirectory("album-save").toFile().also { it.deleteOnExit() }
+    private val dir: File = TestTempDirs.dir("album-save").toFile().also { it.deleteOnExit() }
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.absolutePath)
     private val scratch = File(dir, "scratch.mp4")
     private val events = mutableListOf<String>()

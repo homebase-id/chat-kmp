@@ -332,7 +332,8 @@ class DriveFileProviderCached(
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
             cache: Boolean = false,
-    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache) { fileOps.writeDownload(outputPath, it) }
+            lastModified: Long? = null,
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache, lastModified) { fileOps.writeDownload(outputPath, it) }
 
     /** Whether the payload cache holds an entry for the payload whose header reads; one that doesn't is left to readThrough, which refetches it. */
     fun hasCachedPayload(driveId: Uuid, fileId: Uuid, key: String): Boolean {
@@ -360,17 +361,18 @@ class DriveFileProviderCached(
             keyHeader: KeyHeader,
             onProgress: ((Float) -> Unit)? = null,
             cache: Boolean = false,
+            lastModified: Long? = null,
             consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         if (fileId in ephemeralFiles) {
-            return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+            return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, lastModified, consume)
         }
-        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
+        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null, lastModified)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
                 ?: return if (cache) {
-                    streamIntoCache(driveId, fileId, key, cacheKey, keyHeader, onProgress, consume)
+                    streamIntoCache(driveId, fileId, key, cacheKey, keyHeader, onProgress, lastModified, consume)
                 } else {
-                    delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+                    delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, lastModified, consume)
                 }
 
         return snapshot.use { snap ->
@@ -414,10 +416,11 @@ class DriveFileProviderCached(
             cacheKey: String,
             keyHeader: KeyHeader,
             onProgress: ((Float) -> Unit)?,
+            lastModified: Long?,
             consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         val startedGeneration = generation
-        return delegate.streamPayloadBody(driveId, fileId, key, onProgress) { body ->
+        return delegate.streamPayloadBody(driveId, fileId, key, onProgress, lastModified) { body ->
             val size = body.contentLength
             // Without a stated size a body cut short can't be told from a whole one.
             val editor = if (size != null && size in 1..PayloadSizePolicy.RENDER_LIMIT_BYTES) {

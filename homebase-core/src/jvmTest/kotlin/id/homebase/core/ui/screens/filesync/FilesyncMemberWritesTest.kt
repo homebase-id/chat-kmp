@@ -17,6 +17,7 @@ import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.youauth.DrivePermission
 import id.homebase.api.youauth.DrivePermissionSet
+import id.homebase.core.TestTempDirs
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
@@ -64,7 +65,7 @@ class FilesyncMemberWritesTest {
 
     @BeforeTest
     fun setup() {
-        tempDir = Files.createTempDirectory("filesync-member").toString()
+        tempDir = TestTempDirs.dir("filesync-member").toString()
         source = File(tempDir, "notes.txt").apply { writeBytes(ByteArray(3000) { it.toByte() }) }.path
         writes = FilesyncMemberWrites(
             sharesOfNewFile = { _, folder, fileKey, gtid -> sharesFor(folder, fileKey, gtid) },

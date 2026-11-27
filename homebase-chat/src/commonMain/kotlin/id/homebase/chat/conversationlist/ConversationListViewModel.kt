@@ -306,7 +306,6 @@ class ConversationListViewModel(
         scope = viewModelScope,
         uiState = _uiState,
         messagesUiState = _messagesUiState,
-        driveFileProvider = driveFileProvider,
         payloadReader = payloadReader,
         fileOperationsProvider = fileOperationsProvider,
         chatMessageActionService = chatMessageActionService,

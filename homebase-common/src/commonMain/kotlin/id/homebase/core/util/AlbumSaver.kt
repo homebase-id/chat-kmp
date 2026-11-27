@@ -1,14 +1,14 @@
 package id.homebase.core.util
 
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.scratchDir
 import id.homebase.api.video.playableContentType
 import id.homebase.api.video.playableFileName
-import id.homebase.api.video.writePlayable
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -147,11 +147,12 @@ fun PayloadDescriptor.receivedSaveName(dateMs: Long, zone: TimeZone = TimeZone.c
     saveFileName(playableFileName(filename()), playableContentType, dateMs, zone)
 
 /**
- * A received payload saved through [saveWritten], named [name], as a file people can open ([writePlayable]): an HLS
- * video becomes an `.mp4`. The one save path for media people receive.
+ * A received payload saved through [saveWritten], named [name], as a file people can open
+ * ([PayloadReader.writePlayable]): an HLS video becomes an `.mp4`. The one save path for media people receive. [fileOps]
+ * reserves the path the reader writes, so it must be the reader's own (the app's one FileOperationsProvider).
  */
 suspend fun AlbumSaver.saveReceived(
-    driveFileProvider: DriveFileProvider,
+    payloadReader: PayloadReader,
     fileOps: FileOperationsProvider,
     driveId: Uuid,
     fileId: Uuid,
@@ -163,6 +164,6 @@ suspend fun AlbumSaver.saveReceived(
 ): AlbumSaveResult {
     val scratch = "${fileOps.scratchDir(AppCacheDirs.DOWNLOADS)}/${Uuid.random().toString().take(8)}_$name"
     return saveWritten(name, scratch, fileOps, asked) { path ->
-        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOps, path)
+        payloadReader.writePlayable(PayloadLocation.Own(driveId, fileId), payload, keyHeader, path, cache = false)
     }
 }

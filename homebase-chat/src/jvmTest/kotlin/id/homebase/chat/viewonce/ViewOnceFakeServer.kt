@@ -2,6 +2,7 @@ package id.homebase.chat.viewonce
 
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.serialization.Base64Bytes
+import id.homebase.chat.TestTempDirs
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.KeyHeader
@@ -64,7 +65,7 @@ internal class ViewOnceFakeServer(
     val requests: Int get() = requestCount.get()
     val requestedPaths = CopyOnWriteArrayList<String>()
     var status: HttpStatusCode = HttpStatusCode.OK
-    val tempDir: String = Files.createTempDirectory("vo-server").toString()
+    val tempDir: String = TestTempDirs.dir("vo-server").toString()
 
     lateinit var cached: DriveFileProviderCached
     lateinit var provider: DriveFileProvider

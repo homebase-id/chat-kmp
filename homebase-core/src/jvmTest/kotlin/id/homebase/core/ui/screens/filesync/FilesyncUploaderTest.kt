@@ -9,6 +9,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.TestTempDirs
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -53,7 +54,7 @@ class FilesyncUploaderTest {
 
     @BeforeTest
     fun setup() = runBlocking {
-        tempDir = Files.createTempDirectory("filesync-upload").toString()
+        tempDir = TestTempDirs.dir("filesync-upload").toString()
         source = File(tempDir, "photo.jpg").apply { writeBytes(ByteArray(5000) { it.toByte() }) }.path
         credentials.setActiveCredentials(
             ApiCredentials.create(OdinId("frodo.dotyou.cloud"), "token", SecureByteArray(ByteArray(16) { 3 }))

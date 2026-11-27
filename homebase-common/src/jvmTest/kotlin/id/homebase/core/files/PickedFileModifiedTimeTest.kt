@@ -1,5 +1,6 @@
 package id.homebase.core.files
 
+import id.homebase.common.TestTempDirs
 import io.github.vinceglb.filekit.PlatformFile
 import java.io.File
 import java.nio.file.Files
@@ -11,7 +12,7 @@ class PickedFileModifiedTimeTest {
 
     @Test
     fun aDesktopFileKeepsItsOwnModificationTime() {
-        val file = Files.createTempFile("picked", ".pdf").toFile().apply { deleteOnExit() }
+        val file = TestTempDirs.file("picked", ".pdf").toPath().toFile().apply { deleteOnExit() }
         val march2016 = 1_457_000_000_000L
         file.setLastModified(march2016)
 

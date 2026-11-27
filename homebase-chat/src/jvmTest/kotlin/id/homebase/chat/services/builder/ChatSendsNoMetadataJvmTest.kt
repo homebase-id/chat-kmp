@@ -9,6 +9,7 @@ import id.homebase.api.image.ImageMetadataScrubber
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.video.FFmpegBinaryManager
 import id.homebase.api.video.VideoPayloadProcessor
+import id.homebase.chat.TestTempDirs
 import id.homebase.upload.PayloadBundle
 import id.homebase.upload.PayloadBundleEncryptionService
 import java.io.File
@@ -33,7 +34,7 @@ import org.junit.Assume.assumeTrue
 class ChatSendsNoMetadataJvmTest {
 
     private val fileOps = JvmFileOperationsProvider()
-    private val dir = kotlin.io.path.createTempDirectory("hb-chat-metadata").toFile()
+    private val dir = java.io.File(TestTempDirs.create("hb-chat-metadata"))
     private val filmedAt = "+37.7749-122.4194/"
     private val encryptor = PayloadBundleEncryptionService(fileOps, VideoPayloadProcessor(fileOps), EventBus())
 

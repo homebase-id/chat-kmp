@@ -1,5 +1,6 @@
 package id.homebase.api.video.hls
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
@@ -28,7 +29,7 @@ import org.junit.Test
 
 /** Our segmenter's HLS, decrypted as a download writes it, remuxed back: the source's own samples, in an MP4. */
 class TsToMp4Test {
-    private val cache = Files.createTempDirectory("ts2mp4").toFile()
+    private val cache = TestTempDirs.dir("ts2mp4").toFile()
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
     private val keyHeader = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
 

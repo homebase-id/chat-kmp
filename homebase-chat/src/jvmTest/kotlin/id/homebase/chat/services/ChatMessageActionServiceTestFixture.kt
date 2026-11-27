@@ -1,5 +1,7 @@
 package id.homebase.chat.services
 
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.peer.PeerDriveUploadProvider
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
@@ -18,6 +20,7 @@ import id.homebase.api.client.drives.query.QueryBatchCursor
 import id.homebase.api.client.drives.upload.DriveUploadProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.BatchResult
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -30,6 +33,7 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.chat.TestTempDirs
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -249,7 +253,16 @@ class ChatMessageActionServiceTestFixture(
             reactionProvider = reactionProvider,
             credentialsManager = credentialsManager,
             fileProvider = fileProvider,
-            payloadDownloadService = PayloadDownloadService(fileProvider, NoopFileOperationsProvider()),
+            payloadDownloadService = NoopFileOperationsProvider().let { fileOps ->
+                PayloadDownloadService(
+                    PayloadReader(
+                        fileProvider,
+                        PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+                        fileOps,
+                    ),
+                    fileOps,
+                )
+            },
             dbm = dbm,
             outboxSync = outboxSync,
             optimisticWriter = optimisticWriter,
@@ -562,7 +575,7 @@ class ChatMessageActionServiceTestFixture(
  */
 internal class NoopFileOperationsProvider : FileOperationsProvider {
     private val uniqueCacheDir: String =
-        java.nio.file.Files.createTempDirectory("hb-chat-test-cache").toString()
+        TestTempDirs.create("hb-chat-test-cache")
     private fun nope(): Nothing =
         error("NoopFileOperationsProvider: no file IO expected in markAsReadByFiles tests")
     override fun openFileInput(path: String) = nope()

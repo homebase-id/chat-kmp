@@ -5,9 +5,13 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.video.VideoCompressionService
+import id.homebase.api.video.isHlsVideo
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
@@ -30,7 +34,10 @@ sealed interface PayloadLocation {
     }
 }
 
-/** Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Exports and a few own-drive reads still call DriveFileProvider directly. */
+/**
+ * Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Reads that show
+ * nothing still go around it: message text, clipboard copy, sticker send, the agent UI tree, Filesync's shared files.
+ */
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
@@ -72,6 +79,20 @@ class PayloadReader(
         is PayloadLocation.Peer -> peer.getPayloadChunkEncryptedOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, chunkStart, chunkLength)
     }
 
+    /** The whole payload, decrypted, to [consume] as it streams in, at any size; false when it isn't there. [cache] as for [toFile]. */
+    suspend fun stream(
+        at: PayloadLocation,
+        key: String,
+        keyHeader: KeyHeader,
+        cache: Boolean,
+        onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean = when (at) {
+        is PayloadLocation.Own -> own.streamPayloadDecrypted(at.driveId, at.fileId, key, keyHeader, onProgress, cache, lastModified, consume)
+        is PayloadLocation.Peer -> peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified, consume)
+    }
+
     /**
      * The whole payload, decrypted, streamed into [outputPath] at any size; false when it isn't there. [cache] keeps our
      * own drive's copy for the next read (a player's replay); it applies to our own drive only.
@@ -83,17 +104,61 @@ class PayloadReader(
         outputPath: String,
         cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache)
+        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, lastModified)
         is PayloadLocation.Peer -> {
             var wroteAnything = false
-            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress) { bytes ->
+            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified) { bytes ->
                 fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
             }
             if (!found || !wroteAnything) {
                 Logger.w(tag = "PayloadIO") { "peer stream produced no bytes for ${at.ref.odinId}/${at.ref.globalTransitId}/$key" }
             }
             found && wroteAnything
+        }
+    }
+
+    /**
+     * A received HLS video, downloaded and remuxed into an MP4 at [outputPath] (a file, or a `content://` entry the reader's
+     * file operations can write). False, logged, when the payload isn't there or isn't H.264/AAC in MPEG-TS; a file at
+     * [outputPath] is then deleted, a `content://` entry is the caller's to discard. A failed download, decrypt or write throws.
+     */
+    suspend fun downloadHlsAsMp4(
+        at: PayloadLocation,
+        payloadKey: String,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        cache: Boolean,
+        lastModified: Long? = null,
+    ): Boolean {
+        val label = "payload $payloadKey at $at"
+        var remuxed = false
+        val found = stream(at, payloadKey, keyHeader, cache, lastModified = lastModified) { ts ->
+            remuxed = VideoCompressionService.remuxTsToMp4(fileOps, ts, outputPath, label)
+        }
+        if (!found) Logger.e(tag = "HlsSave") { "download/decrypt failed: $label" }
+        return found && remuxed
+    }
+
+    /**
+     * This payload decrypted to [outputPath] as a file people can open: an HLS video remuxed into an MP4
+     * ([downloadHlsAsMp4]), anything else as it is. False when it isn't there or can't be remuxed. [cache] as for
+     * [toFile].
+     */
+    suspend fun writePlayable(
+        at: PayloadLocation,
+        payload: PayloadDescriptor,
+        keyHeader: KeyHeader,
+        outputPath: String,
+        cache: Boolean,
+    ): Boolean {
+        // Only a kept read is versioned: the player, preloader and seeds keep payloads under the plain key, which a save reuses.
+        val version = payload.lastModified.takeIf { cache }
+        return if (payload.isHlsVideo) {
+            downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, version)
+        } else {
+            toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = version)
         }
     }
 

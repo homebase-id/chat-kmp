@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.common.TestTempDirs
 import kotlinx.io.files.Path
 import java.io.File
 import java.nio.file.Files
@@ -10,7 +11,7 @@ import kotlin.test.assertFalse
 
 /** Desktop's real saveFile: the Save dialog's outcome, then the caller's file deleted when it gave it away. */
 class JvmFileSystemHandlerSaveTest {
-    private val dir: File = Files.createTempDirectory("save-test").toFile()
+    private val dir: File = TestTempDirs.dir("save-test").toFile()
 
     @AfterTest
     fun cleanUp() {

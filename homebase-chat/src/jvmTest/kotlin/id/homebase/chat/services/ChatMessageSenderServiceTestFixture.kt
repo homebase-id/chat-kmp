@@ -2,8 +2,11 @@ package id.homebase.chat.services
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.payload.PayloadReader
+import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.file.FileOperationsProvider
@@ -302,7 +305,13 @@ internal fun testChatMessageSenderService(
     httpClient: HttpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) }),
     fileOps: FileOperationsProvider = NoopFileOperationsProvider(),
 ): ChatMessageSenderService {
-    val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, DriveFileProviderCached(httpClient, credentialsManager, fileOps))
+    val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
+    val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
+    val payloadReader = PayloadReader(
+        driveFileProvider,
+        PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+        fileOps,
+    )
     val cacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
     return ChatMessageSenderService(
         outboxSync = outboxSync,
@@ -320,14 +329,18 @@ internal fun testChatMessageSenderService(
             optimisticWriter = OptimisticWriterPort(optimisticWriter),
             payloadCacheSeeder = cacheSeeder,
         ),
-        payloadDownloadService = PayloadDownloadService(driveFileProvider, fileOps),
+        payloadDownloadService = PayloadDownloadService(payloadReader, fileOps),
         shareSuggestionDonor = ShareSuggestionDonor(),
     )
 }
 
-/** Real files under a temp dir, so a streamed export lands on disk as it does in the app. */
-internal class DiskFileOperationsProvider : FileOperationsProvider {
+/** Real files under a temp dir, so a streamed export lands on disk as it does in the app; [close] deletes them. */
+internal class DiskFileOperationsProvider : FileOperationsProvider, AutoCloseable {
     private val dir: String = java.nio.file.Files.createTempDirectory("hb-chat-fwd").toString()
+
+    override fun close() {
+        java.io.File(dir).deleteRecursively()
+    }
     val inMemoryWrites = mutableListOf<String>()
     override fun getCacheDirectory() = dir
     override fun openFileInput(path: String) = error("not used")

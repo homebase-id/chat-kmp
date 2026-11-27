@@ -76,13 +76,14 @@ public class DriveFileHttpProvider(
         key: String,
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
 
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
         require(key.isNotBlank()) { "Key must be defined" }
-        return streamDecrypted("/drives/$driveId/files/$fileId/payload/$key", keyHeader, onProgress, consume)
+        return streamDecrypted(payloadPath(driveId, fileId, key, lastModified), keyHeader, onProgress, consume)
     }
 
     /** The whole body at [path] to [consume], decrypted unless the server flags it plaintext; false on 404. */
@@ -99,13 +100,18 @@ public class DriveFileHttpProvider(
         fileId: Uuid,
         key: String,
         onProgress: ((Float) -> Unit)?,
+        lastModified: Long?,
         consume: suspend (StreamedBody) -> Unit,
     ): Boolean {
         ValidationUtil.requireValidUuid(driveId, "driveId")
         ValidationUtil.requireValidUuid(fileId, "fileId")
         require(key.isNotBlank()) { "Key must be defined" }
-        return streamBody("/drives/$driveId/files/$fileId/payload/$key", onProgress, consume)
+        return streamBody(payloadPath(driveId, fileId, key, lastModified), onProgress, consume)
     }
+
+    // The route ignores lastModified; it versions the URL, as the buffered read's query does.
+    private fun payloadPath(driveId: Uuid, fileId: Uuid, key: String, lastModified: Long?): String =
+        "/drives/$driveId/files/$fileId/payload/$key" + lastModified?.let { "?lastModified=$it" }.orEmpty()
 
     private suspend fun streamBody(
         path: String,

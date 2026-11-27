@@ -3,6 +3,7 @@ package id.homebase.chat.services.builder
 import id.homebase.api.image.SendQuality
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
+import id.homebase.chat.TestTempDirs
 import kotlinx.coroutines.test.runTest
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorInfo
@@ -20,7 +21,7 @@ import kotlin.test.assertTrue
 class MessageAttachmentBuilderOldFormatTest {
 
     private val fileOps = JvmFileOperationsProvider()
-    private val dir = kotlin.io.path.createTempDirectory("hb-old-format-test").toFile()
+    private val dir = java.io.File(TestTempDirs.create("hb-old-format-test"))
 
     private fun jpeg(w: Int, h: Int): ByteArray {
         val info = ImageInfo(ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB), w, h)
