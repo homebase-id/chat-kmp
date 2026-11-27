@@ -54,6 +54,9 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
 }
 
 // The TIFF block inside a JPEG's EXIF APP1, as (start, end): end clamped to the bytes given.
+/** The byte order of a JPEG's EXIF, for readers that decode a field without saying it; null when it has none. */
+internal fun jpegExifLittleEndian(bytes: ByteArray): Boolean? = jpegExifTiff(bytes)?.let { (start, end) -> Tiff.at(bytes, start, end)?.littleEndian }
+
 private fun jpegExifTiff(bytes: ByteArray): Pair<Int, Int>? {
     if (bytes.size < 4) return null
     if (u8(bytes, 0) != 0xFF || u8(bytes, 1) != 0xD8) return null

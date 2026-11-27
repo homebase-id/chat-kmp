@@ -151,8 +151,8 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
                 PlacePicker(at, source, camera, Modifier.padding(padding).fillMaxSize())
             } else {
                 Column(Modifier.padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CoordinateField(latitude, { latitude = it }, MR.string.photobase_info_latitude, isError = latitude.isNotBlank() && typedLocation(latitude, longitude) == null)
-                    CoordinateField(longitude, { longitude = it }, MR.string.photobase_info_longitude, isError = longitude.isNotBlank() && typedLocation(latitude, longitude) == null)
+                    CoordinateField(latitude, { latitude = it }, MR.string.photobase_info_latitude, isError = latitude.isNotBlank() && latitude.coordinate()?.takeIf { it in -90.0..90.0 } == null)
+                    CoordinateField(longitude, { longitude = it }, MR.string.photobase_info_longitude, isError = longitude.isNotBlank() && longitude.coordinate()?.takeIf { it in -180.0..180.0 } == null)
                 }
             }
         }

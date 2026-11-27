@@ -52,6 +52,10 @@ class ImageMetadataCameraContractTest {
         assertEquals(CameraExifFixture.LENS_SERIAL, exif.lensSerial)
         assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exif.gpsTime)
         assertEquals(36.0, assertNotNull(exif.speedKmh), 1e-9)
+        for (littleEndian in listOf(true, false)) {
+            val tiff = CameraExifFixture.tiff(littleEndian = littleEndian, unicodeComment = true, commentText = "東京の橋")
+            assertEquals("東京の橋", readImageMetadata(CameraExifFixture.inJpeg(tiff, jpeg))?.userComment, "a UNICODE comment in the block's byte order, littleEndian=$littleEndian")
+        }
 
         val plain = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, plainTimes = true), jpeg)))
         assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), plain.capturedAt, "without DateTimeOriginal, the file's DateTime")

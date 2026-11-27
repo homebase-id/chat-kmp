@@ -55,12 +55,12 @@ internal fun mapBox(x: Double, y: Double): DoubleArray {
 internal const val MAP_ZOOM = 15
 
 /**
- * When it was taken and the offset it was taken at: a time set by hand at [offsetByHand]; else the EXIF's own time and
+ * When it was taken and the offset it was taken at: a time set by hand, at [offsetByHand]; else the EXIF's own time and
  * offset when it has both, since the backup may have read them differently on another platform; else [capturedAtMs]
  * at the EXIF's offset, or with none.
  */
-internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?, offsetByHand: UtcOffset? = null): Pair<Instant, UtcOffset?> {
-    if (offsetByHand != null) return Instant.fromEpochMilliseconds(capturedAtMs) to offsetByHand
+internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?, timeByHand: Boolean = false, offsetByHand: UtcOffset? = null): Pair<Instant, UtcOffset?> {
+    if (timeByHand) return Instant.fromEpochMilliseconds(capturedAtMs) to offsetByHand
     val offset = exif?.captureUtcOffset
     val local = exif?.capturedAt
     return if (local != null && offset != null) local.toInstant(offset) to offset else Instant.fromEpochMilliseconds(capturedAtMs) to offset

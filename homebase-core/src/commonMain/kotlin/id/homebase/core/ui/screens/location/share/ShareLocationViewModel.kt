@@ -131,9 +131,6 @@ class ShareLocationViewModel(
     fun onPermissionGranted() {
         locationService.refreshGpsHold()
         viewModelScope.launch { seedFromCachedThenFresh() }
-        viewModelScope.launch {
-            pinAddress.state.collect { pinned -> _uiState.update { it.copy(address = pinned.address, isResolvingAddress = pinned.resolving) } }
-        }
     }
 
     private suspend fun seedFromCachedThenFresh() {

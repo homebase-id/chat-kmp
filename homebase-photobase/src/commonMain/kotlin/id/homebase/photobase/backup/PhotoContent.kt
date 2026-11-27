@@ -13,8 +13,11 @@ data class PhotoContent(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val altitude: Double? = null,
-    /** Set with a time set by hand: the offset it was set at, which then wins over the original's EXIF. */
+    /** userDate was set by hand, and wins over the original's EXIF time; [offsetSeconds] is the zone it was set in. */
+    val timeByHand: Boolean? = null,
     val offsetSeconds: Int? = null,
+    /** The place was set by hand: the original's GPS details no longer describe it. */
+    val placeByHand: Boolean? = null,
 ) {
     val location: MediaLocation?
         get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitude) else null

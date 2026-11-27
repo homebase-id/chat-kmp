@@ -92,7 +92,8 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         imageDescription = exifName(ifd0?.getString(ExifIFD0Directory.TAG_IMAGE_DESCRIPTION)),
         artist = exifName(ifd0?.getString(ExifIFD0Directory.TAG_ARTIST)),
         copyright = exifName(ifd0?.getString(ExifIFD0Directory.TAG_COPYRIGHT)),
-        userComment = exifUserComment(sub?.getByteArray(ExifSubIFDDirectory.TAG_USER_COMMENT)),
+        // metadata-extractor doesn't say the byte order a UNICODE comment needs.
+        userComment = exifUserComment(sub?.getByteArray(ExifSubIFDDirectory.TAG_USER_COMMENT), jpegExifLittleEndian(srcBytes)),
         bodySerial = exifName(sub?.getString(ExifSubIFDDirectory.TAG_BODY_SERIAL_NUMBER)),
         lensSerial = exifName(sub?.getString(ExifSubIFDDirectory.TAG_LENS_SERIAL_NUMBER)),
         gpsTime = gps?.let { dir ->

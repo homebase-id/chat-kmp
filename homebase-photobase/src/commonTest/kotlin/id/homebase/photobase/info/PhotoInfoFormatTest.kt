@@ -136,7 +136,7 @@ class PhotoInfoFormatTest {
         val exif = ImageMetadata(capturedAt = LocalDateTime(2026, 1, 15, 15, 0), captureUtcOffset = UtcOffset(hours = 9))
         val byHand = Instant.parse("2020-06-01T10:00:00Z").toEpochMilliseconds()
 
-        assertEquals(Instant.fromEpochMilliseconds(byHand) to UtcOffset(hours = -4), takenAt(byHand, exif, UtcOffset(hours = -4)))
+        assertEquals(Instant.fromEpochMilliseconds(byHand) to UtcOffset(hours = -4), takenAt(byHand, exif, timeByHand = true, offsetByHand = UtcOffset(hours = -4)))
     }
 
     @Test

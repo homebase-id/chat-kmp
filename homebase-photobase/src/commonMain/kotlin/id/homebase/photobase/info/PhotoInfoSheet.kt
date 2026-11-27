@@ -177,9 +177,11 @@ fun PhotoInfoSheet(
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value.takeIf { it.fileId == item.fileId }
     val exif = (uiState?.camera as? InfoPart.Read)?.value
     var editing by remember { mutableStateOf<Editing?>(null) }
-    val capturedAtMs = uiState?.capturedAtMs ?: item.capturedAtMs
-    val taken = remember(capturedAtMs, exif, uiState?.offsetByHand) { takenAt(capturedAtMs, exif, uiState?.offsetByHand) }
+    val header = uiState?.header ?: remember(item) { item.headerFacts() }
+    val taken = remember(header, exif) { takenAt(header.capturedAtMs, exif, header.timeByHand, header.offsetByHand) }
     val canEdit = editable && uiState != null && !uiState.saving
+    // Not while the EXIF is on its way: its zone would change the clock the time is picked on.
+    val canEditTime = canEdit && uiState?.camera != InfoPart.Loading
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -196,14 +198,14 @@ fun PhotoInfoSheet(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
                 )
             }
-            WhenRow(taken, onEdit = { editing = Editing.Time }.takeIf { canEdit })
-            val location = uiState?.location
+            WhenRow(taken, onEdit = { editing = Editing.Time(taken.first, taken.second) }.takeIf { canEditTime })
+            val location = uiState?.header?.location
             if (location != null) {
                 WhereSection(location, uiState.place, source, onEdit = { editing = Editing.Place }.takeIf { canEdit })
             } else if (canEdit) {
                 InfoRow(Icons.Outlined.AddLocationAlt, stringResource(MR.string.photobase_info_add_location), null, Modifier.clickable { editing = Editing.Place })
             }
-            location?.let { LocationDetailsRow(it, exif) }
+            location?.let { LocationDetailsRow(it, exif.takeUnless { header.placeByHand }) }
             FileRow(item)
             if (item.motion != null) LiveRow()
             CameraSection(uiState?.camera ?: InfoPart.Loading)
@@ -224,21 +226,21 @@ fun PhotoInfoSheet(
             }
         }
     }
-    when (editing) {
-        Editing.Time -> {
-            val (at, offset) = taken
+    when (val opened = editing) {
+        is Editing.Time -> {
             EditTimeDialogs(
-                at = at,
-                offset = offset ?: TimeZone.currentSystemDefault().offsetAt(at),
-                onSave = { newAt, newOffset ->
+                at = opened.at,
+                offset = opened.offset ?: TimeZone.currentSystemDefault().offsetAt(opened.at),
+                onSave = { newAt, _ ->
                     editing = null
-                    viewModel.save(PhotoEdit.Time(newAt, newOffset))
+                    // A photo with no zone keeps none: the device's is only the clock it was picked on.
+                    viewModel.save(PhotoEdit.Time(newAt, opened.offset))
                 },
                 onDismiss = { editing = null },
             )
         }
         Editing.Place -> EditPlaceDialog(
-            at = uiState?.location,
+            at = uiState?.header?.location,
             source = source,
             onSave = {
                 editing = null
@@ -250,7 +252,12 @@ fun PhotoInfoSheet(
     }
 }
 
-private enum class Editing { Time, Place }
+private sealed interface Editing {
+    /** The time and zone as the dialog opened on them. */
+    data class Time(val at: Instant, val offset: UtcOffset?) : Editing
+
+    data object Place : Editing
+}
 
 // In the zone it was taken in once known; until then, or without one, this device's.
 @Composable
@@ -300,7 +307,7 @@ private fun LocationDetailsRow(location: MediaLocation, exif: ImageMetadata?) {
         exif?.imageDirectionDegrees?.let { add(stringResource(MR.string.photobase_info_facing, formatDecimal(it, 0))) }
         exif?.horizontalErrorMeters?.let { add(stringResource(MR.string.photobase_info_accuracy, formatDecimal(it, 0))) }
         exif?.speedKmh?.let { add(stringResource(MR.string.photobase_info_speed, formatDecimal(it, 0))) }
-        exif?.gpsTime?.let { add(stringResource(MR.string.photobase_info_gps_time, "${formatMediumDate(it)} ${formatTime(it)}")) }
+        exif?.gpsTime?.let { add(stringResource(MR.string.photobase_info_gps_time, stringResource(MR.string.photobase_info_date_time, formatMediumDate(it), formatTime(it)))) }
     }
     if (details.isNotEmpty()) InfoRow(Icons.Outlined.Explore, stringResource(MR.string.photobase_info_location_details), details)
 }

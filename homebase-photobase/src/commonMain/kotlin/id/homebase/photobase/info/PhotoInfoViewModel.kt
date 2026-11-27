@@ -75,13 +75,20 @@ sealed interface InfoPart<out T> {
     data object Failed : InfoPart<Nothing>
 }
 
+/** What the photo's header says of when and where; a time or place set by hand wins over the original's EXIF. */
+data class PhotoHeaderFacts(
+    val capturedAtMs: Long = 0,
+    val timeByHand: Boolean = false,
+    /** The zone a time set by hand was set in; null when the photo had none. */
+    val offsetByHand: UtcOffset? = null,
+    val location: MediaLocation? = null,
+    val placeByHand: Boolean = false,
+)
+
 data class PhotoInfoUiState(
     /** The open sheet's photo; null while none is open. */
     val fileId: Uuid? = null,
-    val capturedAtMs: Long = 0,
-    /** The offset a time set by hand was set at; it wins over the EXIF's. */
-    val offsetByHand: UtcOffset? = null,
-    val location: MediaLocation? = null,
+    val header: PhotoHeaderFacts = PhotoHeaderFacts(),
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
     /** Read(null) when it isn't looked up because maps are offline. */
     val place: InfoPart<LocationPreview> = InfoPart.Loading,
@@ -96,9 +103,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
     private var item: PhotoGalleryItem? = null
     // What a save set, until the gallery's copy of the header catches up with it: reopened before then, it still shows.
-    private val saved = mutableMapOf<Uuid, Saved>()
-
-    private data class Saved(val capturedAtMs: Long, val offsetByHand: UtcOffset?, val location: MediaLocation?)
+    private val saved = mutableMapOf<Uuid, PhotoHeaderFacts>()
     private var reading: Job? = null
     private var placing: Job? = null
 
@@ -107,45 +112,32 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         reading?.cancel()
         placing?.cancel()
         this.item = item
-        val content = item.photoContent()
-        // A header from another app version can hold anything; UtcOffset throws outside ±18 h.
-        val header = Saved(item.capturedAtMs, content?.offsetSeconds?.takeIf { it in -MAX_OFFSET..MAX_OFFSET }?.let { UtcOffset(seconds = it) }, content?.location)
+        val header = item.headerFacts()
         val shown = saved[item.fileId]?.takeIf { it != header } ?: header.also { saved.remove(item.fileId) }
-        val location = shown.location
-        _uiState.update {
-            PhotoInfoUiState(
-                fileId = item.fileId,
-                capturedAtMs = shown.capturedAtMs,
-                offsetByHand = shown.offsetByHand,
-                location = location,
-                place = placeUnread(),
-            )
-        }
+        _uiState.update { PhotoInfoUiState(fileId = item.fileId, header = shown, place = placeUnread()) }
         reading = viewModelScope.launch {
             val camera = read(item.fileId, "camera details") { source.camera(item) }
             update(item.fileId) { it.copy(camera = camera) }
         }
-        lookUpPlace(item.fileId, location)
+        lookUpPlace(item.fileId, shown.location)
     }
 
     fun save(edit: PhotoEdit) {
         val item = item ?: return
-        if (_uiState.value.saving) return
+        val before = _uiState.value.takeIf { it.fileId == item.fileId && !it.saving }?.header ?: return
         update(item.fileId) { it.copy(saving = true, saveFailed = false) }
         viewModelScope.launch {
             val ok = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
-            update(item.fileId) { state ->
-                val done = state.copy(saving = false, saveFailed = !ok)
-                if (!ok) {
-                    done
-                } else {
-                    when (edit) {
-                        is PhotoEdit.Time -> done.copy(capturedAtMs = edit.at.toEpochMilliseconds(), offsetByHand = edit.offset)
-                        is PhotoEdit.Place -> done.copy(location = edit.at, place = placeUnread())
-                    }.also { saved[item.fileId] = Saved(it.capturedAtMs, it.offsetByHand, it.location) }
-                }
+            // Kept whatever the sheet shows by now: closed or on another photo, this one reopens with it.
+            val after = if (!ok) before else when (edit) {
+                is PhotoEdit.Time -> before.copy(capturedAtMs = edit.at.toEpochMilliseconds(), timeByHand = true, offsetByHand = edit.offset)
+                is PhotoEdit.Place -> before.copy(location = edit.at, placeByHand = true)
             }
-            if (ok && edit is PhotoEdit.Place) lookUpPlace(item.fileId, edit.at)
+            if (ok) saved[item.fileId] = after
+            update(item.fileId) { state ->
+                state.copy(saving = false, saveFailed = !ok, header = after, place = if (ok && edit is PhotoEdit.Place) placeUnread() else state.place)
+            }
+            if (ok && edit is PhotoEdit.Place && _uiState.value.fileId == item.fileId) lookUpPlace(item.fileId, edit.at)
         }
     }
 
@@ -185,6 +177,19 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
     private companion object {
         const val TAG = "PhotoInfoViewModel"
-        const val MAX_OFFSET = 18 * 3600
     }
+}
+
+private const val MAX_OFFSET = 18 * 3600
+
+internal fun PhotoGalleryItem.headerFacts(): PhotoHeaderFacts {
+    val content = photoContent()
+    return PhotoHeaderFacts(
+        capturedAtMs = capturedAtMs,
+        timeByHand = content?.timeByHand == true,
+        // A header from another app version can hold anything; UtcOffset throws outside ±18 h.
+        offsetByHand = content?.offsetSeconds?.takeIf { it in -MAX_OFFSET..MAX_OFFSET }?.let { UtcOffset(seconds = it) },
+        location = content?.location,
+        placeByHand = content?.placeByHand == true,
+    )
 }

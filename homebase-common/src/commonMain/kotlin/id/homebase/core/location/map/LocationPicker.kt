@@ -126,7 +126,14 @@ class PinAddress(private val scope: CoroutineScope, private val reverseGeocode: 
     fun moved(lat: Double, lon: Double) {
         val fromLat = lastLat
         val fromLon = lastLon
-        if (fromLat != null && fromLon != null && approxDistanceMeters(fromLat, fromLon, lat, lon) < MIN_MOVE_METERS) return
+        if (fromLat != null && fromLon != null && approxDistanceMeters(fromLat, fromLon, lat, lon) < MIN_MOVE_METERS) {
+            // Back where it was resolved: a lookup still on its way for a point further off would name the wrong place.
+            if (job?.isActive == true) {
+                job?.cancel()
+                _state.update { it.copy(resolving = false) }
+            }
+            return
+        }
         _state.update { it.copy(resolving = true) }
         job?.cancel()
         job = scope.launch {

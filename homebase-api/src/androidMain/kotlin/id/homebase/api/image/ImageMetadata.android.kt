@@ -3,16 +3,16 @@ package id.homebase.api.image
 import androidx.exifinterface.media.ExifInterface
 import co.touchlab.kermit.Logger
 import java.io.ByteArrayInputStream
-import kotlin.time.Instant
 
 actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? = try {
-    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata()
+    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata(jpegExifLittleEndian(srcBytes))
 } catch (e: Throwable) {
     Logger.w(throwable = e, tag = "readImageMetadata") { "Android EXIF read failed" }
     null
 }
 
-internal fun ExifInterface.toImageMetadata(): ImageMetadata {
+/** [littleEndian]: the EXIF's byte order where known, which ExifInterface doesn't say; a UNICODE comment needs it. */
+internal fun ExifInterface.toImageMetadata(littleEndian: Boolean? = null): ImageMetadata {
     val capturedAt = parseExifLocalDateTime(
         getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
             ?: getAttribute(ExifInterface.TAG_DATETIME)
@@ -69,10 +69,11 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         imageDescription = exifName(getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION)),
         artist = exifName(getAttribute(ExifInterface.TAG_ARTIST)),
         copyright = exifName(getAttribute(ExifInterface.TAG_COPYRIGHT)),
-        userComment = exifUserComment(getAttributeBytes(ExifInterface.TAG_USER_COMMENT)),
+        userComment = exifUserComment(getAttributeBytes(ExifInterface.TAG_USER_COMMENT), littleEndian),
         bodySerial = exifName(getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER)),
         lensSerial = exifName(getAttribute(ExifInterface.TAG_LENS_SERIAL_NUMBER)),
-        gpsTime = gpsDateTime?.let { Instant.fromEpochMilliseconds(it) },
+        // Its own parse rolls an invalid date over: the shared rule's instead. getAttribute gives the time as "HH:mm:ss".
+        gpsTime = exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), getAttribute(ExifInterface.TAG_GPS_TIMESTAMP)),
         speedKmh = exifSpeedKmh(double(ExifInterface.TAG_GPS_SPEED), getAttribute(ExifInterface.TAG_GPS_SPEED_REF)),
     )
 }

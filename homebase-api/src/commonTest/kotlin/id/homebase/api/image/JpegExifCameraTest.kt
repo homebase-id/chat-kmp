@@ -118,7 +118,7 @@ class JpegExifCameraTest {
         assertNull(exifGpsTime("2026:01:15", null, 0.0, 0.0), "no time, no instant")
         assertNull(exifGpsTime(null, 6.0, 0.0, 30.0), "no date, no instant")
         assertNull(exifGpsTime("2026:13:40", 6.0, 0.0, 30.0))
-        assertEquals(Instant.parse("2026-01-15T06:00:30.500Z"), exifGpsTime("2026:01:15", "06:00:30.5"))
+        assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exifGpsTime("2026:01:15", "06:00:30.5"), "to the second, as Android gives it")
         assertNull(exifUserComment(ByteArray(8)), "an empty comment")
         assertEquals("hi", exifUserComment(ByteArray(8) + "hi\u0000\u0000".encodeToByteArray()), "undefined: as UTF-8")
         assertNull(exifUserComment("JIS".encodeToByteArray() + ByteArray(5) + "x".encodeToByteArray()))

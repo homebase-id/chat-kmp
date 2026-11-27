@@ -19,7 +19,8 @@ import kotlin.uuid.Uuid
 
 /** A change to a photo's header: the original file and its EXIF stay as the camera wrote them. */
 sealed interface PhotoEdit {
-    data class Time(val at: Instant, val offset: UtcOffset) : PhotoEdit
+    /** [offset] null: the photo had no zone, and still hasn't. */
+    data class Time(val at: Instant, val offset: UtcOffset?) : PhotoEdit
 
     /** Null removes it. */
     data class Place(val at: MediaLocation?) : PhotoEdit
@@ -76,11 +77,15 @@ internal fun editedContent(stored: String?, edit: PhotoEdit): String {
     val versioned = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject.containsKey("v") }.getOrNull() } == true
     val version = if (versioned) emptyMap() else mapOf("v" to JsonPrimitive(PhotoContent.CURRENT_VERSION))
     return when (edit) {
-        is PhotoEdit.Time -> mergedContent(stored, JsonObject(version + ("offsetSeconds" to JsonPrimitive(edit.offset.totalSeconds))))
+        is PhotoEdit.Time -> {
+            val set = version + ("timeByHand" to JsonPrimitive(true)) + listOfNotNull(edit.offset?.let { "offsetSeconds" to JsonPrimitive(it.totalSeconds) })
+            mergedContent(stored, JsonObject(set), remove = setOf("offsetSeconds"))
+        }
         is PhotoEdit.Place -> {
             val at = edit.at
             val set = buildMap {
                 putAll(version)
+                put("placeByHand", JsonPrimitive(true))
                 if (at != null) {
                     put("latitude", JsonPrimitive(at.latitude))
                     put("longitude", JsonPrimitive(at.longitude))

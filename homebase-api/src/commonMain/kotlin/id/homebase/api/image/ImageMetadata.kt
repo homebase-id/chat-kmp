@@ -192,7 +192,7 @@ internal fun exifUserComment(raw: ByteArray?, littleEndian: Boolean? = null): St
     val code = raw.copyOfRange(0, 8).decodeToString().trimEnd('\u0000', ' ')
     val text = raw.copyOfRange(8, raw.size)
     val decoded = when (code) {
-        "UNICODE" -> utf16(text, littleEndian ?: (text.size >= 2 && text[0].toInt() != 0 && text[1].toInt() == 0))
+        "UNICODE" -> utf16Text(text, littleEndian)
         // ASCII, JIS (rarely written, and not decoded here) and undefined: undefined is UTF-8 in practice.
         "JIS" -> return null
         else -> text.decodeToString()
@@ -203,6 +203,16 @@ internal fun exifUserComment(raw: ByteArray?, littleEndian: Boolean? = null): St
 /** A comment the platform decoded itself, with the same trimming. */
 internal fun exifComment(raw: String?): String? = raw?.replace("\u0000", "")?.trim()?.takeIf { it.isNotEmpty() }
 
+// Without the TIFF's byte order (a HEIC, or a reader that doesn't say), a byte-order mark, else Latin text's zero bytes.
+private fun utf16Text(text: ByteArray, littleEndian: Boolean?): String {
+    val bom = if (text.size >= 2) (text[0].toInt() and 0xFF) to (text[1].toInt() and 0xFF) else null
+    return when {
+        bom == (0xFF to 0xFE) -> utf16(text.copyOfRange(2, text.size), littleEndian = true)
+        bom == (0xFE to 0xFF) -> utf16(text.copyOfRange(2, text.size), littleEndian = false)
+        else -> utf16(text, littleEndian ?: (text.size >= 2 && text[0].toInt() != 0 && text[1].toInt() == 0))
+    }
+}
+
 private fun utf16(bytes: ByteArray, littleEndian: Boolean): String = buildString {
     for (i in 0 until bytes.size / 2) {
         val lo = bytes[2 * i + if (littleEndian) 0 else 1].toInt() and 0xFF
@@ -211,16 +221,14 @@ private fun utf16(bytes: ByteArray, littleEndian: Boolean): String = buildString
     }
 }
 
-/** GPSDateStamp "YYYY:MM:DD" and GPSTimeStamp's hours, minutes and seconds, in UTC. */
+/** GPSDateStamp "YYYY:MM:DD" and GPSTimeStamp's hours, minutes and seconds, in UTC, to the second: Android gives no finer. */
 internal fun exifGpsTime(date: String?, hours: Double?, minutes: Double?, seconds: Double?): Instant? {
     if (date == null || hours == null || minutes == null || seconds == null) return null
     val parts = date.trim().split(':').map { it.toIntOrNull() ?: return null }
     if (parts.size != 3 || hours !in 0.0..23.0 || minutes !in 0.0..59.0 || seconds < 0 || seconds >= 61) return null
     return try {
         val day = LocalDate(parts[0], parts[1], parts[2])
-        val wholeSeconds = seconds.toInt().coerceAtMost(59)
-        val nanos = ((seconds - seconds.toInt()) * 1_000_000_000).toInt()
-        day.atTime(LocalTime(hours.toInt(), minutes.toInt(), wholeSeconds, nanos)).toInstant(TimeZone.UTC)
+        day.atTime(LocalTime(hours.toInt(), minutes.toInt(), seconds.toInt().coerceAtMost(59))).toInstant(TimeZone.UTC)
     } catch (_: IllegalArgumentException) {
         null
     }

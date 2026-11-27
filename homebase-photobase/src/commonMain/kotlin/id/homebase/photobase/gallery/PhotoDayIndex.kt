@@ -1,5 +1,7 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.photobase.parseRecord
+import id.homebase.photobase.backup.PhotoContent
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
@@ -83,11 +85,6 @@ class PhotoDayIndex(
 
     suspend fun recount() = mutex.withLock { orCountAgainLater { rebuild() } }
 
-    /** Counts [days] again: ones a photo left, which a change says nothing about, as it names only where it went. */
-    suspend fun recountDays(days: Collection<Int>) = mutex.withLock {
-        if (builtFor != null) orCountAgainLater { put(days.map { DayCount(it, photosOn(it)) }) }
-    }
-
     /** Photobase is gone: count again from scratch next time. */
     suspend fun forget() = mutex.withLock {
         current.value = LibraryDays(IntArray(0), IntArray(0))
@@ -127,7 +124,8 @@ class PhotoDayIndex(
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
+            // A time set by hand may have moved a photo off a day a change doesn't name, since it names only the new one.
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timeSetByHand() }) return@orCountAgainLater rebuild()
             // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
             // its earliest and latest photo settle each one's day without a lookup per photo.
             val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()
@@ -210,3 +208,6 @@ fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: C
     changes = changes.heardBy(store.gallery),
     scope = scope,
 )
+
+private fun HomebaseFile.timeSetByHand(): Boolean =
+    parseRecord<PhotoContent>(fileMetadata.appData.content, "photo $fileId")?.timeByHand == true

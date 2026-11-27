@@ -51,6 +51,7 @@ internal object CameraExifFixture {
         exifPointerType: Int = 4,
         plainTimes: Boolean = false,
         unicodeComment: Boolean = false,
+        commentText: String = COMMENT,
     ): ByteArray {
         fun u16(v: Int) = if (littleEndian) byteArrayOf(v.toByte(), (v shr 8).toByte()) else byteArrayOf((v shr 8).toByte(), v.toByte())
         fun u32(v: Int) = if (littleEndian) ByteArray(4) { (v ushr (8 * it)).toByte() } else ByteArray(4) { (v ushr (8 * (3 - it))).toByte() }
@@ -75,9 +76,9 @@ internal object CameraExifFixture {
         val gpsTimeAt = speedAt + 8
         val commentAt = gpsTimeAt + 24
         val comment = if (unicodeComment) {
-            "UNICODE".encodeToByteArray() + 0.toByte() + COMMENT.flatMap { u16(it.code).toList() }.toByteArray()
+            "UNICODE".encodeToByteArray() + 0.toByte() + commentText.flatMap { u16(it.code).toList() }.toByteArray()
         } else {
-            "ASCII".encodeToByteArray() + ByteArray(3) + COMMENT.encodeToByteArray()
+            "ASCII".encodeToByteArray() + ByteArray(3) + commentText.encodeToByteArray()
         }
         val isosAt = commentAt + comment.size
 
