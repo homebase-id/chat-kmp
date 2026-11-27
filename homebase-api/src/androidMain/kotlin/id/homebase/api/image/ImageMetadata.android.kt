@@ -5,14 +5,14 @@ import co.touchlab.kermit.Logger
 import java.io.ByteArrayInputStream
 
 actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? = try {
-    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata(jpegExifLittleEndian(srcBytes))
+    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata { jpegExifLittleEndian(srcBytes) }
 } catch (e: Throwable) {
     Logger.w(throwable = e, tag = "readImageMetadata") { "Android EXIF read failed" }
     null
 }
 
 /** [littleEndian]: the EXIF's byte order where known, which ExifInterface doesn't say; a UNICODE comment needs it. */
-internal fun ExifInterface.toImageMetadata(littleEndian: Boolean? = null): ImageMetadata {
+internal fun ExifInterface.toImageMetadata(littleEndian: () -> Boolean?): ImageMetadata {
     val capturedAt = parseExifLocalDateTime(
         getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
             ?: getAttribute(ExifInterface.TAG_DATETIME)

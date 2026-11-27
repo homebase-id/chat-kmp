@@ -63,19 +63,18 @@ import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.UtcOffset
-import kotlinx.datetime.asTimeZone
 import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import kotlin.math.floor
 import kotlin.time.Instant
 
-/** The day, then the time, on the clock at [offset]: the zone it shows the photo in. */
+/** The day, then the time, on the clock of [zone]: the one it shows the photo in. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun EditTimeDialogs(at: Instant, offset: UtcOffset, onSave: (Instant, UtcOffset) -> Unit, onDismiss: () -> Unit) {
-    val local = remember(at, offset) { at.toLocalDateTime(offset.asTimeZone()) }
+internal fun EditTimeDialogs(at: Instant, zone: TimeZone, onSave: (Instant) -> Unit, onDismiss: () -> Unit) {
+    val local = remember(at, zone) { at.toLocalDateTime(zone) }
     var day by remember { mutableStateOf<LocalDate?>(null) }
     val picked = day
     if (picked == null) {
@@ -102,7 +101,8 @@ internal fun EditTimeDialogs(at: Instant, offset: UtcOffset, onSave: (Instant, U
             confirmButton = {
                 TextButton(onClick = {
                     val chosen = LocalDateTime(picked, LocalTime(state.hour, state.minute, local.second))
-                    onSave(chosen.toInstant(offset), offset)
+                    // In the zone, not at today's offset: a day across a change of clock gets that day's.
+                    onSave(chosen.toInstant(zone))
                 }) { Text(stringResource(MR.string.save)) }
             },
             dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(MR.string.cancel)) } },
@@ -122,7 +122,8 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
     var latitude by remember { mutableStateOf(at?.latitude?.toString().orEmpty()) }
     var longitude by remember { mutableStateOf(at?.longitude?.toString().orEmpty()) }
     val chosen = if (source.mapsOnline) {
-        camera.centerUnit?.takeIf { camera.isUserPositioned }?.let { (x, y) -> WebMercator.unitToLatLon(x, y) }?.let { (lat, lon) -> MediaLocation(lat, lon) }
+        // Panned round the world, the map's x runs past 0..1: back into -180..180.
+        camera.centerUnit?.takeIf { camera.isUserPositioned }?.let { (x, y) -> WebMercator.unitToLatLon(x - floor(x), y) }?.let { (lat, lon) -> MediaLocation.of(lat, lon) }
     } else {
         typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
     }

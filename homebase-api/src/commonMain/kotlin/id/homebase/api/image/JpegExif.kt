@@ -45,7 +45,7 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
         imageDescription = exifName(ifd0.ascii(0x010E)),
         artist = exifName(ifd0.ascii(0x013B)),
         copyright = exifName(ifd0.ascii(0x8298)),
-        userComment = exifUserComment(exif?.bytes(0x9286), tiff.littleEndian),
+        userComment = exifUserComment(exif?.bytes(0x9286)) { tiff.littleEndian },
         bodySerial = exifName(exif?.ascii(0xA431)),
         lensSerial = exifName(exif?.ascii(0xA435)),
         gpsTime = gps?.rationals(0x0007, 3)?.let { (h, m, sec) -> exifGpsTime(gps.ascii(0x001D), h, m, sec) },
@@ -53,10 +53,10 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     )
 }
 
-// The TIFF block inside a JPEG's EXIF APP1, as (start, end): end clamped to the bytes given.
 /** The byte order of a JPEG's EXIF, for readers that decode a field without saying it; null when it has none. */
 internal fun jpegExifLittleEndian(bytes: ByteArray): Boolean? = jpegExifTiff(bytes)?.let { (start, end) -> Tiff.at(bytes, start, end)?.littleEndian }
 
+// The TIFF block inside a JPEG's EXIF APP1, as (start, end): end clamped to the bytes given.
 private fun jpegExifTiff(bytes: ByteArray): Pair<Int, Int>? {
     if (bytes.size < 4) return null
     if (u8(bytes, 0) != 0xFF || u8(bytes, 1) != 0xD8) return null
@@ -178,7 +178,6 @@ private class Directory(val tiff: Tiff, val at: Int) {
         }
     }
 
-    /** An UNDEFINED tag's bytes. */
     fun bytes(tag: Int): ByteArray? {
         val entry = entry(tag) ?: return null
         if (tiff.u16(entry + 2) != 7) return null

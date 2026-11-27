@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import kotlin.math.abs
 import id.homebase.photobase.parseRecord
 import id.homebase.photobase.backup.PhotoContent
 import co.touchlab.kermit.Logger
@@ -124,8 +125,8 @@ class PhotoDayIndex(
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            // A time set by hand may have moved a photo off a day a change doesn't name, since it names only the new one.
-            if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timeSetByHand() }) return@orCountAgainLater rebuild()
+            // A time just set by hand may have moved a photo off a day a change doesn't name, since it names only the new one.
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timeJustSetByHand() }) return@orCountAgainLater rebuild()
             // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
             // its earliest and latest photo settle each one's day without a lookup per photo.
             val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()
@@ -209,5 +210,11 @@ fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: C
     scope = scope,
 )
 
-private fun HomebaseFile.timeSetByHand(): Boolean =
-    parseRecord<PhotoContent>(fileMetadata.appData.content, "photo $fileId")?.timeByHand == true
+// This change is the one that set it, by the server's clock give or take a phone's: not a later heart or album change.
+private fun HomebaseFile.timeJustSetByHand(): Boolean {
+    val content = fileMetadata.appData.content?.takeIf { "timeSetAtMs" in it } ?: return false
+    val setAt = parseRecord<PhotoContent>(content, "photo $fileId")?.timeSetAtMs ?: return false
+    return abs(fileMetadata.updated.milliseconds - setAt) < CLOCK_SKEW_MS
+}
+
+private const val CLOCK_SKEW_MS = 10 * 60_000L

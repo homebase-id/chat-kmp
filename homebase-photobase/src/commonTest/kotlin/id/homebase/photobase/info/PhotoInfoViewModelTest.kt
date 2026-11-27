@@ -58,7 +58,7 @@ class PhotoInfoViewModelTest {
 
         assertEquals(InfoPart.Failed, viewModel.uiState.value.camera)
         assertEquals("San Francisco", viewModel.uiState.value.place.address())
-        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.header.location)
+        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.location)
     }
 
     @Test
@@ -81,7 +81,7 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item(null))
 
-        assertNull(viewModel.uiState.value.header.location)
+        assertNull(viewModel.uiState.value.location)
         assertEquals(0, reader.placeReads)
     }
 
@@ -95,7 +95,7 @@ class PhotoInfoViewModelTest {
 
         assertEquals(InfoPart.Read(null), viewModel.uiState.value.place)
         assertEquals(0, reader.placeReads)
-        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.header.location, "its coordinates still show")
+        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.location, "its coordinates still show")
     }
 
     @Test
@@ -134,8 +134,8 @@ class PhotoInfoViewModelTest {
         viewModel.save(PhotoEdit.Time(at, UtcOffset(hours = 9)))
 
         assertEquals(listOf<PhotoEdit>(PhotoEdit.Time(at, UtcOffset(hours = 9))), reader.saved)
-        assertEquals(at.toEpochMilliseconds(), viewModel.uiState.value.header.capturedAtMs)
-        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.header.offsetByHand)
+        assertEquals(at.toEpochMilliseconds(), viewModel.uiState.value.capturedAtMs)
+        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.offsetByHand)
         assertEquals(false, viewModel.uiState.value.saving)
     }
 
@@ -147,11 +147,11 @@ class PhotoInfoViewModelTest {
         viewModel.show(item(null))
 
         viewModel.save(PhotoEdit.Place(MediaLocation(35.68, 139.76)))
-        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.header.location)
+        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.location)
         assertEquals("Tokyo", viewModel.uiState.value.place.address())
 
         viewModel.save(PhotoEdit.Place(null))
-        assertNull(viewModel.uiState.value.header.location)
+        assertNull(viewModel.uiState.value.location)
     }
 
     @Test
@@ -159,13 +159,13 @@ class PhotoInfoViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }, save = { error("offline") }))
         viewModel.show(item(located))
-        val before = viewModel.uiState.value.header.capturedAtMs
+        val before = viewModel.uiState.value.capturedAtMs
 
         viewModel.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), UtcOffset.ZERO))
 
         assertEquals(true, viewModel.uiState.value.saveFailed)
-        assertEquals(before, viewModel.uiState.value.header.capturedAtMs)
-        assertNull(viewModel.uiState.value.header.offsetByHand)
+        assertEquals(before, viewModel.uiState.value.capturedAtMs)
+        assertNull(viewModel.uiState.value.offsetByHand)
     }
 
     @Test
@@ -173,9 +173,9 @@ class PhotoInfoViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
         val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
 
-        viewModel.show(item("""{"v":1,"timeByHand":true,"offsetSeconds":32400}"""))
+        viewModel.show(item("""{"v":1,"timeSetAtMs":1,"offsetSeconds":32400}"""))
 
-        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.header.offsetByHand)
+        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.offsetByHand)
     }
 
     @Test
@@ -185,7 +185,7 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item("""{"v":1,"offsetSeconds":100000}"""))
 
-        assertNull(viewModel.uiState.value.header.offsetByHand)
+        assertNull(viewModel.uiState.value.offsetByHand)
     }
 
     @Test
@@ -199,6 +199,20 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(photo)
 
-        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.header.location)
+        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.location)
+    }
+
+    @Test
+    fun onceTheGallerysCopyIsNewerItWinsOverTheSavedEdit() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+        val photo = item(located)
+        viewModel.show(photo)
+        viewModel.save(PhotoEdit.Place(MediaLocation(48.85, 2.35)))
+
+        // Synced, then changed again elsewhere: Rome.
+        viewModel.show(photo.copy(changedAtMs = photo.changedAtMs + 1, content = """{"v":1,"latitude":41.9,"longitude":12.5}"""))
+
+        assertEquals(MediaLocation(41.9, 12.5), viewModel.uiState.value.location)
     }
 }

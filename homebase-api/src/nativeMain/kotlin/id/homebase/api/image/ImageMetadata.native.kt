@@ -72,9 +72,10 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     return try {
         val source = ImageIoDecode.open(srcBytes) ?: return null
         try {
-            // ImageIO decodes a UNICODE UserComment as big-endian whatever the file's byte order: a JPEG's is read here.
+            // ImageIO reads a UNICODE UserComment big-endian whatever the file's order, and keeps a JIS one the shared
+            // rule drops: a JPEG's comes from the shared reader.
             source.readMetadata()?.let { read ->
-                if (jpegExifLittleEndian(srcBytes) == true) read.copy(userComment = readJpegExifCamera(srcBytes)?.userComment) else read
+                if (jpegExifLittleEndian(srcBytes) != null) read.copy(userComment = readJpegExifCamera(srcBytes)?.userComment) else read
             }
         } finally {
             CFRelease(source)

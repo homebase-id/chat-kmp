@@ -99,9 +99,8 @@ data class ImageMetadata(
  * Returns null only when the bytes cannot be parsed at all. If the image has
  * no metadata, an [ImageMetadata] with all-null fields is returned.
  *
- * Web reads a JPEG's camera, lens, exposure and software fields, capture and modified times, offset, orientation, and
- * the GPS direction and accuracy ([readJpegExifCamera]): no position or size, and null for anything else, a JPEG
- * without EXIF too, since browsers expose no EXIF reader.
+ * Web reads a JPEG's EXIF ([readJpegExifCamera]): every field here but the GPS position and the pixel size, and null
+ * for anything else, a JPEG without EXIF too, since browsers expose no EXIF reader.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 
@@ -186,13 +185,16 @@ internal fun exifCustomRendered(raw: Int?): Int? = raw?.takeIf { it == 0 || it =
 internal fun exifColorSpace(raw: Int?): Int? = raw?.takeIf { it == 1 || it == 65535 }
 internal fun exifSubjectDistance(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it > 0 && it < 1_000_000 }
 
-/** A UserComment's bytes: an 8-byte character code, then the text. [littleEndian] is the TIFF's, for UNICODE; null guesses. */
-internal fun exifUserComment(raw: ByteArray?, littleEndian: Boolean? = null): String? {
+/**
+ * A UserComment's bytes: an 8-byte character code, then the text. [littleEndian] gives the TIFF's byte order, asked
+ * for only by a UNICODE comment, so a reader that has to look it up does so only then; null guesses.
+ */
+internal fun exifUserComment(raw: ByteArray?, littleEndian: () -> Boolean? = { null }): String? {
     if (raw == null || raw.size < 8) return null
     val code = raw.copyOfRange(0, 8).decodeToString().trimEnd('\u0000', ' ')
     val text = raw.copyOfRange(8, raw.size)
     val decoded = when (code) {
-        "UNICODE" -> utf16Text(text, littleEndian)
+        "UNICODE" -> utf16Text(text, littleEndian())
         // ASCII, JIS (rarely written, and not decoded here) and undefined: undefined is UTF-8 in practice.
         "JIS" -> return null
         else -> text.decodeToString()

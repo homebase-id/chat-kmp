@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
@@ -78,7 +79,8 @@ internal fun editedContent(stored: String?, edit: PhotoEdit): String {
     val version = if (versioned) emptyMap() else mapOf("v" to JsonPrimitive(PhotoContent.CURRENT_VERSION))
     return when (edit) {
         is PhotoEdit.Time -> {
-            val set = version + ("timeByHand" to JsonPrimitive(true)) + listOfNotNull(edit.offset?.let { "offsetSeconds" to JsonPrimitive(it.totalSeconds) })
+            val set = version + ("timeSetAtMs" to JsonPrimitive(Clock.System.now().toEpochMilliseconds())) +
+                listOfNotNull(edit.offset?.let { "offsetSeconds" to JsonPrimitive(it.totalSeconds) })
             mergedContent(stored, JsonObject(set), remove = setOf("offsetSeconds"))
         }
         is PhotoEdit.Place -> {

@@ -1,5 +1,6 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.sync.database.DayCount
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -113,12 +114,29 @@ class PhotoDayIndexTest {
         // Moved from day 15 to day 19: the change names only 19.
         library.days[15] = 6
         library.days[19] = 1
-        val moved = galleryTestFile(19 * DAY_MS).let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeByHand":true,"offsetSeconds":3600}"""))) }
+        val moved = galleryTestFile(19 * DAY_MS).let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeSetAtMs":0,"offsetSeconds":3600}"""))) }
         changes.emit(PhotoChange.FilesArrived(listOf(moved)))
         runCurrent()
 
         assertEquals(2, library.builds)
         assertEquals(6, index.days.first().countOf(15))
+        watching.cancel()
+    }
+
+    @Test
+    fun aLaterChangeToAPhotoTimedByHandCountsOnlyItsDay() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        // Its time was set long before this change, a heart or an album: it hasn't moved day.
+        val hearted = galleryTestFile(19 * DAY_MS).let {
+            it.copy(fileMetadata = it.fileMetadata.copy(updated = UnixTimeUtc(DAY_MS), appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeSetAtMs":0}""")))
+        }
+        changes.emit(PhotoChange.FilesArrived(listOf(hearted)))
+        runCurrent()
+
+        assertEquals(1, library.builds)
         watching.cancel()
     }
 

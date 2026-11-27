@@ -150,7 +150,6 @@ import id.homebase.resources.settings_media_quality_standard
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.asTimeZone
-import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -177,11 +176,11 @@ fun PhotoInfoSheet(
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value.takeIf { it.fileId == item.fileId }
     val exif = (uiState?.camera as? InfoPart.Read)?.value
     var editing by remember { mutableStateOf<Editing?>(null) }
-    val header = uiState?.header ?: remember(item) { item.headerFacts() }
+    val header = remember(item, uiState) { uiState?.let { HeaderFacts(it.capturedAtMs, it.timeByHand, it.offsetByHand, it.location, it.placeByHand) } ?: item.headerFacts() }
     val taken = remember(header, exif) { takenAt(header.capturedAtMs, exif, header.timeByHand, header.offsetByHand) }
     val canEdit = editable && uiState != null && !uiState.saving
-    // Not while the EXIF is on its way: its zone would change the clock the time is picked on.
-    val canEditTime = canEdit && uiState?.camera != InfoPart.Loading
+    // Only once the EXIF is read: its zone is the clock the time is picked on, and a failed read would lose it.
+    val canEditTime = canEdit && uiState?.camera is InfoPart.Read
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -199,7 +198,7 @@ fun PhotoInfoSheet(
                 )
             }
             WhenRow(taken, onEdit = { editing = Editing.Time(taken.first, taken.second) }.takeIf { canEditTime })
-            val location = uiState?.header?.location
+            val location = uiState?.location
             if (location != null) {
                 WhereSection(location, uiState.place, source, onEdit = { editing = Editing.Place }.takeIf { canEdit })
             } else if (canEdit) {
@@ -230,8 +229,8 @@ fun PhotoInfoSheet(
         is Editing.Time -> {
             EditTimeDialogs(
                 at = opened.at,
-                offset = opened.offset ?: TimeZone.currentSystemDefault().offsetAt(opened.at),
-                onSave = { newAt, _ ->
+                zone = opened.offset?.asTimeZone() ?: TimeZone.currentSystemDefault(),
+                onSave = { newAt ->
                     editing = null
                     // A photo with no zone keeps none: the device's is only the clock it was picked on.
                     viewModel.save(PhotoEdit.Time(newAt, opened.offset))
@@ -240,7 +239,7 @@ fun PhotoInfoSheet(
             )
         }
         Editing.Place -> EditPlaceDialog(
-            at = uiState?.header?.location,
+            at = uiState?.location,
             source = source,
             onSave = {
                 editing = null
@@ -490,7 +489,6 @@ fun InfoButton(onClick: () -> Unit) {
     ToolbarAction(Icons.Outlined.Info, MR.string.photobase_info_open, enabled = true, onClick)
 }
 
-/** Plays a Live photo's clip again. */
 @Composable
 fun LiveButton(onClick: () -> Unit) {
     ToolbarAction(Icons.Outlined.MotionPhotosOn, MR.string.photobase_info_replay, enabled = true, onClick)

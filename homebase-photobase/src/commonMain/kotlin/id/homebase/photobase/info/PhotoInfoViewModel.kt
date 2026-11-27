@@ -75,25 +75,31 @@ sealed interface InfoPart<out T> {
     data object Failed : InfoPart<Nothing>
 }
 
-/** What the photo's header says of when and where; a time or place set by hand wins over the original's EXIF. */
-data class PhotoHeaderFacts(
+data class PhotoInfoUiState(
+    /** The open sheet's photo; null while none is open. */
+    val fileId: Uuid? = null,
     val capturedAtMs: Long = 0,
+    /** userDate was set by hand, and wins over the original's EXIF time. */
     val timeByHand: Boolean = false,
     /** The zone a time set by hand was set in; null when the photo had none. */
     val offsetByHand: UtcOffset? = null,
     val location: MediaLocation? = null,
+    /** The place was set by hand: the original's GPS details don't describe it. */
     val placeByHand: Boolean = false,
-)
-
-data class PhotoInfoUiState(
-    /** The open sheet's photo; null while none is open. */
-    val fileId: Uuid? = null,
-    val header: PhotoHeaderFacts = PhotoHeaderFacts(),
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
     /** Read(null) when it isn't looked up because maps are offline. */
     val place: InfoPart<LocationPreview> = InfoPart.Loading,
     val saving: Boolean = false,
     val saveFailed: Boolean = false,
+)
+
+/** When and where, as the photo's header says it. */
+internal data class HeaderFacts(
+    val capturedAtMs: Long,
+    val timeByHand: Boolean,
+    val offsetByHand: UtcOffset?,
+    val location: MediaLocation?,
+    val placeByHand: Boolean,
 )
 
 /** The camera details and place are read each on its own, so one failing leaves the other. */
@@ -102,8 +108,9 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
     val uiState: StateFlow<PhotoInfoUiState> = _uiState.asStateFlow()
 
     private var item: PhotoGalleryItem? = null
-    // What a save set, until the gallery's copy of the header catches up with it: reopened before then, it still shows.
-    private val saved = mutableMapOf<Uuid, PhotoHeaderFacts>()
+    // What a save set, until the gallery's copy of the header is newer than the one it changed: reopened before
+    // then, it still shows; after, the gallery's wins, whoever changed it since.
+    private val saved = mutableMapOf<Uuid, Pair<Long, HeaderFacts>>()
     private var reading: Job? = null
     private var placing: Job? = null
 
@@ -112,9 +119,10 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         reading?.cancel()
         placing?.cancel()
         this.item = item
-        val header = item.headerFacts()
-        val shown = saved[item.fileId]?.takeIf { it != header } ?: header.also { saved.remove(item.fileId) }
-        _uiState.update { PhotoInfoUiState(fileId = item.fileId, header = shown, place = placeUnread()) }
+        val ours = saved[item.fileId]
+        val shown = ours?.takeIf { (changedAtMs, _) -> item.changedAtMs <= changedAtMs }?.second
+            ?: item.headerFacts().also { saved.remove(item.fileId) }
+        _uiState.update { PhotoInfoUiState(fileId = item.fileId, place = placeUnread()).with(shown) }
         reading = viewModelScope.launch {
             val camera = read(item.fileId, "camera details") { source.camera(item) }
             update(item.fileId) { it.copy(camera = camera) }
@@ -124,7 +132,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
     fun save(edit: PhotoEdit) {
         val item = item ?: return
-        val before = _uiState.value.takeIf { it.fileId == item.fileId && !it.saving }?.header ?: return
+        val before = _uiState.value.takeIf { it.fileId == item.fileId && !it.saving }?.facts() ?: return
         update(item.fileId) { it.copy(saving = true, saveFailed = false) }
         viewModelScope.launch {
             val ok = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
@@ -133,9 +141,9 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
                 is PhotoEdit.Time -> before.copy(capturedAtMs = edit.at.toEpochMilliseconds(), timeByHand = true, offsetByHand = edit.offset)
                 is PhotoEdit.Place -> before.copy(location = edit.at, placeByHand = true)
             }
-            if (ok) saved[item.fileId] = after
+            if (ok) saved[item.fileId] = item.changedAtMs to after
             update(item.fileId) { state ->
-                state.copy(saving = false, saveFailed = !ok, header = after, place = if (ok && edit is PhotoEdit.Place) placeUnread() else state.place)
+                state.copy(saving = false, saveFailed = !ok, place = if (ok && edit is PhotoEdit.Place) placeUnread() else state.place).with(after)
             }
             if (ok && edit is PhotoEdit.Place && _uiState.value.fileId == item.fileId) lookUpPlace(item.fileId, edit.at)
         }
@@ -182,11 +190,21 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
 private const val MAX_OFFSET = 18 * 3600
 
-internal fun PhotoGalleryItem.headerFacts(): PhotoHeaderFacts {
+private fun PhotoInfoUiState.facts() = HeaderFacts(capturedAtMs, timeByHand, offsetByHand, location, placeByHand)
+
+private fun PhotoInfoUiState.with(facts: HeaderFacts) = copy(
+    capturedAtMs = facts.capturedAtMs,
+    timeByHand = facts.timeByHand,
+    offsetByHand = facts.offsetByHand,
+    location = facts.location,
+    placeByHand = facts.placeByHand,
+)
+
+internal fun PhotoGalleryItem.headerFacts(): HeaderFacts {
     val content = photoContent()
-    return PhotoHeaderFacts(
+    return HeaderFacts(
         capturedAtMs = capturedAtMs,
-        timeByHand = content?.timeByHand == true,
+        timeByHand = content?.timeSetAtMs != null,
         // A header from another app version can hold anything; UtcOffset throws outside ±18 h.
         offsetByHand = content?.offsetSeconds?.takeIf { it in -MAX_OFFSET..MAX_OFFSET }?.let { UtcOffset(seconds = it) },
         location = content?.location,

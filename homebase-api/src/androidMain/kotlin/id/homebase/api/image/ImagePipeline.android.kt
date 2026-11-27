@@ -59,6 +59,7 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
+private const val EXIF_HEAD_BYTES = 4096
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
@@ -67,6 +68,18 @@ private sealed interface AndroidImageInput {
     fun openStream(): InputStream
     fun allBytes(): ByteArray = openStream().use { it.readBytes() }
     fun exif(): ExifInterface = openStream().use { ExifInterface(it) }
+
+    // A JPEG's APP1 comes first, so its head holds the byte order ExifInterface doesn't say.
+    fun exifByteOrder(): Boolean? = openStream().use { stream ->
+        val head = ByteArray(EXIF_HEAD_BYTES)
+        var read = 0
+        while (read < head.size) {
+            val n = stream.read(head, read, head.size - read)
+            if (n < 0) break
+            read += n
+        }
+        jpegExifLittleEndian(head.copyOf(read))
+    }
 
     class Bytes(val bytes: ByteArray) : AndroidImageInput {
         override fun decoderSource(): ImageDecoder.Source = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
@@ -154,7 +167,7 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
         }
 
     override fun metadata(): ImageMetadata? = try {
-        exif.toImageMetadata()
+        exif.toImageMetadata { input.exifByteOrder() }
     } catch (e: Throwable) {
         Logger.w(tag = TAG, throwable = e) { "Android EXIF read failed" }
         null
