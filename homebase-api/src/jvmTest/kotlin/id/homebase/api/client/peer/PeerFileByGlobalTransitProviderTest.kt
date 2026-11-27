@@ -77,7 +77,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val result = provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader())
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null)
 
         assertEquals(
             "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/$key",
@@ -100,7 +100,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         provider(engine).getThumbOverPeerByGlobalTransitId(
-            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(), lastModified = null,
         )
 
         assertEquals(
@@ -126,7 +126,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val result = provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader())
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null)
 
         assertTrue(
             result != null && result.bytes.contentEquals(plaintext),
@@ -148,10 +148,10 @@ class PeerFileByGlobalTransitProviderTest {
         val provider = provider(engine)
 
         val first = provider.getThumbOverPeerByGlobalTransitId(
-            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(), lastModified = null,
         )
         val second = provider.getThumbOverPeerByGlobalTransitId(
-            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(),
+            peer, driveId, gtid, key, width = 320, height = 320, keyHeader = keyHeader(), lastModified = null,
         )
 
         assertEquals(1, networkCalls, "second read served from disk cache")
@@ -164,7 +164,7 @@ class PeerFileByGlobalTransitProviderTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         assertNull(
             provider(engine)
-                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader()),
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null),
         )
     }
 
@@ -185,7 +185,7 @@ class PeerFileByGlobalTransitProviderTest {
 
         val e = assertFailsWith<PayloadTooLargeException> {
             provider(engine)
-                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
         }
         assertEquals(oversized, e.sizeBytes)
         assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
@@ -204,7 +204,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
 
         assertEquals(1, urls.size)
         assertTrue(urls[0].startsWith("$cdn/?forward="), "first read is CDN: ${urls[0]}")
@@ -234,10 +234,10 @@ class PeerFileByGlobalTransitProviderTest {
         }
         val p = provider(engine)
 
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
+        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
         val viaFallback =
-            p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader())
+            p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
+        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
 
         assertTrue(viaFallback != null, "the peer fallback still returns the bytes")
         assertEquals(

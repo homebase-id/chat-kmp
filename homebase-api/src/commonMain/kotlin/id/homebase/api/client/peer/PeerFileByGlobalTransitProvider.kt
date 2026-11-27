@@ -11,6 +11,7 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
+import id.homebase.api.client.reportDownloadProgress
 import id.homebase.api.common.OdinId
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
@@ -59,6 +60,7 @@ class PeerFileByGlobalTransitProvider(
         globalTransitId: Uuid,
         payloadKey: String,
         keyHeader: KeyHeader,
+        onDownloadProgress: ((Float) -> Unit)?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         val creds = requireCreds()
@@ -69,7 +71,7 @@ class PeerFileByGlobalTransitProvider(
             driveCache.readPayloadThrough(cacheKey) {
                 fetchViaCdnOrPeer(
                     peer, remotePath, peerUrl, creds.accessToken,
-                    PayloadSizePolicy.RENDER_LIMIT_BYTES,
+                    PayloadSizePolicy.RENDER_LIMIT_BYTES, onDownloadProgress,
                 )
             }
         } catch (_: NotFoundException) {
@@ -108,16 +110,19 @@ class PeerFileByGlobalTransitProvider(
         width: Int,
         height: Int,
         keyHeader: KeyHeader,
+        lastModified: Long?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(width > 0 && height > 0) { "width/height must be positive" }
         val creds = requireCreds()
         val base = "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey"
         // The by-gtid route takes the size as query params; the peer broker takes it as path segments.
-        val remotePath = "$base/thumb?width=$width&height=$height"
-        val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height")
+        // Both routes ignore lastModified, but the CDN and the platform's HTTP cache (a year's max-age) key by URL,
+        // so an edit must ask for a new one.
+        val remotePath = "$base/thumb?width=$width&height=$height" + lastModified?.let { "&lastModified=$it" }.orEmpty()
+        val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height" + lastModified?.let { "?lastModified=$it" }.orEmpty())
         val cacheKey =
-            peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height)
+            peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height, lastModified)
         val response = try {
             driveCache.readThumbThrough(cacheKey) {
                 fetchViaCdnOrPeer(peer, remotePath, peerUrl, creds.accessToken, maxBytes = null)
@@ -146,6 +151,7 @@ class PeerFileByGlobalTransitProvider(
         keyHeader: KeyHeader,
         chunkStart: Long,
         chunkLength: Long?,
+        onDownloadProgress: ((Float) -> Unit)?,
     ): BytesResponse? {
         require(payloadKey.isNotBlank()) { "payloadKey must be defined" }
         require(chunkStart >= 0) { "chunkStart must be >= 0" }
@@ -166,7 +172,7 @@ class PeerFileByGlobalTransitProvider(
         val cacheKey = peerCacheKey("chunk", peer, driveId, globalTransitId, payloadKey, start, length)
         val response = try {
             driveCache.readHlsChunkThrough(cacheKey) {
-                fetchViaCdnOrPeer(peer, remotePath, peerUrl, creds.accessToken, maxBytes = null)
+                fetchViaCdnOrPeer(peer, remotePath, peerUrl, creds.accessToken, maxBytes = null, onDownloadProgress)
             }
         } catch (_: NotFoundException) {
             Logger.i(tag = TAG) { "404 (not shared / missing) url=$peerUrl" }
@@ -230,12 +236,16 @@ class PeerFileByGlobalTransitProvider(
         peerUrl: String,
         token: String,
         maxBytes: Long?,
+        onDownloadProgress: ((Float) -> Unit)? = null,
     ): ByteApiResponse {
         cdnUrlFor(peer, remotePath)?.let { cdnUrl ->
             try {
                 Logger.i(tag = TAG) { "CDN GET $cdnUrl" }
-                val response = requestBytes(maxBytes) { httpClient.get(cdnUrl) }
+                val response = requestBytes(maxBytes) {
+                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress?.untilDone()) }
+                }
                 throwForFailure(response)
+                onDownloadProgress?.invoke(1f)
                 return response
             } catch (e: CancellationException) {
                 throw e
@@ -253,18 +263,27 @@ class PeerFileByGlobalTransitProvider(
                 }
             }
         }
-        return fetch(peerUrl, token, maxBytes)
+        return fetch(peerUrl, token, maxBytes, onDownloadProgress)
     }
 
-    private suspend fun fetch(url: String, token: String, maxBytes: Long?): ByteApiResponse {
+    private suspend fun fetch(url: String, token: String, maxBytes: Long?, onDownloadProgress: ((Float) -> Unit)?): ByteApiResponse {
         // Only reached on a cache miss, so one line here is exactly one network read.
         Logger.i(tag = TAG) { "GET $url" }
-        val response = requestBytes(maxBytes) { httpClient.get(url) { bearerAuth(token) } }
+        val response = requestBytes(maxBytes) {
+            httpClient.get(url) {
+                bearerAuth(token)
+                reportDownloadProgress(onDownloadProgress?.untilDone())
+            }
+        }
         // 404 becomes NotFoundException, which the cache memoises so a followed post with no
         // server-side thumbnail stops being re-requested on every scroll past it.
         throwForFailure(response)
+        onDownloadProgress?.invoke(1f)
         return response
     }
+
+    // An error body downloads too: only a read that passed its status check may say it's done.
+    private fun ((Float) -> Unit).untilDone(): (Float) -> Unit = { if (it < 1f) this(it) }
 
     private suspend fun cdnUrlFor(peer: OdinId, remotePath: String): String? =
         cdnStateLock.withLock {
@@ -285,8 +304,8 @@ class PeerFileByGlobalTransitProvider(
     // The peer segment keeps these off the own-drive keys: a followed post has no local fileId, and
     // two identities can publish the same gtid on same-aliased channel drives. The key is route-agnostic
     // so a CDN read and a peer read of the same bytes share one cache entry.
-    private fun peerCacheKey(kind: String, vararg parts: Any): String =
-        (listOf(kind, "peer") + parts.toList()).joinToString(":")
+    private fun peerCacheKey(kind: String, vararg parts: Any?): String =
+        (listOf(kind, "peer") + parts.filterNotNull()).joinToString(":")
 
     companion object {
         private const val TAG = "PeerFileByGtid"

@@ -12,7 +12,7 @@ import id.homebase.api.crypto.AesCbc
 import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.serialization.OdinSystemSerializer
 import io.ktor.client.HttpClient
-import io.ktor.client.plugins.onDownload
+import id.homebase.api.client.reportDownloadProgress
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.plugins.HttpTimeoutConfig
 import io.ktor.client.plugins.timeout
@@ -221,16 +221,7 @@ public class DriveFileHttpProvider(
                     header(HttpHeaders.Range, it)
                 }
 
-                onDownloadProgress?.let { callback ->
-                    onDownload { bytesReceived, contentLength ->
-                        val total = contentLength ?: 0L
-                        if (total > 0L) {
-                            callback(bytesReceived.toFloat() / total.toFloat())
-                        }
-                        // if Content-Length is absent we still get called — progress stays
-                        // at the synthetic milestones emitted by the caller
-                    }
-                }
+                reportDownloadProgress(onDownloadProgress)
             }
         }
 

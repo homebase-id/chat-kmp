@@ -47,9 +47,9 @@ class PayloadReader(
     ): BytesResponse? = when (at) {
         is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress)
         is PayloadLocation.Peer -> if (chunkStart == null && chunkLength == null) {
-            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader)
+            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress)
         } else {
-            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength)
+            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength, onProgress)
         }
     }
 
@@ -62,7 +62,7 @@ class PayloadReader(
         lastModified: Long? = null,
     ): BytesResponse? = when (at) {
         is PayloadLocation.Own -> own.getThumbBytesDecrypted(at.driveId, at.fileId, key, keyHeader, width, height, lastModified)
-        is PayloadLocation.Peer -> peer.getThumbOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, width, height, keyHeader)
+        is PayloadLocation.Peer -> peer.getThumbOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, width, height, keyHeader, lastModified)
     }
 
     /** A range of the payload as the server sends it, still encrypted, for a player that decrypts it itself. */

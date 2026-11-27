@@ -23,6 +23,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.plugins.onDownload
 import io.ktor.client.plugins.timeout
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.contentLength
@@ -660,3 +661,11 @@ private const val UPLOAD_MIN_BYTES_PER_MS = 16L
 /** What the payload is once decrypted: the server names it apart from the encrypted body's own type. */
 internal fun payloadContentType(headers: Headers): String =
     headers["decryptedcontenttype"] ?: headers[HttpHeaders.ContentType] ?: "application/octet-stream"
+
+// Without a Content-Length nothing is reported; callers fall back to their own milestones.
+internal fun HttpRequestBuilder.reportDownloadProgress(onProgress: ((Float) -> Unit)?) {
+    if (onProgress == null) return
+    onDownload { bytesReceived, contentLength ->
+        if (contentLength != null && contentLength > 0L) onProgress((bytesReceived.toFloat() / contentLength.toFloat()).coerceAtMost(1f))
+    }
+}

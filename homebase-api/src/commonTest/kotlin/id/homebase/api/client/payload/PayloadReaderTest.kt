@@ -39,6 +39,9 @@ class PayloadReaderTest {
     private val peer = OdinId("sam.dotyou.cloud")
     private val key = "vid_payload"
     private val body = ByteArray(64) { it.toByte() }
+    private var served = body
+    private var cdnStatus = HttpStatusCode.OK
+    private val events = mutableListOf<String>()
 
     private val own = PayloadLocation.Own(driveId, fileId)
     private val peers = PayloadLocation.Peer(PeerFileRef(peer, globalTransitId), driveId)
@@ -73,11 +76,17 @@ class PayloadReaderTest {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("frodo.dotyou.cloud"), "token", SecureByteArray(ByteArray(16) { 5 })))
         val http = HttpClient(MockEngine { request ->
-            requests += request.url.toString().decodeURLQueryComponent()
+            val url = request.url.toString().decodeURLQueryComponent()
+            requests += url
+            events += "GET $url"
+            if (request.url.host.startsWith("cdn.") && cdnStatus != HttpStatusCode.OK) {
+                val error = "{\"error\":\"no\"}".encodeToByteArray()
+                return@MockEngine respond(error, cdnStatus, headersOf(HttpHeaders.ContentLength to listOf("${error.size}")))
+            }
             respond(
-                body,
+                served,
                 HttpStatusCode.OK,
-                headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${body.size}")),
+                headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${served.size}")),
             )
         })
         val cached = DriveFileProviderCached(http, credentials, fileOps)
@@ -126,6 +135,63 @@ class PayloadReaderTest {
         reader.prefetchChunk(peers, key, chunkStart = 0, chunkLength = 32)
 
         assertTrue(requests.isEmpty(), "$requests")
+    }
+
+    private suspend fun assertAnEditedImagesThumbIsReadAgain(at: PayloadLocation) {
+        val reader = reader()
+        served = byteArrayOf(1)
+        reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 1)
+        served = byteArrayOf(2)
+
+        val afterTheEdit = reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 2)
+
+        assertContentEquals(byteArrayOf(2), afterTheEdit?.bytes)
+        // The CDN caches by URL: an edit must ask for a different one, or it serves the old thumb.
+        assertTrue(requests.last().contains("lastModified=2"), "${requests.last()}")
+        if (at is PayloadLocation.Peer) {
+            cdnStatus = HttpStatusCode.Unauthorized
+            reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 3)
+            assertTrue(requests.last().let { "/peer/" in it && "lastModified=3" in it }, "the author's server too: ${requests.last()}")
+        }
+    }
+
+    @Test
+    fun anEditedImageOfOursShowsItsNewThumb() = runTest { assertAnEditedImagesThumbIsReadAgain(own) }
+
+    @Test
+    fun anEditedImageOfAFollowedPostShowsItsNewThumb() = runTest { assertAnEditedImagesThumbIsReadAgain(peers) }
+
+    private suspend fun PayloadReader.progressReading(at: PayloadLocation, chunkStart: Long? = null): List<Float> {
+        val seen = mutableListOf<Float>()
+        bytes(at, key, KeyHeader.empty(), chunkStart = chunkStart, onProgress = { seen += it })
+        return seen
+    }
+
+    @Test
+    fun aDownloadReportsItsProgressWhereverItLives() = runTest {
+        // Big enough to arrive in several reads, so progress moves before it ends.
+        served = ByteArray(512 * 1024)
+        // One reader: a whole payload and a range live in different caches, so each read below is a download.
+        val reader = reader()
+        for (at in listOf(own, peers)) {
+            for (seen in listOf(reader.progressReading(at), reader.progressReading(at, chunkStart = 0))) {
+                assertTrue(seen.any { it > 0f && it < 1f }, "moving, $at: $seen")
+                assertEquals(1f, seen.last(), "done, $at")
+            }
+        }
+    }
+
+    @Test
+    fun aFailedCdnReadReportsNoProgressBeforeTheAuthorsServerAnswers() = runTest {
+        cdnStatus = HttpStatusCode.NotFound
+
+        val progress = mutableListOf<Float>()
+        reader().bytes(peers, key, KeyHeader.empty(), onProgress = { events += "progress"; progress += it })
+
+        val peerRequest = events.indexOfFirst { it.startsWith("GET") && "/peer/" in it }
+        assertTrue(peerRequest >= 0, "$events")
+        assertTrue(events.take(peerRequest).none { it.startsWith("progress") }, "the CDN's error body isn't the download: $events")
+        assertEquals(1f, progress.last())
     }
 
     @Test
