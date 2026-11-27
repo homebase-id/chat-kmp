@@ -95,6 +95,7 @@ class PayloadReaderTest {
         assertTrue(toFile(at, key, KeyHeader.empty(), "/out-${at::class.simpleName}.mp4", cache = true))
         assertContentEquals(body, written["/out-${at::class.simpleName}.mp4"])
         assertTrue(toFile(at, key, KeyHeader.empty(), "/preview-${at::class.simpleName}", cache = false))
+        assertContentEquals(body, written["/preview-${at::class.simpleName}"])
     }
 
     @Test

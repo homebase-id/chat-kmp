@@ -13,7 +13,6 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.NoopFileOperationsProvider
 import id.homebase.chat.services.mapToMessageData
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -70,7 +69,7 @@ class ViewOnceMediaClickedTest {
             messagesUiState = messages,
             driveFileProvider = server.provider,
             payloadReader = server.payloadReader,
-            fileOperationsProvider = NoopFileOperationsProvider(),
+            fileOperationsProvider = server.fileOps,
             chatMessageActionService = service,
             viewOnceActions = actions,
             chatMessageStream = unusedStream(),

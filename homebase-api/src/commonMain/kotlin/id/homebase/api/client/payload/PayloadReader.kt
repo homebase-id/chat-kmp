@@ -91,7 +91,7 @@ class PayloadReader(
                 fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
             }
             if (!found || !wroteAnything) {
-                Logger.w(tag = "VideoIO") { "peer stream produced no bytes for ${at.ref.odinId}/${at.ref.globalTransitId}/$key" }
+                Logger.w(tag = "PayloadIO") { "peer stream produced no bytes for ${at.ref.odinId}/${at.ref.globalTransitId}/$key" }
             }
             found && wroteAnything
         }

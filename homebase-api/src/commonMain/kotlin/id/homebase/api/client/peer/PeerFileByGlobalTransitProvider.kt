@@ -300,7 +300,8 @@ class PeerFileByGlobalTransitProvider(
         lastModified?.let { "${separator}lastModified=$it" }.orEmpty()
 
     // Both routes take the range as `/{start}/{length}` path segments rather than a Range header, so each
-    // segment is a distinct URL the edge can cache on its own; the decrypted and the encrypted read share it.
+    // segment is a distinct URL the edge can cache on its own. Unversioned, the decrypted and the encrypted read
+    // share an entry; the encrypted (iOS) read takes no lastModified yet.
     private fun chunkRoute(
         peer: OdinId, driveId: Uuid, globalTransitId: Uuid, payloadKey: String, start: Long, length: Long, lastModified: Long?,
     ): Pair<String, String> =
