@@ -38,7 +38,7 @@ class ContactInfoGatewayLazyRepositoryTest {
         ContactInfoGateway(
             contactRepository = { resolved = true; error("resolved at construction") },
             publicProfiles = provider(),
-            driveFiles = unusedDriveFiles(),
+            payloadReader = unusedPayloadReader(),
             contactHeaders = { _, _ -> null },
         )
         assertFalse(resolved, "constructing the gateway must not resolve ContactRepository")

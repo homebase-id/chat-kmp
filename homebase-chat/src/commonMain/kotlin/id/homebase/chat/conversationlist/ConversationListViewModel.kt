@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.core.settings.sendQuality
 import id.homebase.core.settings.SendQualityApp
 import androidx.compose.foundation.text.input.TextFieldState
@@ -174,6 +175,7 @@ class ConversationListViewModel(
     private val connectionService: ConnectionService,
     private val connectionRequestService: ConnectionRequestService,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val shareContentProcessor: ShareContentProcessor,
     private val vCardDescriptorFactory: VCardDescriptorFactory,
     private val localVideoContextStore: LocalAttachmentContextStore,
@@ -305,6 +307,7 @@ class ConversationListViewModel(
         uiState = _uiState,
         messagesUiState = _messagesUiState,
         driveFileProvider = driveFileProvider,
+        payloadReader = payloadReader,
         fileOperationsProvider = fileOperationsProvider,
         chatMessageActionService = chatMessageActionService,
         viewOnceActions = viewOnceActions,

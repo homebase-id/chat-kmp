@@ -8,7 +8,6 @@ import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.NoopFileOperationsProvider
 import id.homebase.chat.viewonce.ViewOnceActions
 import id.homebase.chat.viewonce.ViewOnceFakeServer
 import id.homebase.chat.viewonce.VO_OWNER
@@ -94,7 +93,8 @@ class CopyImageActionTest {
             uiState = MutableStateFlow(ConversationListUiState(ownerSession = owner)),
             messagesUiState = messages,
             driveFileProvider = server.provider,
-            fileOperationsProvider = NoopFileOperationsProvider(),
+            payloadReader = server.payloadReader,
+            fileOperationsProvider = server.fileOps,
             chatMessageActionService = service,
             viewOnceActions = ViewOnceActions(service, fixture.credentialsManager),
             chatMessageStream = unusedStream(),

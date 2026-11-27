@@ -7,8 +7,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -68,7 +69,7 @@ data class ConversationMediaUiState(
 class ConversationMediaViewModel(
     savedStateHandle: SavedStateHandle,
     private val chatMessageStream: ChatMessageStream,
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
 ) : ViewModel() {
 
@@ -157,13 +158,12 @@ class ConversationMediaViewModel(
                 val name = saveFileName(item.payload.filename(), item.payload.contentType, item.date.toEpochMilliseconds())
                 val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/$name"
 
-                val success = driveFileProvider.streamPayloadDecryptedToPath(
-                    driveId = chatTargetDrive.alias,
-                    fileId = item.fileId,
+                val success = payloadReader.toFile(
+                    at = PayloadLocation.Own(chatTargetDrive.alias, item.fileId),
                     key = item.payload.key,
                     keyHeader = KeyHeader(payloadIv, item.keyHeader.aesKey),
                     outputPath = filePath,
-                    fileOps = fileOperationsProvider,
+                    cache = false,
                 )
                 if (success) {
                     _uiState.update {

@@ -13,7 +13,6 @@ import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.ChatMessageActionServiceTestFixture
 import id.homebase.chat.services.ChatMessageStream
 import id.homebase.chat.services.LocalAttachmentContextStore
-import id.homebase.chat.services.NoopFileOperationsProvider
 import id.homebase.chat.services.mapToMessageData
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -69,7 +68,8 @@ class ViewOnceMediaClickedTest {
             uiState = ui,
             messagesUiState = messages,
             driveFileProvider = server.provider,
-            fileOperationsProvider = NoopFileOperationsProvider(),
+            payloadReader = server.payloadReader,
+            fileOperationsProvider = server.fileOps,
             chatMessageActionService = service,
             viewOnceActions = actions,
             chatMessageStream = unusedStream(),
@@ -168,7 +168,7 @@ class ViewOnceMediaClickedTest {
     @Test
     fun theLoaderRefusesToReadPayloadBytesWhereViewingIsBlocked() = runTest {
         val server = ViewOnceFakeServer().start()
-        val blocked = ViewOncePayloadLoader(server.provider, server.fileOps, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
+        val blocked = ViewOncePayloadLoader(server.provider, server.payloadReader, server.fileOps, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
 
         assertFailsWith<ViewOnceNotViewableHereException> { blocked.begin(server.fileId) }
         assertFailsWith<ViewOnceNotViewableHereException> {

@@ -5,6 +5,8 @@ import coil3.ImageLoader
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -16,6 +18,7 @@ import kotlin.uuid.Uuid
 /** Streams the photo network-only to a temp file and holds the cache-bypass mark that video playback also relies on. */
 class ViewOncePayloadLoader(
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOps: FileOperationsProvider,
     private val tempDir: () -> String,
     private val canView: () -> Boolean = { isMobile() },
@@ -49,7 +52,7 @@ class ViewOncePayloadLoader(
         val path = withContext(ioDispatcher) { tempDir() } + "/vo_" + Uuid.random().toHexString()
         try {
             val found = withContext(ioDispatcher) {
-                driveFileProvider.streamPayloadDecryptedToPath(driveId, fileId, payloadKey, keyHeader, path, fileOps)
+                payloadReader.toFile(PayloadLocation.Own(driveId, fileId), payloadKey, keyHeader, path, cache = false)
             }
             if (!found) throw NotFoundException()
         } catch (e: Throwable) {

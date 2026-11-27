@@ -1062,6 +1062,7 @@ val appModule = module {
     single {
         ViewOncePayloadLoader(
             driveFileProvider = get(),
+            payloadReader = get(),
             fileOps = get(),
             tempDir = { get<FileOperationsProvider>().scratchDir(AppCacheDirs.VIEW_ONCE) },
             evictLocalImage = { path -> get<ImageLoader>().evictMemoryFor(path) },
@@ -1286,6 +1287,7 @@ val appModule = module {
             connectionService = get(),
             connectionRequestService = get(),
             driveFileProvider = get<id.homebase.api.client.drives.files.DriveFileProvider>(),
+            payloadReader = get(),
             shareContentProcessor = get(),
             vCardDescriptorFactory = get(),
             localVideoContextStore = get(),

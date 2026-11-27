@@ -2,6 +2,8 @@
 
 package id.homebase.api.client.contacts
 
+import id.homebase.api.client.payload.PayloadReader
+import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.serialization.Base64Bytes
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.KeyHeader
@@ -12,7 +14,6 @@ import id.homebase.api.client.drives.FileSystemType
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.SystemDriveConstants
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.AppFileMetaData
 import id.homebase.api.client.drives.files.FileMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
@@ -230,7 +231,7 @@ class ContactInfoGatewayAvatarTest {
         return ContactInfoGateway(
             contactRepository = { repository },
             publicProfiles = PublicProfileProviderCached(httpClient, FakeFileOperationsProvider(cacheDir), scope),
-            driveFiles = DriveFileProviderCached(httpClient, signedIn, FakeFileOperationsProvider(cacheDir)),
+            payloadReader = payloadReaderOver(httpClient, signedIn, FakeFileOperationsProvider(cacheDir)),
             contactHeaders = { _, _ ->
                 headerReads++
                 current
@@ -252,7 +253,7 @@ internal fun emptyContactRepository(): ContactRepository {
     )
 }
 
-internal fun unusedDriveFiles(): DriveFileProviderCached = DriveFileProviderCached(
+internal fun unusedPayloadReader(): PayloadReader = payloadReaderOver(
     HttpClient(MockEngine { error("no drive reads expected") }),
     CredentialsManager(),
     FakeFileOperationsProvider(Files.createTempDirectory("hb-gateway-unused-drive").toString()),

@@ -1,5 +1,7 @@
 package id.homebase.core.ui.screens.card
 
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.contentTypeFromBytes
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
@@ -9,7 +11,6 @@ import id.homebase.api.client.auth.OwnerSessionRepository
 import id.homebase.api.client.connections.CircleWithMembers
 import id.homebase.api.client.connections.ConnectionNetworkProvider
 import id.homebase.api.client.drives.QueryBatchRequest
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.identity.PublicIdentityRepository
 import id.homebase.api.client.profile.ProfileAttribute
@@ -190,7 +191,7 @@ class DefaultProfileCardSource(
     private val imageLoader: HomebaseImageLoader,
     private val fileOperations: FileOperationsProvider,
     private val driveQueryProvider: DriveQueryProvider,
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val cardPreferences: CardPreferences,
     private val cardRepository: CardRepository,
     private val connectionProvider: ConnectionNetworkProvider,
@@ -219,7 +220,7 @@ class DefaultProfileCardSource(
             driveQueryProvider.queryBatch(channelId, request)
 
         override suspend fun payloadText(channelId: Uuid, fileId: Uuid, key: String): String? =
-            driveFileProvider.getPayloadBytesDecryptedViaResponseHeader(channelId, fileId, key)?.decodeToString()
+            payloadReader.bytesWithServerKey(PayloadLocation.Own(channelId, fileId), key)?.decodeToString()
     }
 
     override suspend fun writeShareImage(png: ByteArray): String =
