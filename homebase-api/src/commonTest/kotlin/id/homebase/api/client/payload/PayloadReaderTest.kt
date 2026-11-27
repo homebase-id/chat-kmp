@@ -226,6 +226,19 @@ class PayloadReaderTest {
     }
 
     @Test
+    fun aResendReadsOurPayloadAndThumbAsStored() = runTest {
+        val reader = reader()
+
+        val stored = reader.resendSource()
+        assertContentEquals(body, stored.getPayloadBytesEncrypted(driveId, fileId, key))
+        assertContentEquals(body, stored.getThumbBytesEncrypted(driveId, fileId, key, width = 320, height = 320, lastModified = null))
+
+        assertEquals(2, requests.size, "$requests")
+        assertTrue(requests[0].endsWith("/drives/$driveId/files/$fileId/payload/$key"), requests[0])
+        assertTrue("/drives/$driveId/files/$fileId/payload/$key/thumb" in requests[1] && "320" in requests[1], requests[1])
+    }
+
+    @Test
     fun aVideoAccessReadsTheLocationItWasMadeFor() = runTest {
         reader().videoAccess(peers).getPayloadBytesDecrypted(Uuid.random(), Uuid.random(), key, KeyHeader.empty())
 

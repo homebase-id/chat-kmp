@@ -1,5 +1,6 @@
 package id.homebase.core.moments.services
 
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.serialization.Base64Bytes
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
@@ -60,6 +61,7 @@ class MomentsPostSenderService(
     private val uploadService: UploadService,
     private val fileOps: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val optimisticWriter: OptimisticWriter,
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
@@ -770,9 +772,10 @@ class MomentsPostSenderService(
 
         val payloads = mutableListOf<PayloadFile>()
         val thumbnails = mutableListOf<ThumbnailFile>()
+        val stored = payloadReader.resendSource()
         for (descriptor in existing) {
             try {
-                val bytes = driveFileProvider.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
+                val bytes = stored.getPayloadBytesEncrypted(drive, file.fileId, descriptor.key)
                 if (bytes == null || bytes.isEmpty()) {
                     Logger.w(tag = TAG) {
                         "reuseExistingPayloadsForResend: skipping payload key=${descriptor.key} — bytes ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
@@ -814,7 +817,7 @@ class MomentsPostSenderService(
                         }
                         continue
                     }
-                    val thumbBytes = driveFileProvider.getThumbBytesEncrypted(
+                    val thumbBytes = stored.getThumbBytesEncrypted(
                         driveId = drive,
                         fileId = file.fileId,
                         payloadKey = descriptor.key,

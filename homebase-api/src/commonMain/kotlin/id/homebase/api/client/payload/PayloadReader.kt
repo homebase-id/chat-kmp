@@ -6,6 +6,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.BytesResponse
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ResendPayloadByteSource
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
@@ -34,10 +35,7 @@ sealed interface PayloadLocation {
     }
 }
 
-/**
- * Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Reads that show
- * nothing still go around it: message text, clipboard copy, sticker send, the agent UI tree, Filesync's shared files.
- */
+/** Every payload read, from our own drive or a followed identity's; the temporal drive API is the one read around it. */
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
@@ -160,6 +158,16 @@ class PayloadReader(
         } else {
             toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = version)
         }
+    }
+
+    /** Our own payloads and thumbs as stored, still encrypted, for a resend to re-attach. */
+    fun resendSource(): ResendPayloadByteSource = object : ResendPayloadByteSource {
+        override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? =
+            own.getPayloadBytesEncrypted(driveId, fileId, key)
+
+        override suspend fun getThumbBytesEncrypted(
+            driveId: Uuid, fileId: Uuid, payloadKey: String, width: Int, height: Int, lastModified: Long?,
+        ): ByteArray? = own.getThumbBytesEncrypted(driveId, fileId, payloadKey, width, height, lastModified)
     }
 
     /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */

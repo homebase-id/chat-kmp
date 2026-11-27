@@ -64,6 +64,7 @@ class MomentsHeicOriginalScrubTest {
             uploadService = env.uploadService,
             fileOps = fileOps,
             driveFileProvider = env.driveFileProvider,
+            payloadReader = env.payloadReader,
             optimisticWriter = env.optimisticWriter,
             credentialsManager = env.credentialsManager,
             dbm = env.databaseManager,

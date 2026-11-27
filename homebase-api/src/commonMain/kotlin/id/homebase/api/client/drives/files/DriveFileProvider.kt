@@ -66,7 +66,7 @@ public class DriveFileProvider(
     httpClient: HttpClient,
     credentialsManager: CredentialsManager,
     private val driveCache: DriveFileProviderCached
-) : OdinApiProviderBase(httpClient, credentialsManager), ResendPayloadByteSource {
+) : OdinApiProviderBase(httpClient, credentialsManager) {
 
     companion object {
         private const val TAG = "DriveFileProvider"
@@ -238,7 +238,7 @@ public class DriveFileProvider(
      * receiving the heal'd file also receive the payload bytes (the manifest would
      * otherwise be empty and the payload wouldn't ship).
      */
-    override suspend fun getPayloadBytesEncrypted(
+    suspend fun getPayloadBytesEncrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -255,7 +255,7 @@ public class DriveFileProvider(
      * must be re-attached alongside the payload or the `updateFileByUniqueId`
      * AppendOrOverwrite wipes them server-side (see [ResendPayloadByteSource]).
      */
-    override suspend fun getThumbBytesEncrypted(
+    suspend fun getThumbBytesEncrypted(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

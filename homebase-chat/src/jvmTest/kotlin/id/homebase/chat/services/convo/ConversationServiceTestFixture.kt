@@ -102,7 +102,7 @@ class ConversationServiceTestFixture : AutoCloseable {
     suspend fun build(
         scope: CoroutineScope = TestScope(),
         lastReadDebounceMs: Long = Long.MAX_VALUE / 2,
-        driveFileProvider: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
+        resendBytes: id.homebase.api.client.drives.files.ResendPayloadByteSource? = null,
         fileOperationsProvider: id.homebase.api.file.FileOperationsProvider? = null,
         serverConversationHeader: (suspend (Uuid) -> HomebaseFile?)? = null,
     ): ConversationService {
@@ -144,7 +144,7 @@ class ConversationServiceTestFixture : AutoCloseable {
             // the heal redistribute path (image preservation) pass fakes. A null
             // here short-circuits reuseExistingPayloadsForResend to an empty
             // manifest.
-            driveFileProvider = driveFileProvider,
+            resendBytes = resendBytes,
             fileOperationsProvider = fileOperationsProvider,
             lastReadDebounceMs = lastReadDebounceMs,
             serverConversationHeader = serverConversationHeader,

@@ -25,6 +25,7 @@ import id.homebase.chat.services.convo.contact.ConnectionCacheRepository
 import id.homebase.chat.services.convo.contact.ConnectionService
 import id.homebase.chat.services.convo.contact.ContactService
 import id.homebase.chat.services.outbox.OptimisticWriter
+import id.homebase.chat.testPayloadReader
 import id.homebase.chat.viewonce.VO_OWNER
 import id.homebase.chat.viewonce.ownerCredentials
 import id.homebase.core.config.chatTargetDrive
@@ -192,6 +193,8 @@ internal fun testChatMessageStream(
     mapDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ): ChatMessageStream {
     val httpClient = HttpClient(MockEngine { respondError(HttpStatusCode.InternalServerError) })
+    val driveCache = DriveFileProviderCached(httpClient, credentialsManager, NoopFileOperationsProvider())
+    val drives = DriveFileProvider(httpClient, credentialsManager, driveCache)
     return ChatMessageStream(
         credentialsManager = credentialsManager,
         contactService = ContactService(
@@ -215,11 +218,8 @@ internal fun testChatMessageStream(
         dbm = dbm,
         eventBus = eventBus,
         scope = scope,
-        driveFileProvider = DriveFileProvider(
-            httpClient,
-            credentialsManager,
-            DriveFileProviderCached(httpClient, credentialsManager, NoopFileOperationsProvider()),
-        ),
+        driveFileProvider = drives,
+        payloadReader = testPayloadReader(httpClient, credentialsManager, driveCache, NoopFileOperationsProvider(), own = drives),
         optimisticWriter = optimisticWriter,
         serverHistory = ChatServerHistory(
             credentialsManager = credentialsManager,

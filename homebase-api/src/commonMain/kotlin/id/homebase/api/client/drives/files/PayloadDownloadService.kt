@@ -124,39 +124,30 @@ class PayloadDownloadService(
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
-        streamVerified(driveId, fileId, key, keyHeader, hash, onProgress) { fileOperationsProvider.writeDownload(path, it) }
+        streamVerified(PayloadLocation.Own(driveId, fileId), key, keyHeader, hash, onProgress) { fileOperationsProvider.writeDownload(path, it) }
     }
 
     /**
-     * The decrypted payload to [consume] as it streams in, checked against [hash] on the way. A mismatch only shows
-     * once every byte was handed on, so whatever [consume] wrote must be thrown away on [PayloadDamagedException].
-     * False when the payload 404s.
+     * The decrypted payload at [at] (our drive, or the drive of whoever shares it) to [consume] as it streams in, checked
+     * against [hash] on the way. A mismatch only shows once every byte was handed on, so whatever [consume] wrote must be
+     * thrown away on [PayloadDamagedException]. False when the payload 404s.
      */
     suspend fun streamVerified(
-        driveId: Uuid,
-        fileId: Uuid,
+        at: PayloadLocation,
         key: String,
         keyHeader: KeyHeader,
         hash: PayloadHash,
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
-    ): Boolean = streamVerified(keyHeader, hash, consume) { hashed ->
-        // Per network chunk otherwise: thousands of UI updates for a large file.
-        payloadReader.stream(PayloadLocation.Own(driveId, fileId), key, keyHeader, cache = false, onProgress?.let(::wholePercentFractions), consume = hashed)
-    }
-
-    /** As above, for a payload [source] streams from elsewhere, such as another identity's drive; false when it's gone. */
-    suspend fun streamVerified(
-        keyHeader: KeyHeader,
-        hash: PayloadHash,
-        consume: suspend (Flow<ByteArray>) -> Unit,
-        source: suspend (consume: suspend (Flow<ByteArray>) -> Unit) -> Boolean,
     ): Boolean {
         val algorithm = hash.knownAlgorithm ?: throw PayloadDamagedException("unknown algorithm ${hash.algorithm}")
         val expected = hash.plaintextContentHash(keyHeader)
             ?: throw PayloadDamagedException("unreadable ${hash.algorithm} hash")
         val hasher = algorithm.newHasher()
-        val found = source { consume(it.hashedBy(hasher)) }
+        // Per network chunk otherwise: thousands of UI updates for a large file.
+        val found = payloadReader.stream(at, key, keyHeader, cache = false, onProgress?.let(::wholePercentFractions)) {
+            consume(it.hashedBy(hasher))
+        }
         if (!found) return false
         if (!hasher.digest().contentEquals(expected)) throw PayloadDamagedException("${hash.algorithm} mismatch")
         return true

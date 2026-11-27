@@ -67,12 +67,12 @@ suspend fun videoMetadataFrom(
 /** Resolves the full [VideoMetadata]. Fetches go through the payload cache, so later calls (including [resolveVideoContent]) are warm. */
 suspend fun resolveVideoMetadata(
     data: VideoPlayerData,
-    driveFileProvider: VideoPrefetchDriveAccess,
+    videoAccess: VideoPrefetchDriveAccess,
 ): VideoMetadata {
     val content = data.descriptorContent ?: error("Missing video metadata")
     val (metadata, elapsed) = measureTimedValue {
         videoMetadataFrom(content, data.payloadKey, data.contentType) { key ->
-            driveFileProvider.getPayloadBytesDecrypted(
+            videoAccess.getPayloadBytesDecrypted(
                 driveId = data.driveId,
                 fileId = data.fileId,
                 key = key,
@@ -86,12 +86,12 @@ suspend fun resolveVideoMetadata(
 
 suspend fun resolveVideoContent(
     data: VideoPlayerData,
-    driveFileProvider: VideoPrefetchDriveAccess,
+    videoAccess: VideoPrefetchDriveAccess,
     fileOps: FileOperationsProvider? = null,
     preferBytes: Boolean = false,
     onDownloadProgress: ((Float) -> Unit)? = null,
 ): VideoContent {
-    val metadata = resolveVideoMetadata(data, driveFileProvider)
+    val metadata = resolveVideoMetadata(data, videoAccess)
 
     val hlsPlaylist = metadata.hlsPlaylist
     Logger.d(tag = "VideoIO") {
@@ -113,7 +113,7 @@ suspend fun resolveVideoContent(
         // render-limit guard — PayloadTooLargeException propagates to the surface's
         // unplayable-message handling instead of OOM-ing the tab.
         val (bytes, payloadElapsed) = measureTimedValue {
-            driveFileProvider.getPayloadBytesDecrypted(
+            videoAccess.getPayloadBytesDecrypted(
                 driveId = data.driveId,
                 fileId = data.fileId,
                 key = data.payloadKey,
@@ -131,7 +131,7 @@ suspend fun resolveVideoContent(
         val outputPath = AppCacheDirs.scratchPath(fileOps.getCacheDirectory(), data.scratchSub) +
             "/hbvid_res_${Random.nextLong().toULong().toString(16)}.mp4"
         val (ok, payloadElapsed) = measureTimedValue {
-            driveFileProvider.streamPayloadDecryptedToPath(
+            videoAccess.streamPayloadDecryptedToPath(
                 driveId = data.driveId,
                 fileId = data.fileId,
                 key = data.payloadKey,

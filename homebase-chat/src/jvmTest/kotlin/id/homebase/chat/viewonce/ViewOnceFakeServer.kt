@@ -3,6 +3,7 @@ package id.homebase.chat.viewonce
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.TestTempDirs
+import id.homebase.chat.testPayloadReader
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.KeyHeader
@@ -16,8 +17,6 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.AppCacheDirs
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.core.image.HomebaseImageLoader
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -121,11 +120,7 @@ internal class ViewOnceFakeServer(
         })
         cached = DriveFileProviderCached(http, credentials, fileOps)
         provider = DriveFileProvider(http, credentials, cached)
-        payloadReader = PayloadReader(
-            provider,
-            PeerFileByGlobalTransitProvider(http, credentials, DriveFileHttpProvider(http, credentials), cached),
-            fileOps,
-        )
+        payloadReader = testPayloadReader(http, credentials, cached, fileOps, own = provider)
         homebaseImageLoader = HomebaseImageLoader(payloadReader, fileOps)
         loader = ViewOncePayloadLoader(
             provider,

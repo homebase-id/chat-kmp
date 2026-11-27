@@ -2,6 +2,8 @@
 
 package id.homebase.core.di
 
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import org.koin.core.scope.Scope
 import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.common.time.UnixTimeUtc
@@ -999,7 +1001,7 @@ val appModule = module {
             conversationStream = get(),
             participantLookup = get(),
             driveSyncManager = get(),
-            driveFileProvider = driveFiles,
+            resendBytes = get<PayloadReader>().resendSource(),
             fileOperationsProvider = get(),
             serverConversationHeader = { uniqueId ->
                 driveFiles.getFileHeaderByUid(chatTargetDrive.alias, uniqueId)
@@ -1024,6 +1026,7 @@ val appModule = module {
             eventBus = get(),
             scope = get(),
             driveFileProvider = get(),
+            payloadReader = get(),
             optimisticWriter = get(),
             serverHistory = get(),
             // #887: lazy get<> keeps the ActionService -> MessageLookup -> ChatMessageStream cycle broken.
@@ -1050,10 +1053,10 @@ val appModule = module {
     singleOf(::ChatMessageActionService)
     single { ViewOnceActions(get(), get()) }
     single {
-        val cache = get<DriveFileProviderCached>()
+        val reader = get<PayloadReader>()
         AgentUiTreeLoader(
             fetch = { fileId, keyHeader, lastModified ->
-                cache.getPayloadBytesDecrypted(chatTargetDrive.alias, fileId, ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified = lastModified)?.bytes
+                reader.bytes(PayloadLocation.Own(chatTargetDrive.alias, fileId), ChatProtocol.PAYLOAD_KEY_AGENT_UI, keyHeader, lastModified = lastModified)?.bytes
             },
             scope = get(),
             events = get(),
@@ -1159,7 +1162,7 @@ val appModule = module {
         }
     }
     single { get<PhotoGalleries>().of(PhotoGallery.Library).store }
-    single { FilesyncRepository(get(), get(), get(), get(), get(), get()) }
+    single { FilesyncRepository(get(), get(), get(), get(), get()) }
     single { FilesyncUploader(get(), get()) }
     single { FilesyncDiscussions(get(), get(), get(), get()) }
     single { CircleShareKeyProvider(get(), get()) }

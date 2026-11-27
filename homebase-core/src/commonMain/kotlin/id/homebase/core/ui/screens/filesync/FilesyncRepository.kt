@@ -13,10 +13,10 @@ import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.FileVersionTag
 import id.homebase.api.client.drives.files.PayloadDownloadService
-import id.homebase.api.client.drives.files.wholePercentFractions
 import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.drives.query.FileQueryParams
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.core.filesync.FilesyncProtocol
@@ -50,7 +50,6 @@ class FilesyncRepository(
     private val payloadDownloadService: PayloadDownloadService,
     private val fileOperationsProvider: FileOperationsProvider,
     private val driveFileProvider: DriveFileProvider,
-    private val peerFiles: PeerFileByGlobalTransitProvider,
     private val credentials: CredentialsManager,
 ) {
 
@@ -207,18 +206,8 @@ class FilesyncRepository(
     }
 
     /** A file's checked plaintext to [consume] as it downloads; throws when it's damaged or gone. */
-    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) {
-        val found = payloadDownloadService.streamVerified(
-            driveId = FilesyncProtocol.DriveAlias,
-            fileId = payload.fileId,
-            key = FilesyncProtocol.PayloadKey,
-            keyHeader = payload.payloadKey,
-            hash = payload.hash,
-            onProgress = onProgress,
-            consume = consume,
-        )
-        if (!found) throw IllegalStateException("payload of ${payload.fileId} is gone")
-    }
+    suspend fun streamPayload(payload: FilesyncPayload, onProgress: ((Float) -> Unit)? = null, consume: suspend (Flow<ByteArray>) -> Unit) =
+        streamVerified(PayloadLocation.Own(FilesyncProtocol.DriveAlias, payload.fileId), payload, onProgress, consume)
 
     /** As [streamPayload], for a file [owner] shares with this identity, read from their drive. */
     suspend fun streamSharedPayload(
@@ -228,11 +217,17 @@ class FilesyncRepository(
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ) {
-        val fractions = onProgress?.let(::wholePercentFractions)
-        val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
-            peerFiles.streamPayloadDecrypted(owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, fractions, consume = hashed)
-        }
-        if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
+        streamVerified(PayloadLocation.Peer(PeerFileRef(owner, globalTransitId), FilesyncProtocol.DriveAlias), payload, onProgress, consume)
+    }
+
+    private suspend fun streamVerified(
+        at: PayloadLocation,
+        payload: FilesyncPayload,
+        onProgress: ((Float) -> Unit)?,
+        consume: suspend (Flow<ByteArray>) -> Unit,
+    ) {
+        val found = payloadDownloadService.streamVerified(at, FilesyncProtocol.PayloadKey, payload.payloadKey, payload.hash, onProgress, consume)
+        if (!found) throw IllegalStateException("payload of ${payload.fileId} at $at is gone")
     }
 
     /**

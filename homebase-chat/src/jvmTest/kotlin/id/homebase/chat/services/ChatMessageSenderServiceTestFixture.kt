@@ -2,11 +2,8 @@ package id.homebase.chat.services
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.eventbus.EventBus
-import id.homebase.api.client.payload.PayloadReader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.file.FileOperationsProvider
@@ -20,6 +17,7 @@ import id.homebase.chat.services.convo.ConversationParticipantLookup
 import id.homebase.chat.services.convo.FakePayloadBundleEncryptor
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.outbox.OptimisticWriterPort
+import id.homebase.chat.testPayloadReader
 import id.homebase.chat.viewonce.ownerCredentials
 import id.homebase.core.avatars.ConversationAvatarModel
 import id.homebase.upload.PayloadBundleEncryptor
@@ -307,11 +305,7 @@ internal fun testChatMessageSenderService(
 ): ChatMessageSenderService {
     val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
     val driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache)
-    val payloadReader = PayloadReader(
-        driveFileProvider,
-        PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-        fileOps,
-    )
+    val payloadReader = testPayloadReader(httpClient, credentialsManager, driveCache, fileOps, own = driveFileProvider)
     val cacheSeeder = PayloadCacheSeeder(driveFileProvider, fileOps)
     return ChatMessageSenderService(
         outboxSync = outboxSync,
@@ -322,6 +316,7 @@ internal fun testChatMessageSenderService(
         optimisticWriter = optimisticWriter,
         fileOperationsProvider = fileOps,
         driveFileProvider = driveFileProvider,
+        payloadReader = payloadReader,
         payloadCacheSeeder = cacheSeeder,
         uploadService = UploadService(
             encryptor = encryptor,

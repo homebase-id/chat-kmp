@@ -5,10 +5,11 @@ package id.homebase.chat.services.sticker
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.convertHeicToJpeg
@@ -46,7 +47,7 @@ class StickerService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
@@ -196,9 +197,8 @@ class StickerService(
                 sticker.keyHeader
             }
 
-            val bytes = driveFileProvider.getPayloadBytesDecrypted(
-                driveId = sticker.driveId,
-                fileId = sticker.fileId,
+            val bytes = payloadReader.bytes(
+                at = PayloadLocation.Own(sticker.driveId, sticker.fileId),
                 key = sticker.payloadKey,
                 keyHeader = keyHeader,
             )?.bytes ?: return null
