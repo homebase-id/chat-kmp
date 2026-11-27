@@ -136,7 +136,7 @@ val apiModule = module {
 
     factoryOf(::DriveFileProvider)
     factoryOf(::PayloadDownloadService)
-    singleOf(::PayloadReader)
+    factoryOf(::PayloadReader)
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
     factoryOf(::FollowProvider)
