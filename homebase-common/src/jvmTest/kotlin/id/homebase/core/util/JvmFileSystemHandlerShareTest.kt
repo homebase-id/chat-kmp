@@ -1,5 +1,6 @@
 package id.homebase.core.util
 
+import id.homebase.common.TestTempDirs
 import kotlinx.io.files.Path
 import org.junit.Assume.assumeFalse
 import java.awt.GraphicsEnvironment
@@ -19,7 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class JvmFileSystemHandlerShareTest {
-    private val dir: File = Files.createTempDirectory("share-test").toFile().also { it.deleteOnExit() }
+    private val dir: File = TestTempDirs.dir("share-test").toFile().also { it.deleteOnExit() }
 
     @Test
     fun shareFileSavesCopyDetachedFromCaller() {

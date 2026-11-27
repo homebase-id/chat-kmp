@@ -1,6 +1,7 @@
 package id.homebase.core.logging
 
 import co.touchlab.kermit.Logger
+import id.homebase.common.TestTempDirs
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import java.nio.file.Files
@@ -41,7 +42,7 @@ class LoggerConfigTest {
 
     @Test
     fun purgeLogs_deletes_reports_true_and_keeps_logger_usable() {
-        val dir = Files.createTempDirectory("homebase-logger-test-").toFile()
+        val dir = TestTempDirs.dir("homebase-logger-test-").toFile()
         tempDir = dir
         val path = Path(dir.absolutePath)
 

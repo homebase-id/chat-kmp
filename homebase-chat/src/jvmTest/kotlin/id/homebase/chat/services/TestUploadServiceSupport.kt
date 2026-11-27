@@ -5,6 +5,7 @@ import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.OutboxSync
+import id.homebase.chat.TestTempDirs
 import id.homebase.chat.services.outbox.OptimisticWriter
 import id.homebase.chat.services.outbox.OptimisticWriterPort
 import id.homebase.upload.PayloadBundleEncryptor
@@ -42,7 +43,7 @@ fun buildTestUploadService(
 
 /** No file IO is expected; only [getCacheDirectory] returns a real path (read eagerly by the Coil cache setup). */
 private class NoopUploadFileOps : FileOperationsProvider {
-    private val cacheDir = java.nio.file.Files.createTempDirectory("hb-chat-uploadsvc-test").toString()
+    private val cacheDir = TestTempDirs.create("hb-chat-uploadsvc-test")
     private fun nope(): Nothing = error("no file IO expected in test UploadService")
     override fun openFileInput(path: String) = nope()
     override suspend fun readFileBytes(path: String) = nope()

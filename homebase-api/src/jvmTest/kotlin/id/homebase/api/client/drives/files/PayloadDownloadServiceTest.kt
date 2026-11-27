@@ -6,6 +6,7 @@ import id.homebase.api.client.PayloadTooLargeException
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.encryptedPayloadHash
@@ -99,8 +100,7 @@ class PayloadDownloadServiceTest {
                 sharedSecret = SecureByteArray(ByteArray(32) { 0x01 }),
             )
         )
-        val driveCache = DriveFileProviderCached(httpClient, credentialsManager, fileOps)
-        service = PayloadDownloadService(DriveFileProvider(httpClient, credentialsManager, driveCache), fileOps)
+        service = PayloadDownloadService(payloadReaderOver(httpClient, credentialsManager, fileOps), fileOps)
 
         nextStatus = HttpStatusCode.OK
         nextBody = ByteArray(0)
@@ -148,6 +148,62 @@ class PayloadDownloadServiceTest {
         assertTrue(path.contains("share_outbound"), "must land in the sequestered share dir: $path")
         assertTrue(path.endsWith(".zip"))
         assertContentEquals(plaintext, File(path).readBytes(), "streamed decrypt must be byte-exact")
+    }
+
+    @Test
+    fun `a cached playable export downloads once across opens, an uncached one every time`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(200_000)
+        nextHeaders = headersOf(*(nextHeaders.entries().map { it.key to it.value }.toTypedArray()), HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val video = PayloadDescriptor(key = key, contentType = "video/mp4", descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""")
+        val preview = ExportDestination.UploadTemp("share_", ".mp4")
+
+        repeat(2) { service.exportPlayable(driveId, fileId, video, keyHeader, preview, cache = false) }
+        assertEquals(2, mockEngine.requestHistory.size, "an export, a share or a save fetches each time")
+
+        repeat(2) {
+            val path = assertNotNull(service.exportPlayable(driveId, fileId, video, keyHeader, preview, cache = true))
+            assertContentEquals(plaintext, File(path).readBytes())
+        }
+        assertEquals(3, mockEngine.requestHistory.size, "a preview that keeps its payload reopens from the cache")
+    }
+
+    @Test
+    fun `a kept preview of a replaced payload opens the new one`() = runTest {
+        val preview = ExportDestination.UploadTemp("share_", ".mp4")
+        fun video(lastModified: Long) = PayloadDescriptor(
+            key = key, contentType = "video/mp4", lastModified = lastModified,
+            descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
+        )
+        val (firstKey, first) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        assertContentEquals(first, File(assertNotNull(service.exportPlayable(driveId, fileId, video(1), firstKey, preview, cache = true))).readBytes())
+
+        // A Vault page reuses its key: the same payload key now holds another video, under a fresh IV.
+        val (secondKey, second) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val reopened = assertNotNull(service.exportPlayable(driveId, fileId, video(2), secondKey, preview, cache = true))
+
+        assertContentEquals(second, File(reopened).readBytes())
+        assertTrue(mockEngine.requestHistory.last().url.toString().contains("lastModified=2"), "${mockEngine.requestHistory.last().url}")
+    }
+
+    @Test
+    fun `a save uses the copy the player kept, offline too`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val video = PayloadDescriptor(
+            key = key, contentType = "video/mp4", lastModified = 5,
+            descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
+        )
+        // The player keeps what it plays, under the payload's plain key.
+        assertTrue(service.exportPlayable(driveId, fileId, video.copy(lastModified = null), keyHeader, ExportDestination.Scratch("play_", ".mp4"), cache = true) != null)
+        val played = mockEngine.requestHistory.size
+        nextStatus = HttpStatusCode.ServiceUnavailable
+
+        val saved = assertNotNull(service.exportPlayable(driveId, fileId, video, keyHeader, ExportDestination.ShareOutbound(".mp4")))
+
+        assertContentEquals(plaintext, File(saved).readBytes())
+        assertEquals(played, mockEngine.requestHistory.size, "no download for a payload already on disk")
     }
 
     @Test

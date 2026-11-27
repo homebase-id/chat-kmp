@@ -8,6 +8,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.encryptWithPayloadHash
 import id.homebase.api.file.OkioFileOperationsProvider
+import id.homebase.core.TestTempDirs
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -23,7 +24,7 @@ import kotlin.uuid.Uuid
 
 class FilesyncSharedPayloadTest {
 
-    private val dir = Files.createTempDirectory("shared-payload")
+    private val dir = TestTempDirs.dir("shared-payload")
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, dir.toString())
 
     private suspend fun download(plain: ByteArray): ByteArray {

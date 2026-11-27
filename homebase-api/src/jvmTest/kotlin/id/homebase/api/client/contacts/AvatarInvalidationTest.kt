@@ -1,5 +1,6 @@
 package id.homebase.api.client.contacts
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.profile.FakeFileOperationsProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
@@ -45,7 +46,7 @@ class AvatarInvalidationTest {
         ),
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         fileOperationsProvider = FakeFileOperationsProvider(
-            Files.createTempDirectory("hb-avatar-invalidation-test").toString()
+            TestTempDirs.create("hb-avatar-invalidation-test")
         ),
     )
 

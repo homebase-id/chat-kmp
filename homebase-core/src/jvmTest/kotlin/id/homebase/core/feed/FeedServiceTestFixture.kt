@@ -1,5 +1,6 @@
 package id.homebase.core.feed
 
+import id.homebase.core.TestTempDirs
 import id.homebase.upload.ContentHashes
 import app.cash.sqldelight.db.SqlDriver
 import id.homebase.api.client.auth.ApiCredentials
@@ -154,15 +155,16 @@ internal fun newInMemoryJdbcDriver(): SqlDriver {
 
 private class InMemoryFileOps : FileOperationsProvider {
     private var counter = 0
-    override fun getCacheDirectory(): String = "/tmp/feed-test"
+    private val dir = TestTempDirs.create("feed-test")
+    override fun getCacheDirectory(): String = dir
     override fun openFileInput(path: String): InputProvider = throw UnsupportedOperationException()
     override suspend fun readFileBytes(path: String): ByteArray = ByteArray(0)
     override fun deleteTempFile(path: String): Boolean = true
     override fun getFileSize(path: String): Long = 0L
     override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String =
-        "/tmp/feed-test/$prefix${counter++}$suffix"
+        "$dir/$prefix${counter++}$suffix"
     override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String =
-        "/tmp/feed-test/share${counter++}$suffix"
+        "$dir/share${counter++}$suffix"
     override suspend fun writeStream(path: String, data: Flow<ByteArray>) {}
 }
 

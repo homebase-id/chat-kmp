@@ -292,8 +292,8 @@ class VaultUploaderService(
         }
     }
 
-    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. */
-    suspend fun downloadPayload(file: VaultEntry, payloadKey: String): VaultDownload? {
+    /** [payloadKey] exported as a file for the person, with that file's name and type: an HLS video's an MP4. [cache] keeps the payload for the next open, up to the 50 MB render limit. */
+    suspend fun downloadPayload(file: VaultEntry, payloadKey: String, cache: Boolean = false): VaultDownload? {
         return try {
             val payloadDescriptor = file.payloadDescriptors.find { it.key == payloadKey }
             val iv = payloadDescriptor?.iv
@@ -311,7 +311,7 @@ class VaultUploaderService(
             val extension = extensionForContentType(ct)
             val destination = ExportDestination.UploadTemp("share_", ".$extension")
             val path = if (payloadDescriptor != null) {
-                payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination)
+                payloadDownloadService.exportPlayable(file.driveId, file.fileId, payloadDescriptor, keyHeader, destination, cache)
             } else {
                 payloadDownloadService.exportToTemp(file.driveId, file.fileId, payloadKey, keyHeader, destination)
             }

@@ -1,6 +1,7 @@
 package id.homebase.chat.widget.video
 
 import com.sun.net.httpserver.HttpServer
+import id.homebase.chat.TestTempDirs
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -18,7 +19,7 @@ import org.junit.Assume.assumeTrue
 
 class LocalHlsServerJvmTest {
 
-    private val dir: File = Files.createTempDirectory("hls-loopback-test").toFile().also {
+    private val dir: File = TestTempDirs.dir("hls-loopback-test").toFile().also {
         File(it, "index.m3u8").writeText("#EXTM3U\n")
     }
     private val server: HttpServer = startLocalHlsServer(dir, totalSize = 4) { _, length -> ByteArray(length.toInt()) }

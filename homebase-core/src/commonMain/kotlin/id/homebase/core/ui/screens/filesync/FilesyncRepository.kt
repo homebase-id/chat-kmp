@@ -230,7 +230,7 @@ class FilesyncRepository(
     ) {
         val fractions = onProgress?.let(::wholePercentFractions)
         val found = payloadDownloadService.streamVerified(payload.payloadKey, payload.hash, consume) { hashed ->
-            peerFiles.streamPayloadDecrypted(owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, fractions, hashed)
+            peerFiles.streamPayloadDecrypted(owner, FilesyncProtocol.DriveAlias, globalTransitId, FilesyncProtocol.PayloadKey, payload.payloadKey, fractions, consume = hashed)
         }
         if (!found) throw IllegalStateException("payload of ${payload.fileId} shared by $owner is gone")
     }

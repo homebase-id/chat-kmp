@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.image.ImageHeaderParser
 import id.homebase.api.image.ImageSize
+import id.homebase.chat.TestTempDirs
 import java.io.File
 import kotlin.math.abs
 import kotlin.test.Test
@@ -88,7 +89,7 @@ class FFmpegPipelineCoverageJvmTest {
 
             // 6. ffmpeg's own unencrypted single-file HLS, as the app wrote it before the shared segmenter
             //    (the arguments of FFmpegUtils' segmenter, without the key).
-            val hlsDir = File.createTempFile("hls_", "").also { it.delete(); it.mkdirs() }
+            val hlsDir = TestTempDirs.file("hls_", "").also { it.delete(); it.mkdirs() }
             cleanup += hlsDir.absolutePath
             val playlistPath = File(hlsDir, "index.m3u8").absolutePath
             val segmentPath = File(hlsDir, "index.ts").absolutePath

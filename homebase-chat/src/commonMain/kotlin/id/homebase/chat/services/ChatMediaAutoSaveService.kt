@@ -7,10 +7,10 @@ import id.homebase.api.client.drives.FileStateFilter
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchSortField
 import id.homebase.api.client.drives.QueryBatchSortOrder
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.coroutines.supervisedScope
 import id.homebase.api.file.FileOperationsProvider
@@ -48,7 +48,7 @@ class ChatMediaAutoSaveService(
     private val credentialsManager: CredentialsManager,
     private val dbm: DatabaseManager,
     private val eventBus: EventBus,
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
     private val albumSaver: AlbumSaver,
     private val networkMonitor: NetworkMonitor,
@@ -141,7 +141,7 @@ class ChatMediaAutoSaveService(
 
         try {
             val saved = albumSaver.saveReceived(
-                driveFileProvider, fileOperationsProvider, chatDrive, file.fileId, payload, KeyHeader(iv.bytes, file.keyHeader.aesKey),
+                payloadReader, fileOperationsProvider, chatDrive, file.fileId, payload, KeyHeader(iv.bytes, file.keyHeader.aesKey),
                 file.fileMetadata.appData.userDate ?: file.fileMetadata.created.milliseconds, name = name, asked = false,
             )
             val location = when (saved) {

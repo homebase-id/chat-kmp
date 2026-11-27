@@ -2,6 +2,7 @@
 
 package id.homebase.api.client.contacts
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.payload.payloadReaderOver
 import id.homebase.api.serialization.Base64Bytes
@@ -200,7 +201,7 @@ class ContactInfoGatewayAvatarTest {
             }
         }
         val httpClient = HttpClient(engine)
-        val cacheDir = Files.createTempDirectory("hb-gateway-avatar-test").toString()
+        val cacheDir = TestTempDirs.create("hb-gateway-avatar-test")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
 
         val signedIn = CredentialsManager().apply {
@@ -256,5 +257,5 @@ internal fun emptyContactRepository(): ContactRepository {
 internal fun unusedPayloadReader(): PayloadReader = payloadReaderOver(
     HttpClient(MockEngine { error("no drive reads expected") }),
     CredentialsManager(),
-    FakeFileOperationsProvider(Files.createTempDirectory("hb-gateway-unused-drive").toString()),
+    FakeFileOperationsProvider(TestTempDirs.create("hb-gateway-unused-drive")),
 )

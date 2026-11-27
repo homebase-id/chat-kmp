@@ -1484,6 +1484,7 @@ val appModule = module {
             conversationStream = get(),
             contactService = get(),
             driveFileProvider = get(),
+            payloadReader = get(),
             fileOperationsProvider = get(),
             recipientLookup = get(),
             payloadDownloadService = get(),

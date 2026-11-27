@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import id.homebase.chat.TestTempDirs
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -13,7 +14,7 @@ class GifShrinkerJvmTest {
     @Test
     fun aGifIsShrunkUnderBudgetAndStaysAnimated_asFfprobeReadsIt() = runTest {
         assumeTrue("FFmpeg binaries not bundled in this test classpath", FFmpegBinaryManager.isAvailable())
-        val dir = kotlin.io.path.createTempDirectory("gif-shrink").toFile()
+        val dir = TestTempDirs.dir("gif-shrink").toFile()
         try {
             val source = File(dir, "source.gif")
             exec(

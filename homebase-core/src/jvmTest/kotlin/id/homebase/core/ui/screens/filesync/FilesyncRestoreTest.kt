@@ -29,6 +29,7 @@ import id.homebase.api.crypto.EncryptedKeyHeader
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.core.TestTempDirs
 import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.filesync.FilesyncRoleFolder
 import io.ktor.client.HttpClient
@@ -79,7 +80,7 @@ class FilesyncRestoreTest {
         val credentials = CredentialsManager()
         credentials.setActiveCredentials(ApiCredentials.create(OdinId("pippin.dotyou.cloud"), "token", SecureByteArray(secret.copyOf())))
         val http = HttpClient(MockEngine { request -> serve(request) })
-        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, Files.createTempDirectory("filesync-restore").toString())
+        val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, TestTempDirs.dir("filesync-restore").toString())
         editor = FilesyncEditor(
             testFilesyncRepository(http, credentials),
             DriveUploadProvider(http, credentials, fileOps),

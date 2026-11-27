@@ -4,12 +4,13 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.PayloadSizePolicy
 import id.homebase.api.client.PayloadTooLargeException
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.AppCacheDirs
 import id.homebase.api.crypto.hashedBy
 import id.homebase.api.crypto.newHasher
 import id.homebase.api.crypto.plaintextContentHash
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.writePlayable
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
 import kotlinx.coroutines.flow.Flow
@@ -51,13 +52,14 @@ private fun ExportDestination.withSuffix(suffix: String): ExportDestination = wh
  *   (a [PayloadTooLargeException] propagates to the caller's fallback).
  * - [exportToTemp] — EXPORT intent: the payload is passing through to a file
  *   destination (save, share, external player). Streamed decrypt (~64 KB working
- *   set) at ANY size; never touches the LRU caches.
+ *   set) at ANY size; served from the payload cache when it holds the payload, written to it only when the caller
+ *   asks (a preview's cache = true).
  *
  * Downloads are re-fetchable, therefore disposable: every destination is swept
  * scratch, never a durable location.
  */
 class PayloadDownloadService(
-    private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
 
@@ -73,15 +75,7 @@ class PayloadDownloadService(
         keyHeader: KeyHeader,
     ): ByteArray? {
         val response = try {
-            driveFileProvider.getPayloadBytesDecrypted(
-                driveId = driveId,
-                fileId = fileId,
-                key = key,
-                keyHeader = keyHeader,
-                chunkStart = null,
-                chunkLength = null,
-                onDownloadProgress = null,
-            )
+            payloadReader.bytes(PayloadLocation.Own(driveId, fileId), key, keyHeader)
         } catch (e: NotFoundException) {
             return null
         } ?: return null
@@ -91,7 +85,7 @@ class PayloadDownloadService(
     /**
      * Stream-decrypt a payload into a reserved path at [destination] and return
      * the absolute path, or null when the payload 404s. Bounded memory for any
-     * payload size; bypasses the LRU caches entirely.
+     * payload size; reads a cached copy if there is one, writes none.
      */
     suspend fun exportToTemp(
         driveId: Uuid,
@@ -101,12 +95,13 @@ class PayloadDownloadService(
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
     ): String? = exportWith(destination) { path ->
-        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOperationsProvider.writeDownload(path, it) }
+        payloadReader.toFile(PayloadLocation.Own(driveId, fileId), key, keyHeader, path, cache = false, onProgress)
     }
 
     /**
-     * [payload] exported as a file people can open, for handing to another app ([writePlayable]); an HLS video's ends
-     * in `.mp4` whatever [destination]'s suffix, and its type is [playableContentType]. Null when it can't be.
+     * [payload] exported as a file people can open, for handing to another app or player ([PayloadReader.writePlayable]); an HLS
+     * video's ends in `.mp4` whatever [destination]'s suffix, and its type is [playableContentType]. Null when it
+     * can't be. [cache] as for [PayloadReader.toFile].
      */
     suspend fun exportPlayable(
         driveId: Uuid,
@@ -114,8 +109,9 @@ class PayloadDownloadService(
         payload: PayloadDescriptor,
         keyHeader: KeyHeader,
         destination: ExportDestination,
+        cache: Boolean = false,
     ): String? = exportWith(if (payload.isHlsVideo) destination.withSuffix(".mp4") else destination) { path ->
-        driveFileProvider.writePlayable(driveId, fileId, payload, keyHeader, fileOperationsProvider, path)
+        payloadReader.writePlayable(PayloadLocation.Own(driveId, fileId), payload, keyHeader, path, cache)
     }
 
     /** [exportToTemp] that checks the plaintext against [hash] as it streams; [keyHeader] is the payload's key. */
@@ -146,7 +142,7 @@ class PayloadDownloadService(
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = streamVerified(keyHeader, hash, consume) { hashed ->
         // Per network chunk otherwise: thousands of UI updates for a large file.
-        driveFileProvider.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress?.let(::wholePercentFractions), hashed)
+        payloadReader.stream(PayloadLocation.Own(driveId, fileId), key, keyHeader, cache = false, onProgress?.let(::wholePercentFractions), consume = hashed)
     }
 
     /** As above, for a payload [source] streams from elsewhere, such as another identity's drive; false when it's gone. */

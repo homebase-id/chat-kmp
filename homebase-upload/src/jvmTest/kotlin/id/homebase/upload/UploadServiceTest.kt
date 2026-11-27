@@ -469,7 +469,7 @@ private class RecordingEncryptor(private val throwMissing: String? = null) : Pay
  * construction time to set up its (unused) Coil disk caches.
  */
 private class NoopFileOps : FileOperationsProvider {
-    private val cacheDir: String = java.nio.file.Files.createTempDirectory("hb-upload-test-cache").toString()
+    private val cacheDir: String = TestTempDirs.create("hb-upload-test-cache")
     private fun nope(): Nothing = error("no file IO expected in UploadServiceTest")
     override fun openFileInput(path: String) = nope()
     override suspend fun readFileBytes(path: String) = nope()
