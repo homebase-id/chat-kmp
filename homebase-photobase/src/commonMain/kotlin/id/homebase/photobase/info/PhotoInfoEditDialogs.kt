@@ -68,6 +68,8 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
+import id.homebase.common.util.formatDecimal
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.time.Instant
 
@@ -125,11 +127,13 @@ internal fun EditTimeDialogs(at: Instant, zone: TimeZone, onSave: (Instant) -> U
 @Composable
 internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave: (MediaLocation?) -> Unit, onDismiss: () -> Unit) {
     val camera = rememberMapCameraState()
-    var latitude by remember { mutableStateOf(at?.latitude?.toString().orEmpty()) }
-    var longitude by remember { mutableStateOf(at?.longitude?.toString().orEmpty()) }
-    val typed = typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
+    // formatDecimal, not toString: near 0 that writes "1.0E-5".
+    var latitude by remember { mutableStateOf(at?.latitude?.let { formatDecimal(it, 6) }.orEmpty()) }
+    var longitude by remember { mutableStateOf(at?.longitude?.let { formatDecimal(it, 6) }.orEmpty()) }
+    val typed = typedLocation(latitude, longitude)?.takeIf { it.movedFrom(at) }
     // Derived, so a pan frame doesn't recompose the dialog: the point itself is read on Save.
-    val canSave by remember(source.mapsOnline) { derivedStateOf { if (source.mapsOnline) camera.isUserPositioned && camera.pickedPoint() != null else false } }
+    // Moved off it, not just zoomed: a save marks the place as set by hand and drops the camera's GPS details.
+    val canSave by remember(source.mapsOnline) { derivedStateOf { source.mapsOnline && camera.isUserPositioned && camera.pickedPoint()?.let { it.movedFrom(at) } == true } }
     val chosen = { if (source.mapsOnline) camera.pickedPoint()?.takeIf { camera.isUserPositioned } else typed }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -219,6 +223,10 @@ internal fun typedLocation(latitude: String, longitude: String): MediaLocation? 
 private fun String.coordinate(): Double? = trim().replace(',', '.').toDoubleOrNull()
 
 private val WORLD = doubleArrayOf(0.0, 0.0, 1.0, 1.0)
+
+// More than ~10 m from [from], or anywhere when there was none.
+private fun MediaLocation.movedFrom(from: MediaLocation?): Boolean =
+    from == null || abs(latitude - from.latitude) > 0.0001 || abs(longitude - from.longitude) > 0.0001
 
 // Panned round the world, the map's x runs past 0..1: back into -180..180, for the lookup and the save alike.
 private fun MapCameraState.pickedPoint(): MediaLocation? =

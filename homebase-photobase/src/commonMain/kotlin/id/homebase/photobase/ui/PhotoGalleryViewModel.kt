@@ -53,7 +53,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-data class Moving(val fileId: Uuid, val toMs: Long)
+/** The open photo, followed from the time [fromMs] it had to its new day. */
+data class Moving(val fileId: Uuid, val fromMs: Long)
 
 data class PhotoGalleryUiState(
     /** Records the running drive sync has brought in so far, or null when it isn't running. The grid may already show what's held. */
@@ -105,8 +106,11 @@ sealed interface PhotoGalleryUiAction {
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 
-    /** Its time changed to [userDateMs]: the viewer follows it to its new day. */
-    data class Moved(val fileId: Uuid, val userDateMs: Long) : PhotoGalleryUiAction
+    /** The open photo's time changed from [fromMs] to [toMs]: the viewer follows it to its new day. */
+    data class Moved(val fileId: Uuid, val fromMs: Long, val toMs: Long) : PhotoGalleryUiAction
+
+    /** Followed too long: it isn't coming. */
+    data object StopFollowing : PhotoGalleryUiAction
     /** A long press, or a tap while selecting. */
     data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
     /** All of a day's photos, or none if all are picked. */
@@ -255,12 +259,17 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
-            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId, moving = it.moving?.takeIf { m -> m.fileId == action.item.fileId && action.item.capturedAtMs != m.toMs }) }
+            // Seen at any time but the one it left, it has moved: following it is done.
+            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId, moving = it.moving?.takeIf { m -> m.fileId == action.item.fileId && action.item.capturedAtMs == m.fromMs }) }
+            PhotoGalleryUiAction.StopFollowing -> _uiState.update { it.copy(moving = null) }
             PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null, moving = null) }
-            is PhotoGalleryUiAction.Moved -> viewModelScope.launch {
-                val day = dayOf(action.userDateMs) ?: return@launch
-                _uiState.update { it.copy(moving = Moving(action.fileId, action.userDateMs)) }
-                window.value = Window(day, day)
+            is PhotoGalleryUiAction.Moved -> {
+                // Set at once, before a sync can take it off its old day; dropped when it isn't the open photo.
+                _uiState.update { it.copy(moving = Moving(action.fileId, action.fromMs).takeIf { _ -> it.openedFileId == action.fileId }) }
+                viewModelScope.launch {
+                    val day = dayOf(action.toMs) ?: return@launch
+                    if (_uiState.value.moving?.fileId == action.fileId) window.value = Window(day, day)
+                }
             }
             is PhotoGalleryUiAction.ToggleSelected -> _uiState.update { state ->
                 state.copy(selected = if (action.fileId in state.selected) state.selected - action.fileId else state.selected + action.fileId)

@@ -71,7 +71,7 @@ data class ImageMetadata(
      * their EXIF codes, others as null; the subject distance in metres, above 0 and below 1000 km (0 is unknown, and
      * EXIF's "infinity", 0xFFFFFFFF over its denominator, lands past that); names as above; the user comment with its
      * character-code prefix taken off (a JIS one dropped; a UNICODE one in a JPEG in its byte order, in another format
-     * guessed, and on iOS as ImageIO reads it); [gpsTime] in UTC, only with both the GPS date and time; the speed in km/h, 0
+     * guessed, and on iOS as ImageIO reads it, a JIS one in a HEIC kept; one with no character code read whole); [gpsTime] in UTC, only with both the GPS date and time; the speed in km/h, 0
      * or more, from km/h, mph or knots.
      */
     val focalLength35mm: Int? = null,
@@ -191,8 +191,10 @@ internal fun exifSubjectDistance(raw: Double?): Double? = raw?.takeIf { it.isFin
  * for only by a UNICODE comment, so a reader that has to look it up does so only then; null guesses.
  */
 internal fun exifUserComment(raw: ByteArray?, littleEndian: () -> Boolean? = { null }): String? {
-    if (raw == null || raw.size < 8) return null
-    val code = raw.copyOfRange(0, 8).decodeToString().trimEnd('\u0000', ' ')
+    if (raw == null) return null
+    // No character code, as a writer that types it ASCII may leave it: all of it is the text.
+    val code = raw.takeIf { it.size >= 8 }?.copyOfRange(0, 8)?.decodeToString()?.trimEnd('\u0000', ' ')?.takeIf { it in KNOWN_CODES || it.isEmpty() }
+        ?: return exifComment(raw.decodeToString())
     val text = raw.copyOfRange(8, raw.size)
     val decoded = when (code) {
         "UNICODE" -> utf16Text(text, littleEndian())
@@ -202,6 +204,8 @@ internal fun exifUserComment(raw: ByteArray?, littleEndian: () -> Boolean? = { n
     }
     return exifComment(decoded)
 }
+
+private val KNOWN_CODES = setOf("ASCII", "UNICODE", "JIS")
 
 /** A comment the platform decoded itself, with the same trimming. */
 internal fun exifComment(raw: String?): String? = raw?.replace("\u0000", "")?.trim()?.takeIf { it.isNotEmpty() }

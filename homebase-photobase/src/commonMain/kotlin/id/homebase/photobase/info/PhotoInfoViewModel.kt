@@ -23,6 +23,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.UtcOffset
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 
 /** What the Info sheet reads beyond the photo's header, and where it saves a change to the header. */
@@ -109,14 +112,16 @@ internal data class HeaderFacts(
 )
 
 /** The camera details and place are read each on its own, so one failing leaves the other. */
-class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
+class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock: TimeSource = TimeSource.Monotonic) : ViewModel() {
     private val _uiState = MutableStateFlow(PhotoInfoUiState())
     val uiState: StateFlow<PhotoInfoUiState> = _uiState.asStateFlow()
 
     private var item: PhotoGalleryItem? = null
-    // What a save set, until the gallery's copy of the header is newer than the one it changed: reopened before
-    // then, it still shows; after, the gallery's wins, whoever changed it since.
-    private val saved = mutableMapOf<Uuid, Pair<Long, HeaderFacts>>()
+    // What a save set, shown until the gallery's copy says the same, so a sync between two edits doesn't flip one back;
+    // a minute at most once a newer copy has come, so a change from elsewhere since isn't hidden for good.
+    private val saved = mutableMapOf<Uuid, SavedEdit>()
+
+    private class SavedEdit(val facts: HeaderFacts, val stampMs: Long, val at: TimeMark)
     private var reading: Job? = null
     private var placing: Job? = null
 
@@ -125,9 +130,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         reading?.cancel()
         placing?.cancel()
         this.item = item
-        val ours = saved[item.fileId]
-        val shown = ours?.takeIf { (changedAtMs, _) -> item.changedAtMs <= changedAtMs }?.second
-            ?: item.headerFacts().also { saved.remove(item.fileId) }
+        val shown = heldEdit(item) ?: item.headerFacts()
         _uiState.update { PhotoInfoUiState(fileId = item.fileId, place = placeUnread()).with(shown) }
         reading = viewModelScope.launch {
             val camera = read(item.fileId, "camera details") { source.camera(item) }
@@ -142,11 +145,10 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
      */
     fun refresh(item: PhotoGalleryItem) {
         val held = this.item?.takeIf { it.fileId == item.fileId } ?: return
+        // An older copy from a read still on its way: the one held is newer.
+        if (item.changedAtMs <= held.changedAtMs) return
         this.item = item
-        if (item.changedAtMs <= held.changedAtMs || _uiState.value.saving) return
-        val ours = saved[item.fileId]
-        if (ours != null && item.changedAtMs <= ours.first) return
-        saved.remove(item.fileId)
+        if (_uiState.value.saving || heldEdit(item) != null) return
         val facts = item.headerFacts()
         val moved = facts.location != _uiState.value.location
         update(item.fileId) { it.with(facts).let { state -> if (moved) state.copy(place = placeUnread()) else state } }
@@ -168,7 +170,8 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
                 is PhotoEdit.Place -> base.copy(location = edit.at, placeByHand = true)
             }
             if (ok) {
-                saved[item.fileId] = (this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId } ?: item).changedAtMs to after
+                val stamp = (this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId } ?: item).changedAtMs
+                saved[item.fileId] = SavedEdit(after, stamp, clock.markNow())
                 onSaved()
             }
             update(item.fileId) { state ->
@@ -184,6 +187,14 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         placing?.cancel()
         item = null
         _uiState.update { PhotoInfoUiState() }
+    }
+
+    private fun heldEdit(item: PhotoGalleryItem): HeaderFacts? {
+        val ours = saved[item.fileId] ?: return null
+        val caughtUp = item.headerFacts() == ours.facts
+        val overtaken = item.changedAtMs > ours.stampMs && ours.at.elapsedNow() >= HOLD
+        if (caughtUp || overtaken) saved.remove(item.fileId)
+        return ours.facts.takeUnless { caughtUp || overtaken }
     }
 
     // Read(null) with maps offline: nothing will be looked up.
@@ -214,6 +225,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
 
     private companion object {
         const val TAG = "PhotoInfoViewModel"
+        val HOLD = 1.minutes
     }
 }
 

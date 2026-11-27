@@ -127,6 +127,7 @@ import id.homebase.resources.photobase_info_metering_pattern
 import id.homebase.resources.photobase_info_metering_spot
 import id.homebase.resources.photobase_info_modified
 import id.homebase.resources.photobase_info_open
+import id.homebase.resources.photobase_info_open_map
 import id.homebase.resources.photobase_info_place_failed
 import id.homebase.resources.photobase_info_program_action
 import id.homebase.resources.photobase_info_program_aperture
@@ -294,7 +295,7 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<LocationPreview>, so
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(),
     ) {
-        LocationPreviewCard(preview, onOpen = open)
+        LocationPreviewCard(preview, onOpen = open, openLabel = stringResource(MR.string.photobase_info_open_map))
     }
     val failed = (place as? InfoPart.Failed)?.let { stringResource(MR.string.photobase_info_place_failed) }
     InfoRow(Icons.Outlined.Place, coordinates(at), failed, trailing = trailing)

@@ -188,7 +188,8 @@ private class Directory(val tiff: Tiff, val at: Int) {
 
     fun bytes(tag: Int): ByteArray? {
         val entry = entry(tag) ?: return null
-        if (tiff.u16(entry + 2) != 7) return null
+        // UNDEFINED, or ASCII as some writers type a UserComment: the same bytes either way.
+        if (tiff.u16(entry + 2) != 7 && tiff.u16(entry + 2) != 2) return null
         val count = tiff.u32(entry + 4)
         val value = valueAt(entry, count.toLong(), count) ?: return null
         return tiff.bytes.copyOfRange(value, value + count)

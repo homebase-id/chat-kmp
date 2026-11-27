@@ -15,6 +15,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
 import kotlin.time.Instant
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.TestTimeSource
 import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -203,16 +205,21 @@ class PhotoInfoViewModelTest {
     }
 
     @Test
-    fun onceTheGallerysCopyIsNewerItWinsOverTheSavedEdit() = runTest {
+    fun aChangeFromElsewhereWinsOnceASavedEditHasHadItsMinute() = runTest {
         Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
-        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+        val time = TestTimeSource()
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }), time)
         val photo = item(located)
         viewModel.show(photo)
         viewModel.save(PhotoEdit.Place(MediaLocation(48.85, 2.35)))
+        val rome = photo.copy(changedAtMs = photo.changedAtMs + 1, content = """{"v":1,"latitude":41.9,"longitude":12.5}""")
 
-        // Synced, then changed again elsewhere: Rome.
-        viewModel.show(photo.copy(changedAtMs = photo.changedAtMs + 1, content = """{"v":1,"latitude":41.9,"longitude":12.5}"""))
+        // A sync between two edits: ours still shows.
+        viewModel.show(rome)
+        assertEquals(MediaLocation(48.85, 2.35), viewModel.uiState.value.location)
 
+        time += 2.minutes
+        viewModel.show(rome)
         assertEquals(MediaLocation(41.9, 12.5), viewModel.uiState.value.location)
     }
 

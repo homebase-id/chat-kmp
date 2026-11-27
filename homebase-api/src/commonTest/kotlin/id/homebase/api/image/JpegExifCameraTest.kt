@@ -121,6 +121,7 @@ class JpegExifCameraTest {
         assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exifGpsTime("2026:01:15", "06:00:30.5"), "to the second, as Android gives it")
         assertNull(exifUserComment(ByteArray(8)), "an empty comment")
         assertEquals("hi", exifUserComment(ByteArray(8) + "hi\u0000\u0000".encodeToByteArray()), "undefined: as UTF-8")
+        assertEquals("Holiday in Rome", exifUserComment("Holiday in Rome".encodeToByteArray()), "no character code: read whole")
         assertNull(exifUserComment("JIS".encodeToByteArray() + ByteArray(5) + "x".encodeToByteArray()))
     }
 

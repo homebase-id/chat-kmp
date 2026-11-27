@@ -310,7 +310,7 @@ fun PhotoGalleryScreen(
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
             editable = gallery != PhotoGallery.Bin,
-            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, at.toEpochMilliseconds())) },
+            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, item.capturedAtMs, at.toEpochMilliseconds())) },
             onDismiss = { infoOn = null },
         )
     }
@@ -387,7 +387,14 @@ private fun GalleryViewer(
     // The day and slot of a page whose day is still being read: when it arrives, that photo becomes the open one.
     val awaiting = remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val following = rememberUpdatedState(moving)
-    LaunchedEffect(layout, loaded) {
+    // A photo that never turns up on its new day, deleted meanwhile, closes the viewer as any gone photo does.
+    LaunchedEffect(moving) {
+        if (moving != null) {
+            delay(FOLLOW_MS)
+            onAction(PhotoGalleryUiAction.StopFollowing)
+        }
+    }
+    LaunchedEffect(layout, loaded, moving) {
         if (layout.photoCount == 0) {
             close()
             return@LaunchedEffect
@@ -405,15 +412,17 @@ private fun GalleryViewer(
             // Photos arriving above the open one would otherwise leave the pager on a different photo.
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
             val at = opened?.let { layout.photoOf(it, loaded) }
+            val followed = moving?.takeIf { it.fileId == opened }
             if (at == null) {
-                // Its time changed: wait for its new day to be read, rather than take it for deleted.
-                if (opened != null && opened == moving?.fileId) return@LaunchedEffect
-                close()
-                return@LaunchedEffect
+                // Its time changed: its new day is still being read, so it isn't taken for deleted; paging goes on.
+                if (followed == null) {
+                    close()
+                    return@LaunchedEffect
+                }
+            } else {
+                if (at != pagerState.settledPage) pagerState.scrollToPage(at)
+                if (followed != null) layout.photoAt(at, loaded)?.takeIf { it.capturedAtMs != followed.fromMs }?.let { onAction(PhotoGalleryUiAction.Open(it)) }
             }
-            if (at != pagerState.settledPage) pagerState.scrollToPage(at)
-            // Arrived on its new day: following it is done.
-            if (moving != null && opened == moving.fileId) layout.photoAt(at, loaded)?.takeIf { it.capturedAtMs == moving.toMs }?.let { onAction(PhotoGalleryUiAction.Open(it)) }
         }
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val place = layout.locate(page)
@@ -979,3 +988,5 @@ private fun PhotoCell(
         if (selecting) SelectionMark(selected, MaterialTheme.colorScheme.inverseOnSurface, Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp))
     }
 }
+
+private const val FOLLOW_MS = 30_000L
