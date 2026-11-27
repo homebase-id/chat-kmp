@@ -3565,6 +3565,7 @@
     <string name="photobase_info_lens">Lens</string>
     <string name="photobase_info_exposure">Exposure</string>
     <string name="photobase_info_exposure_bias">%1$s EV</string>
+    <string name="photobase_info_exposure_bias_plus">+%1$s EV</string>
     <string name="photobase_info_program_manual">Manual</string>
     <string name="photobase_info_program_normal">Program</string>
     <string name="photobase_info_program_aperture">Aperture priority</string>

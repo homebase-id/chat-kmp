@@ -159,8 +159,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock:
         if (moved) lookUpPlace(item.fileId, facts.location)
     }
 
-    /** [onSaved] runs once the server has it. */
-    fun save(edit: PhotoEdit, onSaved: () -> Unit = {}) {
+    fun save(edit: PhotoEdit) {
         val item = item ?: return
         if (item.fileId in savingFor) return
         val before = _uiState.value.takeIf { it.fileId == item.fileId }?.facts() ?: return
@@ -182,12 +181,13 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock:
             if (ok) {
                 val stamp = (this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId } ?: item).changedAtMs
                 saved[item.fileId] = SavedEdit(after, stamp, clock.markNow())
-                onSaved()
             }
+            // A new place, ours or one a newer copy brought while it saved, is looked up afresh.
+            val moved = after.location != before.location
             update(item.fileId) { state ->
-                state.copy(saving = false, saveFailed = !ok, place = if (ok && edit is PhotoEdit.Place) placeUnread() else state.place).with(after)
+                state.copy(saving = false, saveFailed = !ok, place = if (moved) placeUnread() else state.place).with(after)
             }
-            if (ok && edit is PhotoEdit.Place && _uiState.value.fileId == item.fileId) lookUpPlace(item.fileId, edit.at)
+            if (moved && _uiState.value.fileId == item.fileId) lookUpPlace(item.fileId, after.location)
         }
     }
 

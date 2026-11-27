@@ -310,7 +310,6 @@ fun PhotoGalleryScreen(
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
             editable = gallery != PhotoGallery.Bin,
-            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, at.toEpochMilliseconds())) },
             onDismiss = { infoOn = null },
         )
     }
@@ -380,8 +379,6 @@ private fun GalleryViewer(
     val initialPage = remember { openedFileId?.let { layout.photoOf(it, loaded) } ?: 0 }
     val pagerState = rememberPagerState(initialPage) { layout.photoCount }
     val close = { onAction(PhotoGalleryUiAction.CloseViewer) }
-    // Closed because its photo left: a photo whose time was just saved opens again on its new day.
-    val gone = { onAction(PhotoGalleryUiAction.PhotoLeft) }
     ScreenBackHandler(onBack = close)
     val showUI = remember { mutableStateOf(true) }
     // The day and slot of a page whose day is still being read: when it arrives, that photo becomes the open one.
@@ -405,7 +402,7 @@ private fun GalleryViewer(
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
             val at = opened?.let { layout.photoOf(it, loaded) }
             if (at == null) {
-                gone()
+                close()
                 return@LaunchedEffect
             }
             if (at != pagerState.settledPage) pagerState.scrollToPage(at)

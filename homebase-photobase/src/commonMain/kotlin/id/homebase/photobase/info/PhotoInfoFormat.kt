@@ -68,8 +68,8 @@ internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?, timeByHand: Boole
     return if (local != null && offset != null) local.toInstant(offset) to offset else Instant.fromEpochMilliseconds(capturedAtMs) to offset
 }
 
-/** "+0.7", "0", "-1.3": as cameras show it, with its sign. */
-internal fun exposureBias(ev: Double): String = formatDecimal(ev, 1).let { if (ev > 0 && it != "0") "+$it" else it }
+/** "0.7", "0", "-1.3", and whether it's above 0, for the resource that shows its plus sign. */
+internal fun exposureBias(ev: Double): Pair<String, Boolean> = formatDecimal(ev, 1).let { it to (ev > 0 && it != "0") }
 
 // [at] shifted so a formatter in the [system] zone shows the clock at [offset]; twice, in case the system's offset
 // changes in between. A time the system's clock skips reads an hour off.

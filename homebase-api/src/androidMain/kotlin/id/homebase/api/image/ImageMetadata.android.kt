@@ -85,14 +85,5 @@ private fun ExifInterface.int(tag: String): Int? = if (hasAttribute(tag)) getAtt
 
 private fun ExifInterface.positiveDouble(tag: String): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }
 
-// Three RATIONALs. No look-up of the byte order, which would read the file again for every photo: these are small
-// numbers, so the order that gives a time of day is the file's; null for x/0.
-private fun ExifInterface.gpsTimeStamp(): Triple<Double, Double, Double>? {
-    val raw = getAttributeBytes(ExifInterface.TAG_GPS_TIMESTAMP)?.takeIf { it.size == 24 } ?: return null
-    fun read(le: Boolean): Triple<Double, Double, Double>? {
-        fun u32(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((raw[at + i].toLong() and 0xFF) shl (8 * if (le) i else 3 - i)) }
-        val parts = (0 until 3).map { i -> u32(i * 8 + 4).takeIf { it != 0L }?.let { u32(i * 8).toDouble() / it } ?: return null }
-        return Triple(parts[0], parts[1], parts[2]).takeIf { (h, m, s) -> h < 24 && m < 60 && s < 61 }
-    }
-    return read(le = true) ?: read(le = false)
-}
+private fun ExifInterface.gpsTimeStamp(): Triple<Double, Double, Double>? =
+    exifGpsTimeStamp(getAttributeBytes(ExifInterface.TAG_GPS_TIMESTAMP))

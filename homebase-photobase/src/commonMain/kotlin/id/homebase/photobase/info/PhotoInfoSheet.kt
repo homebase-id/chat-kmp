@@ -104,6 +104,7 @@ import id.homebase.resources.photobase_info_edited_with
 import id.homebase.resources.photobase_info_edits_note
 import id.homebase.resources.photobase_info_exposure
 import id.homebase.resources.photobase_info_exposure_bias
+import id.homebase.resources.photobase_info_exposure_bias_plus
 import id.homebase.resources.photobase_info_facing
 import id.homebase.resources.photobase_info_flash_fired
 import id.homebase.resources.photobase_info_flash_off
@@ -169,8 +170,6 @@ fun PhotoInfoSheet(
     albums: List<String>,
     backedUp: Boolean,
     editable: Boolean,
-    /** A new time is saved: the photo may move to another day. */
-    onTimeSaved: (Instant) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
@@ -238,7 +237,7 @@ fun PhotoInfoSheet(
                 onSave = { newAt ->
                     editing = null
                     // A photo with no zone keeps none: the device's is only the clock it was picked on.
-                    viewModel.save(PhotoEdit.Time(newAt, opened.offset)) { onTimeSaved(newAt) }
+                    viewModel.save(PhotoEdit.Time(newAt, opened.offset))
                 },
                 onDismiss = { editing = null },
             )
@@ -367,7 +366,9 @@ private fun CameraSection(camera: InfoPart<ImageMetadata>) {
             InfoRow(Icons.Outlined.PhotoCamera, cameraName(exif.cameraMake, exif.cameraModel), settings)
             cameraName(exif.lensMake, exif.lensModel)?.let { InfoRow(Icons.Outlined.Camera, it, stringResource(MR.string.photobase_info_lens)) }
             val exposure = buildList {
-                exif.exposureBiasEv?.let { add(stringResource(MR.string.photobase_info_exposure_bias, exposureBias(it))) }
+                exif.exposureBiasEv?.let { exposureBias(it) }?.let { (value, above) ->
+                    add(stringResource(if (above) MR.string.photobase_info_exposure_bias_plus else MR.string.photobase_info_exposure_bias, value))
+                }
                 exif.exposureProgram?.let { programName(it) }?.let { add(stringResource(it)) }
                 exif.meteringMode?.let { meteringName(it) }?.let { add(stringResource(it)) }
                 exif.flash?.let { add(stringResource(if (it and 1 == 1) MR.string.photobase_info_flash_fired else MR.string.photobase_info_flash_off)) }

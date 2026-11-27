@@ -125,10 +125,10 @@ class PhotoInfoFormatTest {
 
     @Test
     fun anExposureBiasCarriesItsSign() {
-        assertEquals("+0.7", exposureBias(0.7))
-        assertEquals("-1.3", exposureBias(-1.3))
-        assertEquals("0", exposureBias(0.0))
-        assertEquals("0", exposureBias(0.01), "rounds to nothing, so no sign")
+        assertEquals("0.7" to true, exposureBias(0.7))
+        assertEquals("-1.3" to false, exposureBias(-1.3))
+        assertEquals("0" to false, exposureBias(0.0))
+        assertEquals("0" to false, exposureBias(0.01), "rounds to nothing, so no sign")
     }
 
     @Test

@@ -120,6 +120,11 @@ class JpegExifCameraTest {
         assertNull(exifGpsTime("2026:13:40", 6.0, 0.0, 30.0))
         assertEquals(Instant.parse("2026-01-15T06:00:30Z"), exifGpsTime("2026:01:15", "06:00:30.5"), "to the second, as Android gives it")
         assertNull(exifUserComment(ByteArray(8)), "an empty comment")
+        fun rationals(littleEndian: Boolean, vararg v: Long) = v.flatMap { n -> (0 until 4).map { i -> (n ushr (8 * if (littleEndian) i else 3 - i)).toByte() } }.toByteArray()
+        for (le in listOf(true, false)) {
+            assertEquals(Triple(15.0, 30.0, 45.99), exifGpsTimeStamp(rationals(le, 15, 1, 30, 1, 4599, 100)), "a denominator past a byte, littleEndian=$le")
+        }
+        assertNull(exifGpsTimeStamp(rationals(true, 0, 0, 0, 0, 0, 0)), "0/0 isn't midnight")
         assertEquals("hi", exifUserComment(ByteArray(8) + "hi\u0000\u0000".encodeToByteArray()), "undefined: as UTF-8")
         assertEquals("Holiday in Rome", exifUserComment("Holiday in Rome".encodeToByteArray()), "no character code: read whole")
         assertNull(exifUserComment("JIS".encodeToByteArray() + ByteArray(5) + "x".encodeToByteArray()))

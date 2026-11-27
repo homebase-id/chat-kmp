@@ -247,6 +247,22 @@ internal fun exifGpsTime(date: String?, time: String?): Instant? {
     return exifGpsTime(date, parts[0].toDoubleOrNull(), parts[1].toDoubleOrNull(), parts[2].toDoubleOrNull())
 }
 
+/**
+ * GPSTimeStamp's three RATIONALs from their raw bytes, for a reader that gives no byte order: these are small numbers,
+ * so their zero bytes lie at the high end of each value, which tells the order without reading the file again.
+ * Null for x/0, or bytes that aren't three rationals.
+ */
+internal fun exifGpsTimeStamp(raw: ByteArray?): Triple<Double, Double, Double>? {
+    if (raw == null || raw.size != 24) return null
+    // Zero bytes at the start of each value, or at its end.
+    val bigEndianZeros = (0 until 6).sumOf { v -> (0..1).count { raw[v * 4 + it].toInt() == 0 } }
+    val littleEndianZeros = (0 until 6).sumOf { v -> (2..3).count { raw[v * 4 + it].toInt() == 0 } }
+    val littleEndian = littleEndianZeros > bigEndianZeros
+    fun u32(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((raw[at + i].toLong() and 0xFF) shl (8 * if (littleEndian) i else 3 - i)) }
+    val parts = (0 until 3).map { i -> u32(i * 8 + 4).takeIf { it != 0L }?.let { u32(i * 8).toDouble() / it } ?: return null }
+    return Triple(parts[0], parts[1], parts[2])
+}
+
 /** GPSSpeed in its GPSSpeedRef's unit: "K" km/h, the default; "M" mph; "N" knots. */
 internal fun exifSpeedKmh(raw: Double?, ref: String?): Double? {
     val factor = when (ref?.trim()?.uppercase()) {
