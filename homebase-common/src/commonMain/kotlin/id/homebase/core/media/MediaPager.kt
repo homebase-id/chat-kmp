@@ -37,7 +37,8 @@ fun MediaPager(
         state = state,
         modifier = modifier.fillMaxSize(),
         beyondViewportPageCount = beyondViewportPageCount,
-        userScrollEnabled = userScrollEnabled,
+        // A one-page pager can't move, yet its snap would swallow the fling of a pager around it.
+        userScrollEnabled = userScrollEnabled && pageCount > 1,
         pageSpacing = pageSpacing,
         pageContent = { page -> pageContent(page) },
     )
