@@ -334,16 +334,19 @@ class DriveFileProviderCached(
             cache: Boolean = false,
     ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache) { fileOps.writeDownload(outputPath, it) }
 
-    /** Whether the payload cache holds the whole payload; an entry whose header doesn't read is dropped, so it refetches. */
+    /** Whether the payload cache holds an entry for the payload whose header reads; one that doesn't is left to readThrough, which refetches it. */
     fun hasCachedPayload(driveId: Uuid, fileId: Uuid, key: String): Boolean {
-        val diskKey = buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey()
-        val snapshot = payloadDiskCache.openSnapshot(diskKey) ?: return false
-        val readable = snapshot.use { snap ->
-            runCatching { fileSystem.read(snap.data) { readInt() in 200..299 && readUtf8(readInt().toLong()).isNotEmpty() && !exhausted() } }
-                    .getOrDefault(false)
+        val snapshot = payloadDiskCache.openSnapshot(buildPayloadCacheKey(driveId, fileId, key, null, null).toDiskKey()) ?: return false
+        return snapshot.use { snap ->
+            runCatching {
+                fileSystem.read(snap.data) {
+                    val ok = readInt() in 200..299
+                    skip(readInt().toLong())
+                    readByte()
+                    ok
+                }
+            }.getOrDefault(false)
         }
-        if (!readable) payloadDiskCache.remove(diskKey)
-        return readable
     }
 
     /**
@@ -718,9 +721,11 @@ class DriveFileProviderCached(
 
     // The entry format readBytesResponse and the stream's hit path read.
     private fun okio.BufferedSink.writeEntryHeader(status: Int, contentType: String, encrypted: Boolean) {
+        // The readers take the length as a byte count.
+        val type = contentType.encodeUtf8()
         writeInt(status)
-        writeInt(contentType.length)
-        writeUtf8(contentType)
+        writeInt(type.size)
+        write(type)
         writeByte(if (encrypted) 1 else 0)
     }
 
