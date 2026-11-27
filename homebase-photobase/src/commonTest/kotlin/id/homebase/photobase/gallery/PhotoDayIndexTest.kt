@@ -105,27 +105,23 @@ class PhotoDayIndexTest {
     }
 
     @Test
-    fun aPhotoWhoseTimeWasSetByHandRecountsTheDayItLeft() = runTest {
+    fun aPhotoTimedByHandCountsEverythingAgain() = runTest {
         val (library, changes, index) = setUp()
-        val touched = mutableListOf<Map<Int, List<HomebaseFile>>?>()
         val watching = launch { index.days.collect { } }
-        val touches = launch { index.touched.collect { touched += it } }
         runCurrent()
 
-        // Moved from day 15 to day 19: the change names only 19, its content the time it replaced.
+        // Moved from day 15 to day 19: the change names only 19.
         library.days[15] = 6
         library.days[19] = 1
         val moved = galleryTestFile(19 * DAY_MS).let {
-            it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeSetAtMs":1,"timeWasMs":${15 * DAY_MS + 5}}""")))
+            it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeSetAtMs":1}""")))
         }
         changes.emit(PhotoChange.FilesArrived(listOf(moved)))
         runCurrent()
 
+        assertEquals(2, library.builds)
         assertEquals(6, index.days.first().countOf(15))
-        assertEquals(1, library.builds, "a day's count, not the whole library")
-        assertEquals(setOf(15, 19), touched.last()?.keys)
         watching.cancel()
-        touches.cancel()
     }
 
     @Test

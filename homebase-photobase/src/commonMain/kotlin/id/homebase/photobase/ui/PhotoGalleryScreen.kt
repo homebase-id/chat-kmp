@@ -296,7 +296,8 @@ fun PhotoGalleryScreen(
     // The sheet goes with its photo, or it opens again over the next one viewed.
     LaunchedEffect(uiState.openedFileId) { infoOn = null }
     val source = viewModel.photoInfo
-    val item = infoOn
+    // The gallery's current copy, so the sheet follows a sync of its own edits.
+    val item = infoOn?.let { shown -> loaded.value.values.firstNotNullOfOrNull { day -> day.firstOrNull { it.fileId == shown.fileId } } ?: shown }
     if (item != null && source != null && uiState.openedFileId != null) {
         val albums by viewModel.albums.collectAsStateWithLifecycle()
         PhotoInfoSheet(

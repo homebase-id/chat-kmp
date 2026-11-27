@@ -215,4 +215,22 @@ class PhotoInfoViewModelTest {
 
         assertEquals(MediaLocation(41.9, 12.5), viewModel.uiState.value.location)
     }
+
+    @Test
+    fun aSecondEditIsStampedWithTheCopyTheFirstSyncBrought() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+        val photo = item(located)
+        viewModel.show(photo)
+        viewModel.save(PhotoEdit.Time(Instant.parse("2026-01-15T06:00:00Z"), null))
+        // The first edit synced while the sheet stayed open.
+        val synced = photo.copy(changedAtMs = photo.changedAtMs + 1)
+        viewModel.refresh(synced)
+        viewModel.save(PhotoEdit.Place(MediaLocation(48.85, 2.35)))
+        viewModel.close()
+
+        viewModel.show(synced)
+
+        assertEquals(MediaLocation(48.85, 2.35), viewModel.uiState.value.location)
+    }
 }

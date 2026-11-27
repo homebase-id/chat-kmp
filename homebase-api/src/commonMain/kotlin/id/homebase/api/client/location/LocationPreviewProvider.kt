@@ -1,6 +1,7 @@
 package id.homebase.api.client.location
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -62,6 +63,8 @@ class LocationPreviewProvider(
 
         val address = knownAddress?.takeIf { it.isNotBlank() } ?: try {
             reverseGeocode(lat, lon, zoom) ?: formatLatLon(lat, lon)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "reverseGeocode threw — falling back to lat/lon" }
             formatLatLon(lat, lon)
@@ -69,6 +72,8 @@ class LocationPreviewProvider(
 
         val pngBytes = try {
             fetchStaticMap(lat, lon, zoom)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "fetchStaticMap threw — sending coordinates only" }
             null

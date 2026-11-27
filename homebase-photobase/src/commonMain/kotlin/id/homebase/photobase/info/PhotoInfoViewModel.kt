@@ -33,7 +33,7 @@ interface PhotoInfoSource {
     /** The EXIF of [item]'s original; null for a video. */
     suspend fun camera(item: PhotoGalleryItem): ImageMetadata?
 
-    /** The place's map and name, as a location shows in chat; its name is the coordinates when it has none. */
+    /** The place's map and name, as a location shows in chat; a blank name when it has none. Throws when offline. */
     suspend fun preview(latitude: Double, longitude: Double): LocationPreview
 
     /** A point's address, for the place picker; null when it has none. */
@@ -60,7 +60,13 @@ class DrivePhotoInfoSource(
         return withContext(Dispatchers.Default) { readImageMetadata(original.bytes) }
     }
 
-    override suspend fun preview(latitude: Double, longitude: Double): LocationPreview = places.getLocationPreview(latitude, longitude)
+    // The name asked first, where a network failure throws: getLocationPreview falls back to the coordinates unsaid.
+    override suspend fun preview(latitude: Double, longitude: Double): LocationPreview {
+        val name = places.reverseGeocode(latitude, longitude)
+        // Its coordinates as the known name, as the provider would have it: the preview is cached for everyone.
+        val preview = places.getLocationPreview(latitude, longitude, knownAddress = name ?: coordinates(MediaLocation(latitude, longitude)))
+        return if (name == null) preview.copy(address = "") else preview
+    }
 
     override suspend fun address(latitude: Double, longitude: Double): String? = places.reverseGeocode(latitude, longitude)
 
@@ -128,6 +134,11 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
             update(item.fileId) { it.copy(camera = camera) }
         }
         lookUpPlace(item.fileId, shown.location)
+    }
+
+    /** The gallery's newer copy of the photo shown, so a save is stamped with the header it changes. */
+    fun refresh(item: PhotoGalleryItem) {
+        if (this.item?.fileId == item.fileId) this.item = item
     }
 
     fun save(edit: PhotoEdit) {

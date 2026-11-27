@@ -124,7 +124,9 @@ class PhotoDayIndex(
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
+            // A photo timed by hand may have left a day this change doesn't name, perhaps after several edits while this
+            // device was away: counted again in full. Rare, so the cost of a full count each time it changes is fine.
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timedByHand() }) return@orCountAgainLater rebuild()
             // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
             // its earliest and latest photo settle each one's day without a lookup per photo.
             val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()
@@ -135,10 +137,6 @@ class PhotoDayIndex(
                     val day = if (first == last) first else dayOf(file.sqlUserDateMs())
                     if (day != null) byDay.getOrPut(day) { mutableListOf() } += file
                 }
-            }
-            for (file in files) {
-                val left = file.dayLeftMs()?.let { dayOf(it) } ?: continue
-                byDay.getOrPut(left) { mutableListOf() }
             }
             put(byDay.keys.map { DayCount(it, photosOn(it)) })
             _touched.emit(byDay)
@@ -212,8 +210,7 @@ fun photoDayIndex(store: PhotoGalleryStore, changes: Flow<PhotoChange>, scope: C
     scope = scope,
 )
 
-// A change names only the day a photo is on now: one whose time was set by hand left the day of the time it replaced.
-private fun HomebaseFile.dayLeftMs(): Long? {
-    val content = fileMetadata.appData.content?.takeIf { "timeWasMs" in it } ?: return null
-    return parseRecord<PhotoContent>(content, "photo $fileId")?.timeWasMs
+private fun HomebaseFile.timedByHand(): Boolean {
+    val content = fileMetadata.appData.content?.takeIf { "timeSetAtMs" in it } ?: return false
+    return parseRecord<PhotoContent>(content, "photo $fileId")?.timeSetAtMs != null
 }

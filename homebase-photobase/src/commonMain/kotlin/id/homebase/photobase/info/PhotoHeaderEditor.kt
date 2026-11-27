@@ -58,7 +58,7 @@ class PhotoHeaderEditor(
                 userDate = if (edit is PhotoEdit.Time) edit.at.toEpochMilliseconds() else appData.userDate,
                 groupId = appData.groupId,
                 archivalStatus = appData.archivalStatus,
-                content = editedContent(appData.content, edit, appData.userDate),
+                content = editedContent(appData.content, edit),
                 previewThumbnail = appData.previewThumbnail,
             ),
         )
@@ -73,17 +73,14 @@ class PhotoHeaderEditor(
 }
 
 /** [stored] PhotoContent with [edit] applied. A moved place drops the old altitude, which was the old place's. */
-internal fun editedContent(stored: String?, edit: PhotoEdit, userDateBefore: Long? = null): String {
+internal fun editedContent(stored: String?, edit: PhotoEdit): String {
     // A newer app's version stays, so this one can't mark its content older than it is.
     val versioned = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject.containsKey("v") }.getOrNull() } == true
     val version = if (versioned) emptyMap() else mapOf("v" to JsonPrimitive(PhotoContent.CURRENT_VERSION))
     return when (edit) {
         is PhotoEdit.Time -> {
             val set = version + ("timeSetAtMs" to JsonPrimitive(Clock.System.now().toEpochMilliseconds())) +
-                listOfNotNull(
-                    edit.offset?.let { "offsetSeconds" to JsonPrimitive(it.totalSeconds) },
-                    userDateBefore?.let { "timeWasMs" to JsonPrimitive(it) },
-                )
+                listOfNotNull(edit.offset?.let { "offsetSeconds" to JsonPrimitive(it.totalSeconds) })
             mergedContent(stored, JsonObject(set), remove = setOf("offsetSeconds"))
         }
         is PhotoEdit.Place -> {

@@ -172,6 +172,7 @@ fun PhotoInfoSheet(
     // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
     val viewModel = viewModel(key = "photo-info") { PhotoInfoViewModel(source) }
     LaunchedEffect(viewModel, item.fileId) { viewModel.show(item) }
+    LaunchedEffect(viewModel, item) { viewModel.refresh(item) }
     DisposableEffect(viewModel) { onDispose { viewModel.close() } }
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value.takeIf { it.fileId == item.fileId }
     val exif = (uiState?.camera as? InfoPart.Read)?.value
@@ -284,7 +285,7 @@ private fun WhereSection(at: MediaLocation, place: InfoPart<LocationPreview>, so
         Unit
     }
     // Until it's read, the card holds a pin and the coordinates.
-    val preview = (place as? InfoPart.Read)?.value ?: LocationPreview(at.latitude, at.longitude, coordinates(at), imageUrl = null, imageWidth = null, imageHeight = null)
+    val preview = (place as? InfoPart.Read)?.value ?: LocationPreview(at.latitude, at.longitude, "", imageUrl = null, imageWidth = null, imageHeight = null)
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

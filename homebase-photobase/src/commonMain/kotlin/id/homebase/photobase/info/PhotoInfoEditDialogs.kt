@@ -40,6 +40,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,11 +122,10 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
     val camera = rememberMapCameraState()
     var latitude by remember { mutableStateOf(at?.latitude?.toString().orEmpty()) }
     var longitude by remember { mutableStateOf(at?.longitude?.toString().orEmpty()) }
-    val chosen = if (source.mapsOnline) {
-        camera.pickedPoint()?.takeIf { camera.isUserPositioned }
-    } else {
-        typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
-    }
+    val typed = typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
+    // Derived, so a pan frame doesn't recompose the dialog: the point itself is read on Save.
+    val canSave by remember(source.mapsOnline) { derivedStateOf { if (source.mapsOnline) camera.isUserPositioned && camera.pickedPoint() != null else false } }
+    val chosen = { if (source.mapsOnline) camera.pickedPoint()?.takeIf { camera.isUserPositioned } else typed }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
             topBar = {
@@ -135,7 +135,7 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
                         IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = stringResource(MR.string.cancel)) }
                     },
                     actions = {
-                        TextButton(onClick = { chosen?.let(onSave) }, enabled = chosen != null) { Text(stringResource(MR.string.save)) }
+                        TextButton(onClick = { chosen()?.let(onSave) }, enabled = if (source.mapsOnline) canSave else typed != null) { Text(stringResource(MR.string.save)) }
                     },
                 )
             },

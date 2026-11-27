@@ -72,7 +72,7 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     return try {
         val source = ImageIoDecode.open(srcBytes) ?: return null
         try {
-            source.readMetadata()?.withJpegComment(srcBytes)
+            source.readMetadata()?.let { if (it.userComment == null) it else it.withJpegComment(srcBytes) }
         } finally {
             CFRelease(source)
         }
@@ -189,7 +189,8 @@ internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
 
 /**
  * ImageIO reads a UNICODE UserComment big-endian whatever the file's order, and keeps a JIS one the shared rule drops:
- * a JPEG's comes from the shared reader, from [bytes], all of it or its head.
+ * a JPEG's comes from the shared reader, from [bytes], all of it or its head. Asked only when ImageIO found one, on
+ * both of iOS's paths, so they agree and a backup reads no more of each photo.
  */
 internal fun ImageMetadata.withJpegComment(bytes: ByteArray): ImageMetadata =
     if (jpegExifLittleEndian(bytes) != null) copy(userComment = readJpegExifCamera(bytes)?.userComment) else this

@@ -15,12 +15,10 @@ data class PhotoContent(
     val altitude: Double? = null,
     /**
      * When userDate was set by hand, which then wins over the original's EXIF time; [offsetSeconds] is the zone it was
-     * set in. A time, not a flag, so a later change to the file isn't taken for the move of day this was.
+     * set in.
      */
     val timeSetAtMs: Long? = null,
     val offsetSeconds: Int? = null,
-    /** The userDate a time set by hand replaced: every device recounts the day it left. */
-    val timeWasMs: Long? = null,
     /** The place was set by hand: the original's GPS details no longer describe it. */
     val placeByHand: Boolean? = null,
 ) {
