@@ -72,6 +72,17 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
         focalLengthMm = sub?.positiveDouble(ExifSubIFDDirectory.TAG_FOCAL_LENGTH),
         // getInteger is null for a tag of several values.
         iso = sub?.getIntArray(ExifSubIFDDirectory.TAG_ISO_EQUIVALENT)?.firstOrNull()?.takeIf { it > 0 },
+        lensMake = exifName(sub?.getString(ExifSubIFDDirectory.TAG_LENS_MAKE)),
+        lensModel = exifName(sub?.getString(ExifSubIFDDirectory.TAG_LENS_MODEL)),
+        exposureBiasEv = exifExposureBias(sub?.double(ExifSubIFDDirectory.TAG_EXPOSURE_BIAS)),
+        exposureProgram = exifExposureProgram(sub?.getInteger(ExifSubIFDDirectory.TAG_EXPOSURE_PROGRAM)),
+        meteringMode = exifMeteringMode(sub?.getInteger(ExifSubIFDDirectory.TAG_METERING_MODE)),
+        flash = sub?.getInteger(ExifSubIFDDirectory.TAG_FLASH),
+        whiteBalance = exifWhiteBalance(sub?.getInteger(ExifSubIFDDirectory.TAG_WHITE_BALANCE_MODE)),
+        software = exifName(ifd0?.getString(ExifIFD0Directory.TAG_SOFTWARE)),
+        modifiedAt = parseExifLocalDateTime(ifd0?.getString(ExifIFD0Directory.TAG_DATETIME)),
+        imageDirectionDegrees = exifImageDirection(gps?.double(GpsDirectory.TAG_IMG_DIRECTION)),
+        horizontalErrorMeters = exifHorizontalError(gps?.double(GpsDirectory.TAG_H_POSITIONING_ERROR)),
     )
 }
 
@@ -81,5 +92,7 @@ private fun firstNonNullInt(vararg values: Int?): Int? =
 private fun com.drew.metadata.Directory.getRationalOrNull(tag: Int): com.drew.lang.Rational? =
     if (containsTag(tag)) getRational(tag) else null
 
-private fun com.drew.metadata.Directory.positiveDouble(tag: Int): Double? =
-    getRationalOrNull(tag)?.takeIf { it.denominator != 0L }?.toDouble()?.takeIf { it.isFinite() && it > 0 }
+private fun com.drew.metadata.Directory.double(tag: Int): Double? =
+    getRationalOrNull(tag)?.takeIf { it.denominator != 0L }?.toDouble()
+
+private fun com.drew.metadata.Directory.positiveDouble(tag: Int): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }

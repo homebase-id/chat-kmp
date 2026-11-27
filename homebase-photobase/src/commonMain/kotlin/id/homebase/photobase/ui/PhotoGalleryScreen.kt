@@ -50,6 +50,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import id.homebase.chat.widget.video.playsMotionClips
 import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.mutableStateOf
@@ -290,17 +291,23 @@ fun PhotoGalleryScreen(
         }
     }
     var infoOn by remember { mutableStateOf<PhotoGalleryItem?>(null) }
+    var motionReplay by remember { mutableIntStateOf(0) }
     // The sheet goes with its photo, or it opens again over the next one viewed.
     LaunchedEffect(uiState.openedFileId) { infoOn = null }
-    val reader = viewModel.photoInfo
+    val source = viewModel.photoInfo
     val item = infoOn
-    if (item != null && reader != null && uiState.openedFileId != null) {
+    if (item != null && source != null && uiState.openedFileId != null) {
         val albums by viewModel.albums.collectAsStateWithLifecycle()
         PhotoInfoSheet(
             item = item,
-            reader = reader,
+            source = source,
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
+            editable = gallery != PhotoGallery.Bin,
+            onReplay = {
+                infoOn = null
+                motionReplay += 1
+            }.takeIf { playsMotionClips },
             onDismiss = { infoOn = null },
         )
     }
@@ -318,7 +325,8 @@ fun PhotoGalleryScreen(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
                         heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
-                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { reader != null },
+                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { source != null },
+                        motionReplay = motionReplay,
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -358,6 +366,7 @@ private fun GalleryViewer(
     /** Whether the heart is enabled; null shows none. */
     heart: Boolean?,
     onInfo: ((PhotoGalleryItem) -> Unit)?,
+    motionReplay: Int,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -436,6 +445,7 @@ private fun GalleryViewer(
                 showUIState = showUI,
                 // A native video view can't follow the open and close flight, so a Live photo's clip waits for it to end.
                 isFocused = settled && !animatedVisibilityScope.transition.isRunning,
+                motionReplay = motionReplay,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
             // The open video caches itself as it plays; preloading it too would download it twice.

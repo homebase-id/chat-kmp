@@ -59,9 +59,9 @@ internal fun FullScreenOverlay.ViewMessageData.motionPlayer(clip: PayloadDescrip
 )
 
 @Composable
-internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip: PayloadDescriptor?, settled: Boolean): MotionState? {
+internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip: PayloadDescriptor?, settled: Boolean, replay: Int = 0): MotionState? {
     if (clip == null || !playsMotionClips) return null
-    val motion = remember(viewer, clip, settled) { MotionState(viewer.motionPlayer(clip), play = settled) }
+    val motion = remember(viewer, clip, settled, replay) { MotionState(viewer.motionPlayer(clip), play = settled) }
     if (settled) {
         val preloader = koinInject<VideoPreloader>()
         // Played from the payload cache once this is done, so an opening downloads it once; swiping away cancels it.

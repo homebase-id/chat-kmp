@@ -118,6 +118,8 @@ fun FullScreenMediaViewer(
     showUIState: MutableState<Boolean> = remember { mutableStateOf(true) },
     // False for a neighbouring page a host composes off screen: it mustn't take the keyboard.
     isFocused: Boolean = true,
+    // A change plays a Live photo's clip again.
+    motionReplay: Int = 0,
 ) {
     val scope = rememberCoroutineScope()
     val localAttachmentStore = koinInject<LocalAttachmentContextStore>()
@@ -178,7 +180,7 @@ fun FullScreenMediaViewer(
             }
 
             val localContext by localAttachmentStore.collectContext(data.messageId, payload.key)
-            val motion = rememberMotionState(data, data.motionClips[payload.key], isSettled && isFocused)
+            val motion = rememberMotionState(data, data.motionClips[payload.key], isSettled && isFocused, motionReplay)
             val resolved = resolveMediaPageSource(localContext, payload.iv != null, payloadIv, data.isEncrypted)
             val source = when (resolved) {
                 is MediaPageSource.LocalFile -> remember(resolved.path) {

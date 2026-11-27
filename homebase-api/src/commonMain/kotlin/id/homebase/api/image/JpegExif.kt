@@ -13,6 +13,8 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val tiff = Tiff.at(bytes, tiffStart, end) ?: return null
     val ifd0 = tiff.ifd0() ?: return null
     val exif = ifd0.long(0x8769)?.let(tiff::directory)
+    // Only the direction and accuracy: web reading the position would change what its uploads record.
+    val gps = ifd0.long(0x8825)?.let(tiff::directory)
     return ImageMetadata(
         capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003) ?: ifd0.ascii(0x0132)),
         captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011) ?: exif?.ascii(0x9010)),
@@ -23,6 +25,17 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
         exposureTimeSeconds = exif?.rational(0x829A)?.takeIf { it > 0 },
         focalLengthMm = exif?.rational(0x920A)?.takeIf { it > 0 },
         iso = exif?.long(0x8827)?.takeIf { it > 0 },
+        lensMake = exifName(exif?.ascii(0xA433)),
+        lensModel = exifName(exif?.ascii(0xA434)),
+        exposureBiasEv = exifExposureBias(exif?.rational(0x9204)),
+        exposureProgram = exifExposureProgram(exif?.long(0x8822)),
+        meteringMode = exifMeteringMode(exif?.long(0x9207)),
+        flash = exif?.long(0x9209),
+        whiteBalance = exifWhiteBalance(exif?.long(0xA403)),
+        software = exifName(ifd0.ascii(0x0131)),
+        modifiedAt = parseExifLocalDateTime(ifd0.ascii(0x0132)),
+        imageDirectionDegrees = exifImageDirection(gps?.rational(0x0011)),
+        horizontalErrorMeters = exifHorizontalError(gps?.rational(0x001F)),
     )
 }
 

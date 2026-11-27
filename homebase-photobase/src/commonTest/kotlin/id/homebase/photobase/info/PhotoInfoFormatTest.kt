@@ -4,6 +4,7 @@ import id.homebase.api.client.location.WebMercator
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.image.ImageMetadata
+import id.homebase.api.image.MediaQuality
 import id.homebase.api.media.MediaLocation
 import id.homebase.common.util.formatDecimal
 import id.homebase.common.util.formatBytes
@@ -102,7 +103,47 @@ class PhotoInfoFormatTest {
             descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, name = "IMG_0001.HEIC", pixelWidth = 4032, pixelHeight = 3024).encode(),
         )
 
-        assertEquals(FileFacts("IMG_0001.HEIC", 4032, 3024, 2_400_000), fileFacts(image))
-        assertEquals(FileFacts(null, null, null, null), fileFacts(PayloadDescriptor(key = "img", contentType = "image/jpeg")))
+        assertEquals(FileFacts("IMG_0001.HEIC", 4032, 3024, 2_400_000, type = "HEIC"), fileFacts(image))
+        assertEquals(FileFacts(null, null, null, null, type = "JPG"), fileFacts(PayloadDescriptor(key = "img", contentType = "image/jpeg")))
+    }
+
+    @Test
+    fun theQualityAndAnUntouchedFileAreRead() {
+        fun stored(quality: DescriptorContentV1.Quality, original: Int?) = fileFacts(
+            PayloadDescriptor(
+                key = "img",
+                contentType = "image/webp",
+                descriptorContent = DescriptorContentV1(kind = DescriptorContentV1.Kind.IMAGE, quality = quality, original = original).encode(),
+            ),
+        )
+
+        assertEquals(MediaQuality.HD, stored(DescriptorContentV1.Quality.HD, null).quality)
+        assertEquals(false, stored(DescriptorContentV1.Quality.HD, null).untouched)
+        assertEquals(true, stored(DescriptorContentV1.Quality.ORG, 1).untouched)
+        assertEquals("WEBP", stored(DescriptorContentV1.Quality.HD, null).type)
+    }
+
+    @Test
+    fun anExposureBiasCarriesItsSign() {
+        assertEquals("+0.7", exposureBias(0.7))
+        assertEquals("-1.3", exposureBias(-1.3))
+        assertEquals("0", exposureBias(0.0))
+        assertEquals("0", exposureBias(0.01), "rounds to nothing, so no sign")
+    }
+
+    @Test
+    fun aTimeSetByHandWinsOverTheExif() {
+        val exif = ImageMetadata(capturedAt = LocalDateTime(2026, 1, 15, 15, 0), captureUtcOffset = UtcOffset(hours = 9))
+        val byHand = Instant.parse("2020-06-01T10:00:00Z").toEpochMilliseconds()
+
+        assertEquals(Instant.fromEpochMilliseconds(byHand) to UtcOffset(hours = -4), takenAt(byHand, exif, UtcOffset(hours = -4)))
+    }
+
+    @Test
+    fun aTypedLocationMustBeOnEarth() {
+        assertEquals(MediaLocation(35.68, 139.76), typedLocation(" 35.68 ", "139.76"))
+        assertNull(typedLocation("91", "0"))
+        assertNull(typedLocation("0", "-181"))
+        assertNull(typedLocation("north", "0"))
     }
 }

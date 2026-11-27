@@ -12,7 +12,9 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.offsetAt
 import kotlinx.datetime.toInstant
+import id.homebase.api.file.extensionForContentType
 import id.homebase.api.image.ImageMetadata
+import id.homebase.api.image.MediaQuality
 
 // Null under 0.05, where it would read "0".
 internal fun megapixels(width: Int, height: Int): String? =
@@ -53,14 +55,19 @@ internal fun mapBox(x: Double, y: Double): DoubleArray {
 internal const val MAP_ZOOM = 15
 
 /**
- * When it was taken and the offset it was taken at: the EXIF's own time and offset when it has both, since the backup
- * may have read them differently on another platform; else [capturedAtMs] at the EXIF's offset, or with none.
+ * When it was taken and the offset it was taken at: a time set by hand at [offsetByHand]; else the EXIF's own time and
+ * offset when it has both, since the backup may have read them differently on another platform; else [capturedAtMs]
+ * at the EXIF's offset, or with none.
  */
-internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?): Pair<Instant, UtcOffset?> {
+internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?, offsetByHand: UtcOffset? = null): Pair<Instant, UtcOffset?> {
+    if (offsetByHand != null) return Instant.fromEpochMilliseconds(capturedAtMs) to offsetByHand
     val offset = exif?.captureUtcOffset
     val local = exif?.capturedAt
     return if (local != null && offset != null) local.toInstant(offset) to offset else Instant.fromEpochMilliseconds(capturedAtMs) to offset
 }
+
+/** "+0.7", "0", "-1.3": as cameras show it, with its sign. */
+internal fun exposureBias(ev: Double): String = formatDecimal(ev, 1).let { if (ev > 0 && it != "0") "+$it" else it }
 
 // [at] shifted so a formatter in the [system] zone shows the clock at [offset]; twice, in case the system's offset
 // changes in between. A time the system's clock skips reads an hour off.
@@ -69,14 +76,25 @@ internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instan
     return at + (offset.totalSeconds - system.offsetAt(first).totalSeconds).seconds
 }
 
-internal data class FileFacts(val name: String?, val width: Int?, val height: Int?, val bytes: Long?)
+internal data class FileFacts(
+    val name: String?,
+    val width: Int?,
+    val height: Int?,
+    val bytes: Long?,
+    /** "JPG", "HEIC", "MP4": what's stored, which at Standard or HD is the re-encoded copy. */
+    val type: String? = null,
+    val quality: MediaQuality? = null,
+    /** The file as it was on the phone. */
+    val untouched: Boolean = false,
+)
 
 internal fun fileFacts(payload: PayloadDescriptor): FileFacts {
     val bytes = payload.bytesWritten?.takeIf { it > 0 }
+    val type = extensionForContentType(payload.contentType).takeIf { it != "bin" }?.uppercase()
     return when (val info = payload.descriptorInfo()) {
-        is DescriptorContent.ImageFile -> FileFacts(info.name, info.pixelWidth, info.pixelHeight, bytes)
-        is DescriptorContent.VideoFile -> FileFacts(info.name, info.widthPx.takeIf { it > 0 }, info.heightPx.takeIf { it > 0 }, bytes)
-        else -> FileFacts(null, null, null, bytes)
+        is DescriptorContent.ImageFile -> FileFacts(info.name, info.pixelWidth, info.pixelHeight, bytes, type, info.quality, info.original == true)
+        is DescriptorContent.VideoFile -> FileFacts(info.name, info.widthPx.takeIf { it > 0 }, info.heightPx.takeIf { it > 0 }, bytes, type, untouched = info.original == true)
+        else -> FileFacts(null, null, null, bytes, type)
     }
 }
 

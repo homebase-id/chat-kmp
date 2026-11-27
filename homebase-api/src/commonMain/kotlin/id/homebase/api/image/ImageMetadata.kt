@@ -42,6 +42,23 @@ data class ImageMetadata(
     val exposureTimeSeconds: Double? = null,
     val focalLengthMm: Double? = null,
     val iso: Int? = null,
+    /**
+     * Read alike on every platform: names trimmed, empty as null; the exposure bias in EV, any finite value; the
+     * exposure program (1..8), metering mode (1..6 or 255) and white balance (0 auto, 1 manual) as their EXIF codes,
+     * "not defined" and unknown codes as null; the flash as written (bit 0: it fired); [modifiedAt] from DateTime;
+     * the direction the camera faced in degrees, 0 until 360; the GPS horizontal error in metres, 0 or more.
+     */
+    val lensMake: String? = null,
+    val lensModel: String? = null,
+    val exposureBiasEv: Double? = null,
+    val exposureProgram: Int? = null,
+    val meteringMode: Int? = null,
+    val flash: Int? = null,
+    val whiteBalance: Int? = null,
+    val software: String? = null,
+    val modifiedAt: LocalDateTime? = null,
+    val imageDirectionDegrees: Double? = null,
+    val horizontalErrorMeters: Double? = null,
 ) {
     val location: MediaLocation?
         get() = if (latitude != null && longitude != null) MediaLocation(latitude, longitude, altitudeMeters) else null
@@ -124,3 +141,13 @@ internal fun parseExifUtcOffset(raw: String?): UtcOffset? {
         null
     }
 }
+
+// The rules every platform's reader applies to the fields of [ImageMetadata] after [ImageMetadata.iso], so they're
+// written once.
+internal fun exifName(raw: String?): String? = raw?.substringBefore('\u0000')?.trim()?.takeIf { it.isNotEmpty() }
+internal fun exifExposureBias(raw: Double?): Double? = raw?.takeIf { it.isFinite() }
+internal fun exifExposureProgram(raw: Int?): Int? = raw?.takeIf { it in 1..8 }
+internal fun exifMeteringMode(raw: Int?): Int? = raw?.takeIf { it in 1..6 || it == 255 }
+internal fun exifWhiteBalance(raw: Int?): Int? = raw?.takeIf { it == 0 || it == 1 }
+internal fun exifImageDirection(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it >= 0 && it < 360 }
+internal fun exifHorizontalError(raw: Double?): Double? = raw?.takeIf { it.isFinite() && it >= 0 }

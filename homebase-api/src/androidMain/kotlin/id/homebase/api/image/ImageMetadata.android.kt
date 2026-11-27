@@ -48,8 +48,23 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         focalLengthMm = positiveDouble(ExifInterface.TAG_FOCAL_LENGTH),
         // getAttributeInt gives up on a tag of several values; the attribute is them joined by commas.
         iso = getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)?.substringBefore(',')?.trim()?.toIntOrNull()?.takeIf { it > 0 },
+        lensMake = exifName(getAttribute(ExifInterface.TAG_LENS_MAKE)),
+        lensModel = exifName(getAttribute(ExifInterface.TAG_LENS_MODEL)),
+        exposureBiasEv = exifExposureBias(double(ExifInterface.TAG_EXPOSURE_BIAS_VALUE)),
+        exposureProgram = exifExposureProgram(int(ExifInterface.TAG_EXPOSURE_PROGRAM)),
+        meteringMode = exifMeteringMode(int(ExifInterface.TAG_METERING_MODE)),
+        flash = int(ExifInterface.TAG_FLASH),
+        whiteBalance = exifWhiteBalance(int(ExifInterface.TAG_WHITE_BALANCE)),
+        software = exifName(getAttribute(ExifInterface.TAG_SOFTWARE)),
+        modifiedAt = parseExifLocalDateTime(getAttribute(ExifInterface.TAG_DATETIME)),
+        imageDirectionDegrees = exifImageDirection(double(ExifInterface.TAG_GPS_IMG_DIRECTION)),
+        horizontalErrorMeters = exifHorizontalError(double(ExifInterface.TAG_GPS_H_POSITIONING_ERROR)),
     )
 }
 
-private fun ExifInterface.positiveDouble(tag: String): Double? =
-    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { it.isFinite() && it > 0 } else null
+private fun ExifInterface.double(tag: String): Double? =
+    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { !it.isNaN() } else null
+
+private fun ExifInterface.int(tag: String): Int? = if (hasAttribute(tag)) getAttributeInt(tag, -1).takeIf { it >= 0 } else null
+
+private fun ExifInterface.positiveDouble(tag: String): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }

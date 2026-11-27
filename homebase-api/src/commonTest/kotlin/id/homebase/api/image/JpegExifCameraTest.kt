@@ -22,6 +22,18 @@ class JpegExifCameraTest {
             assertEquals(400, exif.iso)
             assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
             assertEquals(LocalDateTime(2026, 1, 15, 15, 0, 0), exif.capturedAt)
+            assertEquals(CameraExifFixture.LENS_MAKE, exif.lensMake)
+            assertEquals(CameraExifFixture.LENS_MODEL, exif.lensModel)
+            assertEquals(-0.7, exif.exposureBiasEv)
+            assertEquals(2, exif.exposureProgram)
+            assertEquals(5, exif.meteringMode)
+            assertEquals(0x10, exif.flash)
+            assertEquals(0, exif.whiteBalance)
+            assertEquals(CameraExifFixture.SOFTWARE, exif.software)
+            assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), exif.modifiedAt)
+            assertEquals(123.4, exif.imageDirectionDegrees)
+            assertEquals(5.0, exif.horizontalErrorMeters)
+            assertNull(exif.latitude, "web reads no position: its uploads would record it")
         }
     }
 
@@ -43,17 +55,32 @@ class JpegExifCameraTest {
     @Test
     fun aRationalOfSeveralValuesIsUnknown() {
         // FNumber's count, the Exif IFD's second entry.
-        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.EXIF_AT + 2 + 12 + 4] = 2 }
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.exifCountAt(1)] = 2 }
 
         assertNull(assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).fNumber)
     }
 
     @Test
     fun aTagOfNoValuesIsUnknown() {
-        // ISO's count, the Exif IFD's third entry.
-        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.EXIF_AT + 2 + 24 + 4] = 0 }
+        // ISO's count, the Exif IFD's fourth entry.
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.exifCountAt(3)] = 0 }
 
         assertNull(assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).iso)
+    }
+
+    @Test
+    fun unknownCodesAndOutOfRangeValuesAreNull() {
+        // Metering mode 0 "unknown"; the program's count 0.
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also {
+            it[CameraExifFixture.exifCountAt(7) + 4] = 0
+            it[CameraExifFixture.exifCountAt(2)] = 0
+        }
+
+        val exif = assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff)))
+
+        assertNull(exif.meteringMode)
+        assertNull(exif.exposureProgram)
+        assertEquals(0x10, exif.flash)
     }
 
     @Test

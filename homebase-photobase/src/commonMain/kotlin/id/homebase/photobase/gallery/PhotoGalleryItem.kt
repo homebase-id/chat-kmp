@@ -21,13 +21,15 @@ data class PhotoGalleryItem(
     val motion: PayloadDescriptor? = null,
     /** Its local tags: the favourites' and its albums'. */
     val tags: Set<Uuid> = emptySet(),
-    /** Its header content, a [PhotoContent]: read only when asked for, see [location]. */
+    /** Its header content, a [PhotoContent]: read only when asked for, see [photoContent]. */
     val content: String? = null,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
 
     /** Where it was taken, from its header; parsed each call, so read it once. */
-    fun location(): MediaLocation? = parseRecord<PhotoContent>(content, "photo $fileId")?.location
+    fun photoContent(): PhotoContent? = parseRecord<PhotoContent>(content, "photo $fileId")
+
+    fun location(): MediaLocation? = photoContent()?.location
 
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload

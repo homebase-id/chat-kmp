@@ -13,6 +13,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlin.test.AfterTest
+import kotlin.time.Instant
+import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -21,11 +23,21 @@ class PhotoInfoViewModelTest {
     @AfterTest
     fun tearDown() = Dispatchers.resetMain()
 
-    private class Reader(val camera: suspend () -> ImageMetadata?, val place: () -> String?, override val mapsOnline: Boolean = true) : PhotoInfoReader {
+    private class Reader(
+        val camera: suspend () -> ImageMetadata?,
+        val place: () -> String?,
+        override val mapsOnline: Boolean = true,
+        val save: (PhotoEdit) -> Unit = {},
+    ) : PhotoInfoSource {
         var placeReads = 0
+        val saved = mutableListOf<PhotoEdit>()
         override suspend fun camera(item: PhotoGalleryItem) = camera()
         override suspend fun place(latitude: Double, longitude: Double): String? = place().also { placeReads++ }
         override suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray? = null
+        override suspend fun save(item: PhotoGalleryItem, edit: PhotoEdit) {
+            save(edit)
+            saved += edit
+        }
     }
 
     private fun item(content: String?) = galleryTestFile(1).let { it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = content))) }.toGalleryItem()!!
@@ -104,5 +116,60 @@ class PhotoInfoViewModelTest {
 
         assertNull(viewModel.uiState.value.fileId)
         assertEquals(2, cancelled, "the first photo's read when the second opened, the second's when the sheet closed")
+    }
+
+    @Test
+    fun aSavedTimeShowsAtOnceAtItsOffset() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val reader = Reader(camera = { null }, place = { null })
+        val viewModel = PhotoInfoViewModel(reader)
+        viewModel.show(item(located))
+        val at = Instant.parse("2026-01-15T06:00:00Z")
+
+        viewModel.save(PhotoEdit.Time(at, UtcOffset(hours = 9)))
+
+        assertEquals(listOf<PhotoEdit>(PhotoEdit.Time(at, UtcOffset(hours = 9))), reader.saved)
+        assertEquals(at.toEpochMilliseconds(), viewModel.uiState.value.capturedAtMs)
+        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.offsetByHand)
+        assertEquals(false, viewModel.uiState.value.saving)
+    }
+
+    @Test
+    fun aSavedPlaceIsLookedUpAgainAndARemovedOneIsGone() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val reader = Reader(camera = { null }, place = { "Tokyo" })
+        val viewModel = PhotoInfoViewModel(reader)
+        viewModel.show(item(null))
+
+        viewModel.save(PhotoEdit.Place(MediaLocation(35.68, 139.76)))
+        assertEquals(MediaLocation(35.68, 139.76), viewModel.uiState.value.location)
+        assertEquals(InfoPart.Read("Tokyo"), viewModel.uiState.value.place)
+
+        viewModel.save(PhotoEdit.Place(null))
+        assertNull(viewModel.uiState.value.location)
+    }
+
+    @Test
+    fun aFailedSaveSaysSoAndKeepsWhatWasShown() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }, save = { error("offline") }))
+        viewModel.show(item(located))
+        val before = viewModel.uiState.value.capturedAtMs
+
+        viewModel.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), UtcOffset.ZERO))
+
+        assertEquals(true, viewModel.uiState.value.saveFailed)
+        assertEquals(before, viewModel.uiState.value.capturedAtMs)
+        assertNull(viewModel.uiState.value.offsetByHand)
+    }
+
+    @Test
+    fun aTimeSetByHandIsReadFromTheHeader() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { null }))
+
+        viewModel.show(item("""{"v":1,"offsetSeconds":32400}"""))
+
+        assertEquals(UtcOffset(hours = 9), viewModel.uiState.value.offsetByHand)
     }
 }

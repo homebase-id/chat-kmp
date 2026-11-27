@@ -16,6 +16,16 @@ import platform.Foundation.NSNumber
 import platform.ImageIO.CGImageSourceCopyPropertiesAtIndex
 import platform.ImageIO.CGImageSourceRef
 import platform.ImageIO.kCGImagePropertyExifDateTimeOriginal
+import platform.ImageIO.kCGImagePropertyExifLensMake
+import platform.ImageIO.kCGImagePropertyExifLensModel
+import platform.ImageIO.kCGImagePropertyExifExposureBiasValue
+import platform.ImageIO.kCGImagePropertyExifExposureProgram
+import platform.ImageIO.kCGImagePropertyExifMeteringMode
+import platform.ImageIO.kCGImagePropertyExifFlash
+import platform.ImageIO.kCGImagePropertyExifWhiteBalance
+import platform.ImageIO.kCGImagePropertyTIFFSoftware
+import platform.ImageIO.kCGImagePropertyGPSImgDirection
+import platform.ImageIO.kCGImagePropertyGPSHPositioningError
 import platform.ImageIO.kCGImagePropertyExifDictionary
 import platform.ImageIO.kCGImagePropertyExifExposureTime
 import platform.ImageIO.kCGImagePropertyExifFNumber
@@ -123,11 +133,25 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
         focalLengthMm = exif?.positiveDouble(kCGImagePropertyExifFocalLength),
         iso = ((exif?.objectForKey(kCGImagePropertyExifISOSpeedRatings.ns) as? NSArray)?.firstObject as? NSNumber)
             ?.intValue?.takeIf { it > 0 },
+        lensMake = exifName(exif?.objectForKey(kCGImagePropertyExifLensMake.ns) as? String),
+        lensModel = exifName(exif?.objectForKey(kCGImagePropertyExifLensModel.ns) as? String),
+        exposureBiasEv = exifExposureBias(exif?.double(kCGImagePropertyExifExposureBiasValue)),
+        exposureProgram = exifExposureProgram(exif?.int(kCGImagePropertyExifExposureProgram)),
+        meteringMode = exifMeteringMode(exif?.int(kCGImagePropertyExifMeteringMode)),
+        flash = exif?.int(kCGImagePropertyExifFlash),
+        whiteBalance = exifWhiteBalance(exif?.int(kCGImagePropertyExifWhiteBalance)),
+        software = exifName(tiff?.objectForKey(kCGImagePropertyTIFFSoftware.ns) as? String),
+        modifiedAt = parseExifLocalDateTime(tiff?.objectForKey(kCGImagePropertyTIFFDateTime.ns) as? String),
+        imageDirectionDegrees = exifImageDirection(gps?.double(kCGImagePropertyGPSImgDirection)),
+        horizontalErrorMeters = exifHorizontalError(gps?.double(kCGImagePropertyGPSHPositioningError)),
     )
 }
 
-private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? =
-    (objectForKey(key.ns) as? NSNumber)?.doubleValue?.takeIf { it.isFinite() && it > 0 }
+private fun NSDictionary.double(key: CFStringRef?): Double? = (objectForKey(key.ns) as? NSNumber)?.doubleValue
+
+private fun NSDictionary.int(key: CFStringRef?): Int? = (objectForKey(key.ns) as? NSNumber)?.intValue
+
+private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? = double(key)?.takeIf { it.isFinite() && it > 0 }
 
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
 internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
