@@ -195,7 +195,7 @@ fun MomentMediaItem(
         payload.isImage() && enableZoom -> {
             val zoomSource = remember(
                 localContext.imageStandIn,
-                driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted,
+                driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted, peer,
             ) {
                 val localPath = localContext.localImageOnly(isEncrypted, ivPresent = payload.iv != null)
                 if (localPath != null) {
@@ -252,7 +252,7 @@ fun MomentMediaItem(
                 )
             } else {
                 val imageData =
-                    remember(driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted) {
+                    remember(driveId, fileId, payload.key, payload.lastModified, payload.iv != null, isEncrypted, peer) {
                         // A public post's payloads carry no IV: request the plain bytes, never an empty Box.
                         val payloadIv = payload.iv?.bytes
                         HomebaseImageData.from(
@@ -319,7 +319,7 @@ fun MomentMediaItem(
                     onProgress = { preloadProgress = it },
                 )
             }
-            val imageData = remember(driveId, fileId, payload.key, payload.lastModified, perPayloadKeyHeader, isEncrypted) {
+            val imageData = remember(driveId, fileId, payload.key, payload.lastModified, perPayloadKeyHeader, isEncrypted, peer) {
                 HomebaseImageData.from(
                     driveId = driveId,
                     fileId = fileId,

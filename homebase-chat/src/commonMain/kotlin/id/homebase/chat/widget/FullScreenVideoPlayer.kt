@@ -147,7 +147,8 @@ fun FullScreenVideoPlayer(
                                     data.driveId,
                                     data.fileId,
                                     data.payloadKey,
-                                    data.payload.lastModified
+                                    data.payload.lastModified,
+                                    data.peer,
                                 ) {
                                     HomebaseImageData.from(
                                         driveId = data.driveId,
@@ -158,6 +159,7 @@ fun FullScreenVideoPlayer(
                                         keyHeader = payloadIv
                                             ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
                                             ?: KeyHeader.empty(),
+                                        peer = data.peer,
                                     )
                                 }
                                 HomebaseImage(

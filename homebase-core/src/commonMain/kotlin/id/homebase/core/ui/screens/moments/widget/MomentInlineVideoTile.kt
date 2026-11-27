@@ -252,7 +252,7 @@ fun MomentInlineVideoTile(
             onProgress = { preloadProgress = it },
         )
     }
-    val imageData = remember(driveId, fileId, payload.key, payload.lastModified) {
+    val imageData = remember(driveId, fileId, payload.key, payload.lastModified, peer) {
         HomebaseImageData.from(
             driveId = driveId,
             fileId = fileId,
@@ -260,6 +260,7 @@ fun MomentInlineVideoTile(
             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                 ?: previewThumbnail,
             keyHeader = perPayloadKeyHeader,
+            peer = peer,
         )
     }
     val uploadBitmap = videoLocalContext?.thumbnailBytes?.let { bytes ->
