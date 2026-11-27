@@ -52,7 +52,8 @@ private fun ExportDestination.withSuffix(suffix: String): ExportDestination = wh
  *   (a [PayloadTooLargeException] propagates to the caller's fallback).
  * - [exportToTemp] — EXPORT intent: the payload is passing through to a file
  *   destination (save, share, external player). Streamed decrypt (~64 KB working
- *   set) at ANY size; kept in the payload cache only when the caller asks (a preview's cache = true).
+ *   set) at ANY size; served from the payload cache when it holds the payload, written to it only when the caller
+ *   asks (a preview's cache = true).
  *
  * Downloads are re-fetchable, therefore disposable: every destination is swept
  * scratch, never a durable location.
@@ -84,7 +85,7 @@ class PayloadDownloadService(
     /**
      * Stream-decrypt a payload into a reserved path at [destination] and return
      * the absolute path, or null when the payload 404s. Bounded memory for any
-     * payload size; bypasses the caches.
+     * payload size; reads a cached copy if there is one, writes none.
      */
     suspend fun exportToTemp(
         driveId: Uuid,

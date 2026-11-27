@@ -34,7 +34,10 @@ sealed interface PayloadLocation {
     }
 }
 
-/** Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. */
+/**
+ * Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Reads that show
+ * nothing still go around it: message text, clipboard copy, sticker send, the agent UI tree, Filesync's shared files.
+ */
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
@@ -149,10 +152,14 @@ class PayloadReader(
         keyHeader: KeyHeader,
         outputPath: String,
         cache: Boolean,
-    ): Boolean = if (payload.isHlsVideo) {
-        downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, payload.lastModified)
-    } else {
-        toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = payload.lastModified)
+    ): Boolean {
+        // Only a kept read is versioned: the player, preloader and seeds keep payloads under the plain key, which a save reuses.
+        val version = payload.lastModified.takeIf { cache }
+        return if (payload.isHlsVideo) {
+            downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, version)
+        } else {
+            toFile(at, payload.key, keyHeader, outputPath, cache, lastModified = version)
+        }
     }
 
     /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */

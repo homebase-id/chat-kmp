@@ -22,21 +22,19 @@ class ChatMessageHeaderFitTest {
 
     @Test
     fun `the longest message whose real header fits stays in the header`() = runTest {
-        ChatMessageSenderServiceTestFixture().use { fixture ->
-            val fileOps = DiskFileOperationsProvider()
+        ChatMessageSenderServiceTestFixture().use { fixture -> DiskFileOperationsProvider().use { fileOps ->
             val service = fixture.build(fileOps = fileOps)
 
             val built = service.buildMessageContentAndBundle(data(longestFitting), null, fileOps)
 
             assertEquals(header(longestFitting), built.headerContent)
             assertNull(built.payloadBundle)
-        }
+        } }
     }
 
     @Test
     fun `one byte past the real header goes to a payload`() = runTest {
-        ChatMessageSenderServiceTestFixture().use { fixture ->
-            val fileOps = DiskFileOperationsProvider()
+        ChatMessageSenderServiceTestFixture().use { fixture -> DiskFileOperationsProvider().use { fileOps ->
             val service = fixture.build(fileOps = fileOps)
 
             val built = service.buildMessageContentAndBundle(data(longestFitting + 1), null, fileOps)
@@ -44,6 +42,6 @@ class ChatMessageHeaderFitTest {
             assertNotEquals(header(longestFitting + 1), built.headerContent)
             assertTrue(built.payloadBundle!!.payloads.any { it.key == ChatProtocol.DefaultPayloadKey })
             assertTrue(HomebaseProtocol.fitsHeaderContent(built.headerContent))
-        }
+        } }
     }
 }

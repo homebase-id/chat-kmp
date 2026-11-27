@@ -265,7 +265,7 @@ class ChatMessageSenderServiceForwardTest {
         withThumb: Boolean = false,
     ) {
         val lookup = DbBackedLookup()
-        ChatMessageSenderServiceTestFixture().use { fixture ->
+        media.fileOps.use { ChatMessageSenderServiceTestFixture().use { fixture ->
             val service = fixture.build(
                 messageLookup = { _: DatabaseManager -> lookup },
                 encryptorOverride = media.encryptor,
@@ -281,7 +281,7 @@ class ChatMessageSenderServiceForwardTest {
 
             assertEquals(targets.size, forwarded.size)
             assertEquals(targets.size.toLong(), fixture.outboxRowCount())
-        }
+        } }
     }
 
     @Test

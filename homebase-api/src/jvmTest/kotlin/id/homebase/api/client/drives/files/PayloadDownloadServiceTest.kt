@@ -188,6 +188,25 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
+    fun `a save uses the copy the player kept, offline too`() = runTest {
+        val (keyHeader, plaintext) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val video = PayloadDescriptor(
+            key = key, contentType = "video/mp4", lastModified = 5,
+            descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
+        )
+        // The player keeps what it plays, under the payload's plain key.
+        assertTrue(service.exportPlayable(driveId, fileId, video.copy(lastModified = null), keyHeader, ExportDestination.Scratch("play_", ".mp4"), cache = true) != null)
+        val played = mockEngine.requestHistory.size
+        nextStatus = HttpStatusCode.ServiceUnavailable
+
+        val saved = assertNotNull(service.exportPlayable(driveId, fileId, video, keyHeader, ExportDestination.ShareOutbound(".mp4")))
+
+        assertContentEquals(plaintext, File(saved).readBytes())
+        assertEquals(played, mockEngine.requestHistory.size, "no download for a payload already on disk")
+    }
+
+    @Test
     fun `exportToTemp routes UploadTemp and Scratch destinations to their dirs`() = runTest {
         val (keyHeader, plaintext) = encryptedFixture(4_096)
 

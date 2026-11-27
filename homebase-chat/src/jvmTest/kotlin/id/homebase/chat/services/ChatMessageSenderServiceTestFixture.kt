@@ -334,9 +334,13 @@ internal fun testChatMessageSenderService(
     )
 }
 
-/** Real files under a temp dir, so a streamed export lands on disk as it does in the app. */
-internal class DiskFileOperationsProvider : FileOperationsProvider {
+/** Real files under a temp dir, so a streamed export lands on disk as it does in the app; [close] deletes them. */
+internal class DiskFileOperationsProvider : FileOperationsProvider, AutoCloseable {
     private val dir: String = java.nio.file.Files.createTempDirectory("hb-chat-fwd").toString()
+
+    override fun close() {
+        java.io.File(dir).deleteRecursively()
+    }
     val inMemoryWrites = mutableListOf<String>()
     override fun getCacheDirectory() = dir
     override fun openFileInput(path: String) = error("not used")
