@@ -53,6 +53,7 @@ import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.mediaSource
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
@@ -479,21 +480,6 @@ private fun PostLinkPreview(
         modifier = modifier,
         imageMaxHeight = feedMediaMaxHeight(),
     )
-}
-
-internal class PostMediaSource(val driveId: Uuid, val peer: PeerFileRef?)
-
-// A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
-// reads over peer by globalTransitId; our own posts stay on the local driveId.
-internal fun FeedPostItem.mediaSource(): PostMediaSource {
-    val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
-    val sender = senderOdinId
-    val gtid = globalTransitId
-    return if (sender != null && gtid != null && channelDriveAlias != null) {
-        PostMediaSource(channelDriveAlias, PeerFileRef(sender, gtid))
-    } else {
-        PostMediaSource(driveId, null)
-    }
 }
 
 @Composable

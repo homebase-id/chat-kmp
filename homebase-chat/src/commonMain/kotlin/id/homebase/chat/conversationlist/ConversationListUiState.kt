@@ -354,7 +354,6 @@ sealed interface FullScreenOverlay {
         val selectedPayloadKey: String,
         /** False for a public feed post: plaintext payloads, no per-payload IV. */
         val isEncrypted: Boolean = true,
-        /** Set to read the payloads from a followed identity's drive; null for our own. */
         val peer: PeerFileRef? = null,
         /** A Live or motion photo's clip payload, by its still's payload key: played when the photo opens. */
         val motionClips: Map<String, PayloadDescriptor> = emptyMap(),
@@ -403,7 +402,6 @@ sealed interface FullScreenOverlay {
         val uploadMessageId: Uuid? = null,
         /** False for a public feed post: plaintext payload, no per-payload IV. */
         val isEncrypted: Boolean = true,
-        /** Set for a followed identity's post: playback reads the author's drive. */
         val peer: PeerFileRef? = null,
         /** Where the decrypted MP4 temp goes; view-once keeps its own so the startup sweep can reap it. */
         val scratchSub: String = AppCacheDirs.EXPORT,

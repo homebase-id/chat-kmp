@@ -832,10 +832,10 @@ private fun MomentCommentsMediaBand(
                         mutableStateOf(true)
                     }
                     MomentInlineVideoTile(
-                        peer = null,
                         payload = targetPayload,
                         fileId = moment.fileId,
                         driveId = moment.driveId,
+                        peer = null,
                         keyHeader = moment.keyHeader,
                         previewThumbnail = moment.previewThumbnail,
                         isUploading = false,
@@ -853,10 +853,10 @@ private fun MomentCommentsMediaBand(
                     // Reuse the gallery's single-payload (fit-to-content) layout
                     // so the whole image is visible, just like the video branch.
                     MomentMediaGallery(
-                        peer = null,
                         payloads = listOf(targetPayload),
                         fileId = moment.fileId,
                         driveId = moment.driveId,
+                        peer = null,
                         previewThumbnail = moment.previewThumbnail,
                         keyHeader = moment.keyHeader,
                         isEncrypted = moment.isEncrypted,
@@ -1169,10 +1169,10 @@ private fun MomentPostCard(
                     val aspect = (aspectRatioFor(singleVideoPayload) ?: 1f)
                         .coerceAtMost(MaxFeedMediaAspect)
                     MomentInlineVideoTile(
-                        peer = null,
                         payload = singleVideoPayload,
                         fileId = moment.fileId,
                         driveId = moment.driveId,
+                        peer = null,
                         keyHeader = moment.keyHeader,
                         previewThumbnail = moment.previewThumbnail,
                         isUploading = uploadStatus != null,
@@ -1193,10 +1193,10 @@ private fun MomentPostCard(
                     )
                 } else {
                     MomentMediaGallery(
-                        peer = null,
                         payloads = moment.payloads,
                         fileId = moment.fileId,
                         driveId = moment.driveId,
+                        peer = null,
                         previewThumbnail = moment.previewThumbnail,
                         keyHeader = moment.keyHeader,
                         isEncrypted = moment.isEncrypted,

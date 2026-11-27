@@ -1708,10 +1708,10 @@ private fun MomentDetailContent(
                         // without a native-controls layer that would swallow
                         // the panel tap. Autoplay + the mute button remain.
                         MomentInlineVideoTile(
-                            peer = null,
                             payload = payload,
                             fileId = moment.fileId,
                             driveId = moment.driveId,
+                            peer = null,
                             keyHeader = moment.keyHeader,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: moment.previewThumbnail,
@@ -1739,10 +1739,10 @@ private fun MomentDetailContent(
                         )
                     } else {
                         MomentMediaItem(
-                            peer = null,
                             payload = payload,
                             fileId = moment.fileId,
                             driveId = moment.driveId,
+                            peer = null,
                             previewThumbnail = moment.previewThumbnail,
                             keyHeader = moment.keyHeader,
                             isEncrypted = moment.isEncrypted,

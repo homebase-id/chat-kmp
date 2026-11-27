@@ -56,10 +56,12 @@ data class HomebaseImageData(
     val payloadIsUntouchedFile: Boolean = false,
     /** Set with [forGridTile]: a looser allowance, and never the payload. */
     val gridTile: Boolean = false,
-    /** Set to fetch a followed identity's media from their drive; null for our own. */
     val peer: PeerFileRef? = null,
 ) {
     val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, peer)
+
+    // Peer images share driveId/fileId space with ours, so a cache key names the author too.
+    val peerKeyPrefix: String get() = peer?.let { "${it.odinId}@" }.orEmpty()
 
     companion object {
         /** Create data for a pending (not yet uploaded) image */

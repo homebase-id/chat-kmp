@@ -25,9 +25,6 @@ class HomebaseImageKeyer : Keyer<HomebaseImageData> {
         fun thumbnailCacheKey(data: HomebaseImageData): String =
             "homebase/${identity(data)}${data.driveId}/${data.fileId}/${data.payloadKey}/thumb/${data.lastModified ?: 0}"
 
-        // Peer images share driveId/fileId space with local ones, so the author identity must be in
-        // the key or an over-peer variant would collide with a same-id local entry. Empty for local.
-        private fun identity(data: HomebaseImageData): String =
-            data.peer?.odinId?.let { "$it@" } ?: ""
+        private fun identity(data: HomebaseImageData): String = data.peerKeyPrefix
     }
 }

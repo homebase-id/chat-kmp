@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.moments.widget
 
 import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.chat.widget.video.VideoPreloadEffect
+import id.homebase.chat.widget.video.toVideoData
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -191,17 +192,17 @@ fun MomentInlineVideoTile(
     val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
         KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
     }
-    val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, peer) {
-        VideoPlayerData(
+    val fullScreenData = remember(fileId, driveId, perPayloadKeyHeader, payload, peer) {
+        FullScreenOverlay.VideoPlayerData(
             fileId = fileId,
             driveId = driveId,
             payloadKey = payload.key,
             keyHeader = perPayloadKeyHeader,
-            descriptorContent = payload.descriptorContent,
+            payload = payload,
             peer = peer,
-            contentType = payload.contentType,
         )
     }
+    val videoPlayerData = remember(fullScreenData) { fullScreenData.toVideoData() }
     val videoDescriptor = remember(payload.descriptorContent) {
         payload.descriptorInfo() as? DescriptorContent.VideoFile
     }
@@ -349,16 +350,6 @@ fun MomentInlineVideoTile(
         // sits at the bottom of the stack; the thumbnail above covers it
         // until the first decoded frame is on screen.
         if (isPlaying) {
-            val fullScreenData = remember(videoPlayerData, payload) {
-                FullScreenOverlay.VideoPlayerData(
-                    fileId = videoPlayerData.fileId,
-                    driveId = videoPlayerData.driveId,
-                    payloadKey = videoPlayerData.payloadKey,
-                    keyHeader = videoPlayerData.keyHeader,
-                    payload = payload,
-                    peer = videoPlayerData.peer,
-                )
-            }
             VideoPlayerSurface(
                 data = fullScreenData,
                 modifier = Modifier

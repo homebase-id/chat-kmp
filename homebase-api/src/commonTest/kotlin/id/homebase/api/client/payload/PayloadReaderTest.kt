@@ -41,7 +41,7 @@ class PayloadReaderTest {
     private val body = ByteArray(64) { it.toByte() }
 
     private val own = PayloadLocation.Own(driveId, fileId)
-    private val peers = PayloadLocation.Peer(peer, driveId, globalTransitId)
+    private val peers = PayloadLocation.Peer(PeerFileRef(peer, globalTransitId), driveId)
 
     private val requests = mutableListOf<String>()
     private val written = mutableMapOf<String, ByteArray>()

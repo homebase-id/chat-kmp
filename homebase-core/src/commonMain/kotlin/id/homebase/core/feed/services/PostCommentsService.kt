@@ -201,9 +201,9 @@ class PostCommentsService(
     // Brokered through our own server with the author as ownerOdinId. Comments are the Comment file system
     // (fileType 801), selected by the X-ODIN-FILE-SYSTEM-TYPE header.
     private suspend fun loadPeerComments(post: FeedPostItem, state: PerPostState) {
-        val author = post.senderOdinId ?: return
-        val gtid = post.globalTransitId ?: return
-        val channelDrive = runCatching { Uuid.parse(post.channelId) }.getOrNull() ?: return
+        val source = post.mediaSource()
+        val (author, gtid) = source.peer ?: return
+        val channelDrive = source.driveId
 
         val seenGroupIds = mutableSetOf(gtid)
         var roundGroupIds = listOf(gtid)
