@@ -189,6 +189,25 @@ class PayloadDownloadServiceTest {
     }
 
     @Test
+    fun `a kept preview of a payload overwritten in the same millisecond opens the new one`() = runTest {
+        val preview = ExportDestination.UploadTemp("share_", ".mp4")
+        fun video(uid: Long) = PayloadDescriptor(
+            key = key, contentType = "video/mp4", lastModified = 7, uid = uid,
+            descriptorContent = """{"mimeType":"video/mp4","isSegmented":false}""",
+        )
+        val (firstKey, first) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        assertContentEquals(first, File(assertNotNull(service.exportPlayable(driveId, fileId, video(100), firstKey, preview, cache = true))).readBytes())
+
+        // Overwritten under its key (AppendOrOverwrite): a new uid, the same lastModified.
+        val (secondKey, second) = encryptedFixture(50_000)
+        nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
+        val reopened = assertNotNull(service.exportPlayable(driveId, fileId, video(200), secondKey, preview, cache = true))
+
+        assertContentEquals(second, File(reopened).readBytes())
+    }
+
+    @Test
     fun `a save uses the copy the player kept, offline too`() = runTest {
         val (keyHeader, plaintext) = encryptedFixture(50_000)
         nextHeaders = headersOf(HttpHeaders.ContentLength to listOf("${nextBody.size}"))
