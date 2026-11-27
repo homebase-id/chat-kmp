@@ -124,8 +124,7 @@ class PhotoDayIndex(
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            // A photo timed by hand may have left a day this change doesn't name, perhaps after several edits while this
-            // device was away: counted again in full. Rare, so the cost of a full count each time it changes is fine.
+            // A photo timed by hand may have left a day this change doesn't name: rare, so counted again in full.
             if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timedByHand() }) return@orCountAgainLater rebuild()
             // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
             // its earliest and latest photo settle each one's day without a lookup per photo.

@@ -52,9 +52,10 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-/** The open photo, followed from the time [fromMs] it had to its new day. */
-data class Moving(val fileId: Uuid, val fromMs: Long)
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 
 data class PhotoGalleryUiState(
     /** Records the running drive sync has brought in so far, or null when it isn't running. The grid may already show what's held. */
@@ -64,8 +65,6 @@ data class PhotoGalleryUiState(
     val newestFirst: Boolean = true,
     /** The photo open full screen; by id, so photos arriving while it's open don't move it. */
     val openedFileId: Uuid? = null,
-    /** The open photo and the time it's changing to: gone from its day, it's on its way to another, not deleted. */
-    val moving: Moving? = null,
     /** The days whose headers are read, by day, newest first within each. */
     val loaded: Map<Int, List<PhotoGalleryItem>> = emptyMap(),
     val countFailed: Boolean = false,
@@ -106,11 +105,8 @@ sealed interface PhotoGalleryUiAction {
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
 
-    /** The open photo's time changed from [fromMs] to [toMs]: the viewer follows it to its new day. */
-    data class Moved(val fileId: Uuid, val fromMs: Long, val toMs: Long) : PhotoGalleryUiAction
-
-    /** Followed too long: it isn't coming. */
-    data object StopFollowing : PhotoGalleryUiAction
+    /** The open photo's time was saved as [toMs]: once it's on its new day, it opens there. */
+    data class Moved(val fileId: Uuid, val toMs: Long) : PhotoGalleryUiAction
     /** A long press, or a tap while selecting. */
     data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
     /** All of a day's photos, or none if all are picked. */
@@ -249,6 +245,30 @@ class PhotoGalleryViewModel(
         }
     }
 
+    // A photo whose time was saved leaves its day, and the viewer closes as for any gone photo: it opens again once
+    // its new day is counted and holds it, read here rather than waiting for the grid to ask. A while at most: one
+    // deleted meanwhile never comes.
+    private var reopening: Job? = null
+
+    private fun reopen(fileId: Uuid, toMs: Long) {
+        reopening?.cancel()
+        reopening = viewModelScope.launch(reading) {
+            withTimeoutOrNull(REOPEN_WITHIN) {
+                val day = dayOf(toMs) ?: return@withTimeoutOrNull
+                while (true) {
+                    if ((library.value?.countOf(day) ?: 0) > 0) {
+                        val photos = source.photosOnDays(day, day)[day].orEmpty()
+                        if (photos.any { it.fileId == fileId && it.capturedAtMs == toMs }) {
+                            _uiState.update { it.copy(loaded = it.loaded + (day to photos), openedFileId = fileId) }
+                            return@withTimeoutOrNull
+                        }
+                    }
+                    delay(REOPEN_POLL)
+                }
+            }
+        }
+    }
+
     fun onAction(action: PhotoGalleryUiAction) {
         when (action) {
             PhotoGalleryUiAction.Refresh -> {
@@ -259,18 +279,9 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
-            // Seen at any time but the one it left, it has moved: following it is done.
-            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId, moving = it.moving?.takeIf { m -> m.fileId == action.item.fileId && action.item.capturedAtMs == m.fromMs }) }
-            PhotoGalleryUiAction.StopFollowing -> _uiState.update { it.copy(moving = null) }
-            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null, moving = null) }
-            is PhotoGalleryUiAction.Moved -> {
-                // Set at once, before a sync can take it off its old day; dropped when it isn't the open photo.
-                _uiState.update { it.copy(moving = Moving(action.fileId, action.fromMs).takeIf { _ -> it.openedFileId == action.fileId }) }
-                viewModelScope.launch {
-                    val day = dayOf(action.toMs) ?: return@launch
-                    if (_uiState.value.moving?.fileId == action.fileId) window.value = Window(day, day)
-                }
-            }
+            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
+            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null) }
+            is PhotoGalleryUiAction.Moved -> reopen(action.fileId, action.toMs)
             is PhotoGalleryUiAction.ToggleSelected -> _uiState.update { state ->
                 state.copy(selected = if (action.fileId in state.selected) state.selected - action.fileId else state.selected + action.fileId)
             }
@@ -493,6 +504,8 @@ class PhotoGalleryViewModel(
     }
 
     private companion object {
+        val REOPEN_WITHIN = 30.seconds
+        val REOPEN_POLL = 1.seconds
         // The view model is made when the gallery opens, so counting starts then, not a frame later when the screen
         // first collects; after that, WhileSubscribed's 5 s.
         val FromOpeningWhileShown = SharingStarted { subscribers ->

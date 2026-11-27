@@ -14,6 +14,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
@@ -133,7 +134,8 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
     val typed = typedLocation(latitude, longitude)?.takeIf { it.movedFrom(at) }
     // Derived, so a pan frame doesn't recompose the dialog: the point itself is read on Save.
     // Moved off it, not just zoomed: a save marks the place as set by hand and drops the camera's GPS details.
-    val canSave by remember(source.mapsOnline) { derivedStateOf { source.mapsOnline && camera.isUserPositioned && camera.pickedPoint()?.let { it.movedFrom(at) } == true } }
+    val current by rememberUpdatedState(at)
+    val canSave by remember(source.mapsOnline) { derivedStateOf { source.mapsOnline && camera.isUserPositioned && camera.pickedPoint()?.movedFrom(current) == true } }
     val chosen = { if (source.mapsOnline) camera.pickedPoint()?.takeIf { camera.isUserPositioned } else typed }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -171,13 +173,14 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
 @Composable
 private fun PlacePicker(at: MediaLocation?, source: PhotoInfoSource, camera: MapCameraState, modifier: Modifier) {
     val scope = rememberCoroutineScope()
+    val current by rememberUpdatedState(at)
     val pinAddress = remember { PinAddress(scope) { lat, lon -> source.address(lat, lon) } }
     val address by pinAddress.state.collectAsStateWithLifecycle()
     // The world, with no place yet: its middle means nothing until the map is moved.
     val box = remember(at) { at?.let { WebMercator.latLonToUnit(it.latitude, it.longitude) }?.let { (x, y) -> mapBox(x, y) } ?: WORLD }
     LaunchedEffect(camera) {
         snapshotFlow { camera.centerUnit }.filterNotNull().collect {
-            if (at != null || camera.isUserPositioned) camera.pickedPoint()?.let { pinAddress.moved(it.latitude, it.longitude) }
+            if (current != null || camera.isUserPositioned) camera.pickedPoint()?.let { pinAddress.moved(it.latitude, it.longitude) }
         }
     }
     var acquiring by remember { mutableStateOf(false) }

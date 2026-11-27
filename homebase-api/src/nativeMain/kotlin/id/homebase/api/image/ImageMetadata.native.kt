@@ -187,11 +187,6 @@ private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? = double(key
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
 internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
 
-/**
- * ImageIO reads a UNICODE UserComment big-endian whatever the file's order, and keeps a JIS one the shared rule drops:
- * a JPEG's comes from the shared reader, from [bytes], all of it or its head. Asked only when ImageIO found one, on
- * both of iOS's paths, so they agree and a backup reads no more of each photo.
- */
+// ImageIO reads a UNICODE comment big-endian whatever the file says, and keeps a JIS one: a JPEG's is the shared reader's.
 internal fun ImageMetadata.withJpegComment(bytes: ByteArray): ImageMetadata =
-    // ImageIO's own where the shared reader can't reach it, past the bytes given or behind a broken IFD.
     if (jpegExifLittleEndian(bytes) != null) copy(userComment = readJpegExifCamera(bytes)?.userComment ?: userComment.takeUnless { jpegExifCommentIsJis(bytes) }) else this

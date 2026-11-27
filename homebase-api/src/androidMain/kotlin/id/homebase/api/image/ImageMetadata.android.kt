@@ -72,8 +72,8 @@ internal fun ExifInterface.toImageMetadata(littleEndian: () -> Boolean?): ImageM
         userComment = exifUserComment(getAttributeBytes(ExifInterface.TAG_USER_COMMENT), littleEndian),
         bodySerial = exifName(getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER)),
         lensSerial = exifName(getAttribute(ExifInterface.TAG_LENS_SERIAL_NUMBER)),
-        // Its own parse rolls an invalid date over: the shared rule's instead. getAttribute gives the time as "HH:mm:ss".
-        gpsTime = exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), getAttribute(ExifInterface.TAG_GPS_TIMESTAMP)),
+        // The raw rationals: getAttribute writes a 0/0 part as "00", a real-looking time the other platforms reject.
+        gpsTime = gpsTimeStamp(littleEndian)?.let { (h, m, s) -> exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), h, m, s) },
         speedKmh = exifSpeedKmh(double(ExifInterface.TAG_GPS_SPEED), getAttribute(ExifInterface.TAG_GPS_SPEED_REF)),
     )
 }
@@ -84,3 +84,12 @@ private fun ExifInterface.double(tag: String): Double? =
 private fun ExifInterface.int(tag: String): Int? = if (hasAttribute(tag)) getAttributeInt(tag, -1).takeIf { it >= 0 } else null
 
 private fun ExifInterface.positiveDouble(tag: String): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }
+
+// Three RATIONALs, in the file's byte order (a guess when unknown: these are small numbers, so it shows); null for x/0.
+private fun ExifInterface.gpsTimeStamp(littleEndian: () -> Boolean?): Triple<Double, Double, Double>? {
+    val raw = getAttributeBytes(ExifInterface.TAG_GPS_TIMESTAMP)?.takeIf { it.size == 24 } ?: return null
+    val le = littleEndian() ?: (raw[0].toInt() != 0 || raw[3].toInt() == 0)
+    fun u32(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((raw[at + i].toLong() and 0xFF) shl (8 * if (le) i else 3 - i)) }
+    val parts = (0 until 3).map { i -> u32(i * 8).toDouble() / u32(i * 8 + 4).takeIf { it != 0L }?.toDouble().let { it ?: return null } }
+    return Triple(parts[0], parts[1], parts[2])
+}

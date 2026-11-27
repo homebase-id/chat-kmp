@@ -96,6 +96,7 @@ class PhotoGalleryViewModelTest {
         driveState: MutableStateFlow<DriveState?> = MutableStateFlow(DriveState.Completed()),
         mover: PhotoMover = noMover(),
         gallery: PhotoGallery = PhotoGallery.Library,
+        dayOf: suspend (Long) -> Int? = { null },
     ): Pair<PhotoGalleryViewModel, Job> {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         library.publish()
@@ -107,6 +108,7 @@ class PhotoGalleryViewModelTest {
             libraryDays = library.counts.filterNotNull(),
             touchedDays = library.touched,
             reading = StandardTestDispatcher(testScheduler),
+            dayOf = dayOf,
         )
         // The screen collects the days while it's shown.
         val screen = launch { viewModel.library.collect { } }
@@ -172,6 +174,28 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(listOf(9..9), library.asked, "only the held day touched")
         assertEquals(replacement, viewModel.uiState.value.loaded.getValue(9).first())
+        screen.cancel()
+    }
+
+    @Test
+    fun aPhotoWhoseTimeWasSavedOpensAgainOnItsNewDay() = runTest {
+        val library = Library(1..10, perDay = 3)
+        val (viewModel, screen) = viewModel(library, dayOf = { (it / DAY_MS).toInt() })
+        val photo = library.photos.getValue(9).first()
+        viewModel.onAction(PhotoGalleryUiAction.Open(photo))
+        val toMs = 30 * DAY_MS + 5
+
+        viewModel.onAction(PhotoGalleryUiAction.Moved(photo.fileId, toMs))
+        // The viewer closed as it left day 9; then the sync brings it on day 30.
+        viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
+        library.photos[9] = library.photos.getValue(9).drop(1)
+        library.photos[30] = listOf(photo.copy(capturedAtMs = toMs))
+        library.publish()
+        advanceTimeBy(2_000)
+        runCurrent()
+
+        assertEquals(photo.fileId, viewModel.uiState.value.openedFileId)
+        assertEquals(toMs, viewModel.uiState.value.loaded.getValue(30).single().capturedAtMs)
         screen.cancel()
     }
 

@@ -310,7 +310,7 @@ fun PhotoGalleryScreen(
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
             editable = gallery != PhotoGallery.Bin,
-            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, item.capturedAtMs, at.toEpochMilliseconds())) },
+            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, at.toEpochMilliseconds())) },
             onDismiss = { infoOn = null },
         )
     }
@@ -331,7 +331,6 @@ fun PhotoGalleryScreen(
                         onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { source != null },
                         motionReplay = motionReplay,
                         onReplay = { motionReplay += 1 },
-                        moving = uiState.moving,
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -373,7 +372,6 @@ private fun GalleryViewer(
     onInfo: ((PhotoGalleryItem) -> Unit)?,
     motionReplay: Int,
     onReplay: () -> Unit,
-    moving: Moving?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -386,15 +384,7 @@ private fun GalleryViewer(
     val showUI = remember { mutableStateOf(true) }
     // The day and slot of a page whose day is still being read: when it arrives, that photo becomes the open one.
     val awaiting = remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    val following = rememberUpdatedState(moving)
-    // A photo that never turns up on its new day, deleted meanwhile, closes the viewer as any gone photo does.
-    LaunchedEffect(moving) {
-        if (moving != null) {
-            delay(FOLLOW_MS)
-            onAction(PhotoGalleryUiAction.StopFollowing)
-        }
-    }
-    LaunchedEffect(layout, loaded, moving) {
+    LaunchedEffect(layout, loaded) {
         if (layout.photoCount == 0) {
             close()
             return@LaunchedEffect
@@ -412,22 +402,15 @@ private fun GalleryViewer(
             // Photos arriving above the open one would otherwise leave the pager on a different photo.
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
             val at = opened?.let { layout.photoOf(it, loaded) }
-            val followed = moving?.takeIf { it.fileId == opened }
             if (at == null) {
-                // Its time changed: its new day is still being read, so it isn't taken for deleted; paging goes on.
-                if (followed == null) {
-                    close()
-                    return@LaunchedEffect
-                }
-            } else {
-                if (at != pagerState.settledPage) pagerState.scrollToPage(at)
-                if (followed != null) layout.photoAt(at, loaded)?.takeIf { it.capturedAtMs != followed.fromMs }?.let { onAction(PhotoGalleryUiAction.Open(it)) }
+                close()
+                return@LaunchedEffect
             }
+            if (at != pagerState.settledPage) pagerState.scrollToPage(at)
         }
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val place = layout.locate(page)
-            // Following the open photo to its new day: that day is the one to read, not the page it left.
-            if (following.value?.fileId != opened) onAction(PhotoGalleryUiAction.Showing(place.first, place.first))
+            onAction(PhotoGalleryUiAction.Showing(place.first, place.first))
             val item = layout.photoAt(page, loaded)
             awaiting.value = if (item == null) place else null
             onUnreadPage(awaiting.value)
@@ -988,5 +971,3 @@ private fun PhotoCell(
         if (selecting) SelectionMark(selected, MaterialTheme.colorScheme.inverseOnSurface, Modifier.align(Alignment.TopStart).padding(4.dp).size(22.dp))
     }
 }
-
-private const val FOLLOW_MS = 30_000L
