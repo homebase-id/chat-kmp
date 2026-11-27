@@ -58,6 +58,8 @@ class LocationPreviewProvider(
          * geocoding) — skips the Nominatim round-trip entirely. Blank/null ⇒ resolve here.
          */
         knownAddress: String? = null,
+        /** False: not kept in the cache, for an address the caller made up. */
+        keep: Boolean = true,
     ): LocationPreview {
         cache[CacheKey(lat, lon, zoom)]?.let { return it }
 
@@ -90,7 +92,7 @@ class LocationPreviewProvider(
         )
         // Only cache successful image fetches — if the map service is temporarily down we want
         // the next attempt to retry instead of being stuck with a coords-only preview.
-        if (pngBytes != null) cache[CacheKey(lat, lon, zoom)] = preview
+        if (pngBytes != null && keep) cache[CacheKey(lat, lon, zoom)] = preview
         return preview
     }
 

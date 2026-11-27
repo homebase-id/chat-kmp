@@ -53,6 +53,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class Moving(val fileId: Uuid, val toMs: Long)
+
 data class PhotoGalleryUiState(
     /** Records the running drive sync has brought in so far, or null when it isn't running. The grid may already show what's held. */
     val syncedSoFar: Int? = null,
@@ -61,6 +63,8 @@ data class PhotoGalleryUiState(
     val newestFirst: Boolean = true,
     /** The photo open full screen; by id, so photos arriving while it's open don't move it. */
     val openedFileId: Uuid? = null,
+    /** The open photo and the time it's changing to: gone from its day, it's on its way to another, not deleted. */
+    val moving: Moving? = null,
     /** The days whose headers are read, by day, newest first within each. */
     val loaded: Map<Int, List<PhotoGalleryItem>> = emptyMap(),
     val countFailed: Boolean = false,
@@ -100,6 +104,9 @@ sealed interface PhotoGalleryUiAction {
     /** Tapped in the grid, or swiped to in the viewer. */
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
+
+    /** Its time changed to [userDateMs]: the viewer follows it to its new day. */
+    data class Moved(val fileId: Uuid, val userDateMs: Long) : PhotoGalleryUiAction
     /** A long press, or a tap while selecting. */
     data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
     /** All of a day's photos, or none if all are picked. */
@@ -138,6 +145,7 @@ class PhotoGalleryViewModel(
     touchedDays: Flow<Map<Int, List<HomebaseFile>>?> = emptyFlow(),
     countFailed: Flow<Boolean> = flowOf(false),
     private val recount: suspend () -> Unit = {},
+    private val dayOf: suspend (userDateMs: Long) -> Int? = { null },
     // One at a time, off Main: the first screen's composing mustn't hold up reading it. Owns counted and stale.
     private val reading: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
@@ -247,8 +255,13 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
-            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
-            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null) }
+            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId, moving = it.moving?.takeIf { m -> m.fileId == action.item.fileId && action.item.capturedAtMs != m.toMs }) }
+            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null, moving = null) }
+            is PhotoGalleryUiAction.Moved -> viewModelScope.launch {
+                val day = dayOf(action.userDateMs) ?: return@launch
+                _uiState.update { it.copy(moving = Moving(action.fileId, action.userDateMs)) }
+                window.value = Window(day, day)
+            }
             is PhotoGalleryUiAction.ToggleSelected -> _uiState.update { state ->
                 state.copy(selected = if (action.fileId in state.selected) state.selected - action.fileId else state.selected + action.fileId)
             }

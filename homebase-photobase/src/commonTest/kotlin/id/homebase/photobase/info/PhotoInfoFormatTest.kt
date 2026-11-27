@@ -140,6 +140,14 @@ class PhotoInfoFormatTest {
     }
 
     @Test
+    fun aFileSavedSecondsAfterItWasTakenWasntEdited() {
+        val taken = LocalDateTime(2026, 1, 15, 15, 0, 0)
+
+        assertEquals(false, savedLater(taken, LocalDateTime(2026, 1, 15, 15, 0, 2)))
+        assertEquals(true, savedLater(taken, LocalDateTime(2026, 1, 16, 9, 0, 0)))
+    }
+
+    @Test
     fun aTypedLocationMustBeOnEarth() {
         assertEquals(MediaLocation(35.68, 139.76), typedLocation(" 35.68 ", "139.76"))
         assertNull(typedLocation("91", "0"))

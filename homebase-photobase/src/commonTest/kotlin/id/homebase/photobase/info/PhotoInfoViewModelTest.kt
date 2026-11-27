@@ -233,4 +233,17 @@ class PhotoInfoViewModelTest {
 
         assertEquals(MediaLocation(48.85, 2.35), viewModel.uiState.value.location)
     }
+
+    @Test
+    fun aChangeMadeElsewhereWhileOpenShows() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val viewModel = PhotoInfoViewModel(Reader(camera = { null }, place = { "Paris" }))
+        val photo = item(located)
+        viewModel.show(photo)
+
+        viewModel.refresh(photo.copy(changedAtMs = photo.changedAtMs + 1, content = """{"v":1,"latitude":48.85,"longitude":2.35}"""))
+
+        assertEquals(MediaLocation(48.85, 2.35), viewModel.uiState.value.location)
+        assertEquals("Paris", viewModel.uiState.value.place.address())
+    }
 }

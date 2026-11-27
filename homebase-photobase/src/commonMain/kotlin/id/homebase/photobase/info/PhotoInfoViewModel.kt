@@ -63,8 +63,8 @@ class DrivePhotoInfoSource(
     // The name asked first, where a network failure throws: getLocationPreview falls back to the coordinates unsaid.
     override suspend fun preview(latitude: Double, longitude: Double): LocationPreview {
         val name = places.reverseGeocode(latitude, longitude)
-        // Its coordinates as the known name, as the provider would have it: the preview is cached for everyone.
-        val preview = places.getLocationPreview(latitude, longitude, knownAddress = name ?: coordinates(MediaLocation(latitude, longitude)))
+        // With no name, not kept: the provider's cache is everyone's, and a name it never looked up mustn't be in it.
+        val preview = places.getLocationPreview(latitude, longitude, knownAddress = name ?: coordinates(MediaLocation(latitude, longitude)), keep = name != null)
         return if (name == null) preview.copy(address = "") else preview
     }
 
@@ -136,9 +136,21 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource) : ViewModel() {
         lookUpPlace(item.fileId, shown.location)
     }
 
-    /** The gallery's newer copy of the photo shown, so a save is stamped with the header it changes. */
+    /**
+     * The gallery's newer copy of the photo shown, so a save is stamped with the header it changes; a change made
+     * elsewhere shows at once, while one of ours still waiting to sync keeps showing.
+     */
     fun refresh(item: PhotoGalleryItem) {
-        if (this.item?.fileId == item.fileId) this.item = item
+        val held = this.item?.takeIf { it.fileId == item.fileId } ?: return
+        this.item = item
+        if (item.changedAtMs <= held.changedAtMs || _uiState.value.saving) return
+        val ours = saved[item.fileId]
+        if (ours != null && item.changedAtMs <= ours.first) return
+        saved.remove(item.fileId)
+        val facts = item.headerFacts()
+        val moved = facts.location != _uiState.value.location
+        update(item.fileId) { it.with(facts).let { state -> if (moved) state.copy(place = placeUnread()) else state } }
+        if (moved) lookUpPlace(item.fileId, facts.location)
     }
 
     fun save(edit: PhotoEdit) {

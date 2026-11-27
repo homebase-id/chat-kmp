@@ -6,8 +6,10 @@ import id.homebase.api.media.MediaLocation
 import id.homebase.common.util.formatDecimal
 import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.offsetAt
@@ -103,3 +105,7 @@ private fun fiveDecimals(value: Double): String {
     val sign = if (value < 0 && scaled != 0L) "-" else ""
     return "$sign${scaled / 100_000}.${(scaled % 100_000).toString().padStart(5, '0')}"
 }
+
+/** [saved] more than five minutes after [taken]: EXIF clocks have no zone, so both are read as UTC to compare. */
+internal fun savedLater(taken: LocalDateTime, saved: LocalDateTime): Boolean =
+    saved.toInstant(TimeZone.UTC) - taken.toInstant(TimeZone.UTC) > 5.minutes

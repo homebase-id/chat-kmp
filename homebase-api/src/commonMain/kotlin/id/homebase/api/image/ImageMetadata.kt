@@ -70,7 +70,8 @@ data class ImageMetadata(
      * none); the scene capture type (0..3), custom rendering (0 or 1) and colour space (1 sRGB, 65535 uncalibrated) as
      * their EXIF codes, others as null; the subject distance in metres, above 0 and below 1000 km (0 is unknown, and
      * EXIF's "infinity", 0xFFFFFFFF over its denominator, lands past that); names as above; the user comment with its
-     * character-code prefix taken off; [gpsTime] in UTC, only with both the GPS date and time; the speed in km/h, 0
+     * character-code prefix taken off (a JIS one dropped; a UNICODE one in a JPEG in its byte order, in another format
+     * guessed, and on iOS as ImageIO reads it); [gpsTime] in UTC, only with both the GPS date and time; the speed in km/h, 0
      * or more, from km/h, mph or knots.
      */
     val focalLength35mm: Int? = null,

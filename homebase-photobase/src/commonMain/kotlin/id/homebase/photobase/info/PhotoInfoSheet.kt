@@ -154,6 +154,7 @@ import kotlinx.datetime.toInstant
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.time.Instant
 
 /**
@@ -167,6 +168,8 @@ fun PhotoInfoSheet(
     albums: List<String>,
     backedUp: Boolean,
     editable: Boolean,
+    /** A new time is being saved: the photo may move to another day. */
+    onTimeSaved: (Instant) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // One per screen: the photo before's reads are dropped when another opens, and all of them when the sheet closes.
@@ -233,6 +236,7 @@ fun PhotoInfoSheet(
                 zone = opened.offset?.asTimeZone() ?: TimeZone.currentSystemDefault(),
                 onSave = { newAt ->
                     editing = null
+                    onTimeSaved(newAt)
                     // A photo with no zone keeps none: the device's is only the clock it was picked on.
                     viewModel.save(PhotoEdit.Time(newAt, opened.offset))
                 },
@@ -304,7 +308,7 @@ private fun LocationDetailsRow(location: MediaLocation, exif: ImageMetadata?) {
             val meters = formatDecimal(abs(it), 0)
             add(stringResource(if (it < 0) MR.string.photobase_info_altitude_below else MR.string.photobase_info_altitude_above, meters))
         }
-        exif?.imageDirectionDegrees?.let { add(stringResource(MR.string.photobase_info_facing, formatDecimal(it, 0))) }
+        exif?.imageDirectionDegrees?.let { add(stringResource(MR.string.photobase_info_facing, (it.roundToInt() % 360).toString())) }
         exif?.horizontalErrorMeters?.let { add(stringResource(MR.string.photobase_info_accuracy, formatDecimal(it, 0))) }
         exif?.speedKmh?.let { add(stringResource(MR.string.photobase_info_speed, formatDecimal(it, 0))) }
         exif?.gpsTime?.let { add(stringResource(MR.string.photobase_info_gps_time, stringResource(MR.string.photobase_info_date_time, formatMediumDate(it), formatTime(it)))) }
@@ -381,7 +385,8 @@ private fun CameraSection(camera: InfoPart<ImageMetadata>) {
 // "Edited with" only when the file was saved after it was taken: phones write their own version as the software.
 @Composable
 private fun EditedRow(exif: ImageMetadata) {
-    val modified = exif.modifiedAt?.takeIf { exif.capturedAt != null && it != exif.capturedAt }
+    // A camera saving the file a few seconds after it took it hasn't edited it.
+    val modified = exif.modifiedAt?.takeIf { saved -> exif.capturedAt?.let { savedLater(it, saved) } == true }
     // EXIF's clock has no zone: read in this device's, it shows as written.
     val modifiedText = modified?.let { stringResource(MR.string.photobase_info_modified, formatMediumDate(it.toInstant(TimeZone.currentSystemDefault()))) }
     val software = exif.software

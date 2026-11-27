@@ -1861,6 +1861,7 @@ private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryView
         touchedDays = index.touched,
         countFailed = index.failed,
         recount = index::recount,
+        dayOf = opened.store::dayOf,
         moveScope = get(),
         albumSource = get(),
         photoInfo = get(),

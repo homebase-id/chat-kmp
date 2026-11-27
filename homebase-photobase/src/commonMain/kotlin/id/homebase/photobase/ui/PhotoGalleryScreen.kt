@@ -296,8 +296,12 @@ fun PhotoGalleryScreen(
     // The sheet goes with its photo, or it opens again over the next one viewed.
     LaunchedEffect(uiState.openedFileId) { infoOn = null }
     val source = viewModel.photoInfo
-    // The gallery's current copy, so the sheet follows a sync of its own edits.
-    val item = infoOn?.let { shown -> loaded.value.values.firstNotNullOfOrNull { day -> day.firstOrNull { it.fileId == shown.fileId } } ?: shown }
+    // The gallery's newest copy, kept once seen, so the sheet follows a sync of its own edits wherever the photo goes.
+    val newest by remember(infoOn?.fileId) {
+        derivedStateOf { infoOn?.let { shown -> loaded.value.values.firstNotNullOfOrNull { day -> day.firstOrNull { it.fileId == shown.fileId } } } }
+    }
+    LaunchedEffect(newest) { newest?.let { infoOn = it } }
+    val item = infoOn
     if (item != null && source != null && uiState.openedFileId != null) {
         val albums by viewModel.albums.collectAsStateWithLifecycle()
         PhotoInfoSheet(
@@ -306,6 +310,7 @@ fun PhotoGalleryScreen(
             albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
             backedUp = gallery != PhotoGallery.Bin,
             editable = gallery != PhotoGallery.Bin,
+            onTimeSaved = { at -> onAction(PhotoGalleryUiAction.Moved(item.fileId, at.toEpochMilliseconds())) },
             onDismiss = { infoOn = null },
         )
     }
@@ -326,6 +331,7 @@ fun PhotoGalleryScreen(
                         onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { source != null },
                         motionReplay = motionReplay,
                         onReplay = { motionReplay += 1 },
+                        moving = uiState.moving,
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -367,6 +373,7 @@ private fun GalleryViewer(
     onInfo: ((PhotoGalleryItem) -> Unit)?,
     motionReplay: Int,
     onReplay: () -> Unit,
+    moving: Moving?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -398,10 +405,14 @@ private fun GalleryViewer(
             // Against the settled page, not the current one: mid-swipe, current is already the neighbour.
             val at = opened?.let { layout.photoOf(it, loaded) }
             if (at == null) {
+                // Its time changed: wait for its new day to be read, rather than take it for deleted.
+                if (opened != null && opened == moving?.fileId) return@LaunchedEffect
                 close()
                 return@LaunchedEffect
             }
             if (at != pagerState.settledPage) pagerState.scrollToPage(at)
+            // Arrived on its new day: following it is done.
+            if (moving != null && opened == moving.fileId) layout.photoAt(at, loaded)?.takeIf { it.capturedAtMs == moving.toMs }?.let { onAction(PhotoGalleryUiAction.Open(it)) }
         }
         snapshotFlow { pagerState.settledPage }.collect { page ->
             val place = layout.locate(page)
