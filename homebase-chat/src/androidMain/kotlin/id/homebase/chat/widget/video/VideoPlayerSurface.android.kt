@@ -3,6 +3,7 @@ package id.homebase.chat.widget.video
 import android.net.Uri
 import android.view.LayoutInflater
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.chat.R
 import kotlin.time.measureTimedValue
 import androidx.annotation.OptIn
@@ -43,11 +44,8 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.file.safeDeleteRecursively
 import id.homebase.api.video.VideoContent
-import id.homebase.api.video.driveAccess
 import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
@@ -108,9 +106,8 @@ actual fun VideoPlayerSurface(
     // setTrackTypeDisabled below). The flag exists so the iOS actual can
     // gate the same optimizations behind it for a phased dark-launch.
     val context = LocalContext.current
-    val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
-    val peerFileProvider = koinInject<PeerFileByGlobalTransitProvider>()
+    val payloadReader = koinInject<PayloadReader>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<ExoPlayerPool>()
     val scope = rememberCoroutineScope()
@@ -302,7 +299,7 @@ actual fun VideoPlayerSurface(
             try {
                 val videoData = data.toVideoData()
                 val videoAccess =
-                    videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
+                    payloadReader.videoAccess(videoData.location)
                 when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the

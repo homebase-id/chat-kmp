@@ -551,7 +551,7 @@ class ViewOnceViewerTest {
         }
 
         server.loader.begin(server.fileId)
-        val content = id.homebase.api.video.resolveVideoContent(video, server.provider, fileOps = fileOps)
+        val content = id.homebase.api.video.resolveVideoContent(video, server.payloadReader.videoAccess(video.location), fileOps = fileOps)
 
         val mp4 = kotlin.test.assertIs<id.homebase.api.video.VideoContent.Mp4File>(content)
         val viewOnceDir = java.io.File(server.tempDir, "hb-scratch/view-once")

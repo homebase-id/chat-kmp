@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 class VideoPreloader(
-    private val driveFileProvider: VideoPrefetchDriveAccess,
+    private val accessFor: (VideoPlayerData) -> VideoPrefetchDriveAccess,
     private val fileOperationsProvider: FileOperationsProvider,
 ) {
     private val mutexMap = mutableMapOf<String, Mutex>()
@@ -57,9 +57,10 @@ class VideoPreloader(
             onProgress?.invoke(v)
         }
         mutex.withLock {
+            val access = accessFor(data)
             try {
                 val metadata = try {
-                    resolveVideoMetadata(data, driveFileProvider)
+                    resolveVideoMetadata(data, access)
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -68,7 +69,7 @@ class VideoPreloader(
                 }
 
                 if (metadata?.isSegmented == true) {
-                    preloadFirstHlsSegment(data, metadata, emit)
+                    preloadFirstHlsSegment(access, data, metadata, emit)
                 } else if (metadata != null) {
                     // A prefetch holds the whole MP4 in memory while it downloads, so only one the size of our own
                     // transcodes (bigger ones are sent as HLS); the player caches a bigger one as it streams it.
@@ -79,7 +80,7 @@ class VideoPreloader(
                         }
                     } else {
                         try {
-                            driveFileProvider.prefetchPayload(
+                            access.prefetchPayload(
                                 driveId = data.driveId,
                                 fileId = data.fileId,
                                 key = data.payloadKey,
@@ -104,6 +105,7 @@ class VideoPreloader(
     }
 
     private suspend fun preloadFirstHlsSegment(
+        access: VideoPrefetchDriveAccess,
         data: VideoPlayerData,
         metadata: VideoMetadata,
         onProgress: (Float) -> Unit,
@@ -124,7 +126,7 @@ class VideoPreloader(
         val offset = match.groupValues[2].toLong()
 
         Logger.d(tag = "VideoIO") { "hls preload seg0 start: fileId=${data.fileId} key=${data.payloadKey} offset=$offset length=$length" }
-        driveFileProvider.prefetchPayloadChunk(
+        access.prefetchPayloadChunk(
             driveId = data.driveId,
             fileId = data.fileId,
             key = data.payloadKey,

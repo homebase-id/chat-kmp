@@ -21,6 +21,7 @@ class KoinGraphTest {
             // Parameters a definition passes in by hand rather than resolving from the graph.
             injections = injectedParameters(
                 definition<id.homebase.chat.calling.CallWindowModel>(kotlin.Function1::class),
+                definition<id.homebase.api.video.VideoPreloader>(kotlin.Function1::class),
                 definition<id.homebase.api.sync.database.DatabaseManager>(kotlin.Function0::class),
                 definition<io.ktor.client.HttpClient>(io.ktor.client.engine.HttpClientEngine::class),
                 definition<id.homebase.api.client.contacts.AvatarResolver>(kotlinx.coroutines.flow.StateFlow::class),

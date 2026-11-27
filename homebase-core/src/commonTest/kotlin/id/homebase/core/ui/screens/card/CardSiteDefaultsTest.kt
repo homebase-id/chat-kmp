@@ -2,6 +2,7 @@ package id.homebase.core.ui.screens.card
 
 import id.homebase.api.client.drives.SystemDriveConstants
 import id.homebase.api.client.identity.PublicIdentityRepository
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.profile.ProfileAttribute
 import id.homebase.api.client.profile.ProfileAttributeTypes
 import id.homebase.api.client.profile.ProfileVisibility
@@ -16,6 +17,7 @@ import io.ktor.http.headersOf
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.uuid.Uuid
@@ -115,7 +117,7 @@ class CardSiteDefaultsTest {
         assertEquals("headr_key", header.payloadKey)
         assertEquals(1789658146611L, header.lastModified)
         assertFalse(header.isEncrypted)
-        assertFalse(header.isOverPeer)
+        assertIs<PayloadLocation.Own>(header.location)
     }
 
     @Test

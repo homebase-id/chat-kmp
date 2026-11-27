@@ -7,6 +7,7 @@ import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
@@ -90,11 +91,12 @@ class HomebaseImageLoaderThumbScopeTest {
     }
 
     private fun loaderOver(driveCache: DriveFileProviderCached) = HomebaseImageLoader(
-        driveFileProvider = DriveFileProvider(httpClient, credentialsManager, driveCache),
-        fileOperationsProvider = fileOps,
-        peerFileProvider = PeerFileByGlobalTransitProvider(
-            httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache,
+        payloadReader = PayloadReader(
+            DriveFileProvider(httpClient, credentialsManager, driveCache),
+            PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
+            fileOps,
         ),
+        fileOperationsProvider = fileOps,
     )
 
     @AfterTest

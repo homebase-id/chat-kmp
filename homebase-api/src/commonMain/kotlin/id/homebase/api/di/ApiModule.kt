@@ -16,6 +16,7 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.client.storage.StorageUsageProvider
 import id.homebase.api.client.liverelay.LiveRelayProvider
@@ -56,7 +57,6 @@ import id.homebase.api.sync.database.KeyHeaderTransformQueue
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
-import id.homebase.api.video.VideoPrefetchDriveAccess
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.youauth.SecurityContextProvider
@@ -89,7 +89,7 @@ val apiModule = module {
     // try to resolve VideoCompressor/VideoProber from the graph (they aren't bound)
     // and fail at first video send.
     single { VideoPayloadProcessor(get()) }
-    singleOf(::VideoPreloader)
+    single { VideoPreloader({ get<PayloadReader>().videoAccess(it.location) }, get()) }
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
@@ -132,7 +132,7 @@ val apiModule = module {
 
     factoryOf(::DriveFileProvider)
     factoryOf(::PayloadDownloadService)
-    factory<VideoPrefetchDriveAccess> { get<DriveFileProvider>() }
+    factoryOf(::PayloadReader)
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
     factoryOf(::FollowProvider)

@@ -191,7 +191,7 @@ class MomentsWideScreenshotTest {
                     single { AvatarResolver(MutableStateFlow(emptyList())) }
                     single { LocalAttachmentContextStore(EventBus(), CoroutineScope(Dispatchers.Unconfined)) }
                     single { unwiredImageLoader() }
-                    single { VideoPreloader(unreachable<VideoPrefetchDriveAccess>(), unreachable<FileOperationsProvider>()) }
+                    single { VideoPreloader({ unreachable<VideoPrefetchDriveAccess>() }, unreachable<FileOperationsProvider>()) }
                     single { VideoPreloadService(get()) }
                 },
             )

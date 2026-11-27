@@ -18,10 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.video.VideoContent
-import id.homebase.api.video.driveAccess
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -136,9 +134,8 @@ actual fun VideoPlayerSurface(
     paused: Boolean,
     onError: (String) -> Unit,
 ) {
-    val driveFileProvider = koinInject<DriveFileProvider>()
     val fileOperationsProvider = koinInject<id.homebase.api.file.FileOperationsProvider>()
-    val peerFileProvider = koinInject<PeerFileByGlobalTransitProvider>()
+    val payloadReader = koinInject<PayloadReader>()
     val videoPreloader = koinInject<VideoPreloader>()
     val playerPool = koinInject<AVPlayerPool>()
     val scope = rememberCoroutineScope()
@@ -258,7 +255,7 @@ actual fun VideoPlayerSurface(
                 AudioSession.ensurePlaybackCapable()
                 val videoData = data.toVideoData()
                 val videoAccess =
-                    videoData.driveAccess(driveFileProvider, peerFileProvider, fileOperationsProvider)
+                    payloadReader.videoAccess(videoData.location)
                 when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {
                     is VideoContent.Hls -> {
                         // Subscribe to the preloader's live bytes progress BEFORE kicking off the
@@ -286,28 +283,10 @@ actual fun VideoPlayerSurface(
                         // decrypts via stock HLS-AES-128 — no resource loader, no per-byterange
                         // crypto on our side. See LocalVideoServer.native.kt for the rationale.
                         val server = LocalVideoServer.shared()
-                        val peerOdinId = data.remoteOdinId
-                        val peerGtid = data.globalTransitId
+                        val location = videoData.location
                         val sessionId = server.register(
                             readEncryptedChunk = { start, length ->
-                                if (peerOdinId != null && peerGtid != null) {
-                                    peerFileProvider.getPayloadChunkEncryptedOverPeerByGlobalTransitId(
-                                        peer = peerOdinId,
-                                        driveId = data.driveId,
-                                        globalTransitId = peerGtid,
-                                        payloadKey = data.payloadKey,
-                                        chunkStart = start,
-                                        chunkLength = length,
-                                    )
-                                } else {
-                                    driveFileProvider.getPayloadBytesEncryptedChunk(
-                                        driveId = data.driveId,
-                                        fileId = data.fileId,
-                                        key = data.payloadKey,
-                                        chunkStart = start,
-                                        chunkLength = length,
-                                    )
-                                }
+                                payloadReader.encryptedChunk(location, data.payloadKey, start, length)
                             },
                             driveId = data.driveId,
                             fileId = data.fileId,

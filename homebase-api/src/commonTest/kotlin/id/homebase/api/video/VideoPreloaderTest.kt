@@ -27,7 +27,7 @@ class VideoPreloaderTest {
     )
 
     private fun newPreloader(fake: FakeVideoPrefetchDriveAccess) =
-        VideoPreloader(fake, FakeFileOperationsProvider())
+        VideoPreloader({ fake }, FakeFileOperationsProvider())
 
     // -- Case 1: large video — descriptor stub is incomplete; the m3u8 lives in a separate payload.
     //    Expect: resolveVideoMetadata fetches the metadata payload via getPayloadBytesDecrypted
