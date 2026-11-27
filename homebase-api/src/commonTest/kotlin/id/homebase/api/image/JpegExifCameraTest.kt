@@ -49,6 +49,14 @@ class JpegExifCameraTest {
     }
 
     @Test
+    fun aTagOfNoValuesIsUnknown() {
+        // ISO's count, the Exif IFD's third entry.
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[CameraExifFixture.EXIF_AT + 2 + 24 + 4] = 0 }
+
+        assertNull(assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).iso)
+    }
+
+    @Test
     fun theOrientationReaderReadsTheSameBlock() {
         assertEquals(6, readJpegExifOrientation(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false))))
     }

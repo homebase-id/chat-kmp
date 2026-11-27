@@ -114,7 +114,8 @@ private class Directory(val tiff: Tiff, val at: Int) {
             4, 13 -> 4
             else -> return null
         }
-        val at = valueAt(entry, tiff.u32(entry + 4).toLong() * size, size) ?: return null
+        val count = tiff.u32(entry + 4).takeIf { it > 0 } ?: return null
+        val at = valueAt(entry, count.toLong() * size, size) ?: return null
         return if (size == 2) tiff.u16(at) else tiff.u32(at)
     }
 

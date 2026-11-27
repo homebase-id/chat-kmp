@@ -21,6 +21,7 @@ import platform.ImageIO.kCGImagePropertyExifExposureTime
 import platform.ImageIO.kCGImagePropertyExifFNumber
 import platform.ImageIO.kCGImagePropertyExifFocalLength
 import platform.ImageIO.kCGImagePropertyExifISOSpeedRatings
+import platform.ImageIO.kCGImagePropertyExifOffsetTime
 import platform.ImageIO.kCGImagePropertyExifOffsetTimeOriginal
 import platform.ImageIO.kCGImagePropertyExifPixelXDimension
 import platform.ImageIO.kCGImagePropertyExifPixelYDimension
@@ -34,6 +35,7 @@ import platform.ImageIO.kCGImagePropertyGPSLongitudeRef
 import platform.ImageIO.kCGImagePropertyOrientation
 import platform.ImageIO.kCGImagePropertyPixelHeight
 import platform.ImageIO.kCGImagePropertyPixelWidth
+import platform.ImageIO.kCGImagePropertyTIFFDateTime
 import platform.ImageIO.kCGImagePropertyTIFFDictionary
 import platform.ImageIO.kCGImagePropertyTIFFMake
 import platform.ImageIO.kCGImagePropertyTIFFModel
@@ -70,9 +72,11 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
 
     val capturedAt = parseExifLocalDateTime(
         exif?.objectForKey(kCGImagePropertyExifDateTimeOriginal.ns) as? String
+            ?: tiff?.objectForKey(kCGImagePropertyTIFFDateTime.ns) as? String
     )
     val offset = parseExifUtcOffset(
         exif?.objectForKey(kCGImagePropertyExifOffsetTimeOriginal.ns) as? String
+            ?: exif?.objectForKey(kCGImagePropertyExifOffsetTime.ns) as? String
     )
 
     val latRaw = (gps?.objectForKey(kCGImagePropertyGPSLatitude.ns) as? NSNumber)?.doubleValue

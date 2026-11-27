@@ -27,6 +27,10 @@ class ImageMetadataCameraContractTest {
         assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
         assertEquals(LocalDateTime(2026, 1, 15, 15, 0, 0), exif.capturedAt)
 
+        val plain = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, plainTimes = true), jpeg)))
+        assertEquals(LocalDateTime(2026, 1, 16, 8, 0, 0), plain.capturedAt, "without DateTimeOriginal, the file's DateTime")
+        assertEquals(UtcOffset(hours = 9), plain.captureUtcOffset, "without OffsetTimeOriginal, OffsetTime")
+
         val twoIsos = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoTwice = true), jpeg)))
         assertEquals(400, twoIsos.iso, "an ISO of two values reads as its first")
         assertEquals(400, readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoThrice = true), jpeg))?.iso)
