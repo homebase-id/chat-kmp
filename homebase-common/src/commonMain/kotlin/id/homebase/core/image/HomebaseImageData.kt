@@ -1,12 +1,12 @@
 package id.homebase.core.image
 
 import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.lib.image.ImageFormatDetector
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.common.OdinId
 import id.homebase.api.image.MediaQuality
 import id.homebase.core.util.isWeb
 import kotlin.math.max
@@ -56,11 +56,10 @@ data class HomebaseImageData(
     val payloadIsUntouchedFile: Boolean = false,
     /** Set with [forGridTile]: a looser allowance, and never the payload. */
     val gridTile: Boolean = false,
-    /** Set with [globalTransitId] to fetch over peer; both null for local media. */
-    val remoteOdinId: OdinId? = null,
-    val globalTransitId: Uuid? = null,
+    /** Set to fetch a followed identity's media from their drive; null for our own. */
+    val peer: PeerFileRef? = null,
 ) {
-    val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, remoteOdinId, globalTransitId)
+    val location: PayloadLocation get() = PayloadLocation.of(driveId, fileId, peer)
 
     companion object {
         /** Create data for a pending (not yet uploaded) image */
@@ -89,8 +88,7 @@ data class HomebaseImageData(
             pendingFileUri: String? = null,
             payloadContentType: String? = descriptor.contentType,
             payloadBytes: Long? = descriptor.bytesWritten,
-            remoteOdinId: OdinId? = null,
-            globalTransitId: Uuid? = null,
+            peer: PeerFileRef? = null,
         ): HomebaseImageData {
             val recorded = descriptor.imageFile()
             return HomebaseImageData(
@@ -110,8 +108,7 @@ data class HomebaseImageData(
                     ImageSize(image.pixelWidth ?: return@let null, image.pixelHeight ?: return@let null)
                 },
                 payloadIsUntouchedFile = recorded?.original ?: (recorded?.quality == MediaQuality.ORIGINAL),
-                remoteOdinId = remoteOdinId,
-                globalTransitId = globalTransitId,
+                peer = peer,
             )
         }
     }

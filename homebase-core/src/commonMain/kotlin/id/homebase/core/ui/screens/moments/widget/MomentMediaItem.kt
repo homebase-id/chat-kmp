@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.chat.services.builder.locationPreviews
 import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.chat.widget.video.VideoPreloadEffect
@@ -40,7 +41,6 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DescriptorContent
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.common.OdinId
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.chat.conversationlist.DecryptedFileKey
@@ -107,10 +107,7 @@ fun MomentMediaItem(
     isDownloading: Boolean = false,
     messageId: Uuid? = null,
     isUploading: Boolean = false,
-    // Must be set together with [globalTransitId]: reads this payload over peer from the followed author's
-    // drive. Null on the local path (Moments, own posts).
-    remoteOdinId: OdinId? = null,
-    globalTransitId: Uuid? = null,
+    peer: PeerFileRef?,
 ) {
     val contentType = payload.contentType ?: ""
     val imageContentScale = if (preserveAspectRatio || fitBounds) ContentScale.Fit else ContentScale.Crop
@@ -216,8 +213,7 @@ fun MomentMediaItem(
                         keyHeader = payloadIv
                             ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
-                        remoteOdinId = remoteOdinId,
-                        globalTransitId = globalTransitId,
+                        peer = peer,
                         // Zoom needs the original payload so panning into a
                         // pinched photo shows real detail, not an upscaled thumb.
                         loadFullPayload = true,
@@ -269,8 +265,7 @@ fun MomentMediaItem(
                             keyHeader = payloadIv
                                 ?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                                 ?: KeyHeader.empty(),
-                            remoteOdinId = remoteOdinId,
-                            globalTransitId = globalTransitId,
+                            peer = peer,
                         )
                     }
 
@@ -301,15 +296,14 @@ fun MomentMediaItem(
                 payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                     ?: KeyHeader.empty()
             }
-            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, remoteOdinId, globalTransitId) {
+            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, peer) {
                 VideoPlayerData(
                     fileId = fileId,
                     driveId = driveId,
                     payloadKey = payload.key,
                     keyHeader = perPayloadKeyHeader,
                     descriptorContent = payload.descriptorContent,
-                    remoteOdinId = remoteOdinId,
-                    globalTransitId = globalTransitId,
+                    peer = peer,
                     contentType = payload.contentType,
                 )
             }
@@ -334,8 +328,7 @@ fun MomentMediaItem(
                         ?: previewThumbnail,
                     isEncrypted = isEncrypted,
                     keyHeader = perPayloadKeyHeader,
-                    remoteOdinId = remoteOdinId,
-                    globalTransitId = globalTransitId,
+                    peer = peer,
                 )
             }
             val videoLocalContext = localContext as? LocalAttachmentContext.Video

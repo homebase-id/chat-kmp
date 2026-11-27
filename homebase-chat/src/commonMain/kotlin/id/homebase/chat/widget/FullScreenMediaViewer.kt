@@ -194,8 +194,7 @@ fun FullScreenMediaViewer(
                         keyHeader = resolved.iv
                             ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
-                        remoteOdinId = data.remoteOdinId,
-                        globalTransitId = data.globalTransitId,
+                        peer = data.peer,
                     )
                     SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
                 }
@@ -399,8 +398,7 @@ fun FullScreenMediaViewer(
                                 keyHeader = railIv
                                     ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
                                     ?: KeyHeader.empty(),
-                                remoteOdinId = data.remoteOdinId,
-                                globalTransitId = data.globalTransitId,
+                                peer = data.peer,
                             )
                         }
                         HomebaseImage(

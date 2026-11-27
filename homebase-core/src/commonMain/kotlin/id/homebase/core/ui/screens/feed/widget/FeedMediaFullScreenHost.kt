@@ -92,8 +92,7 @@ internal fun feedMediaOverlay(
             keyHeader = post.keyHeader,
             payload = payload,
             isEncrypted = post.isEncrypted,
-            remoteOdinId = source.remoteOdinId,
-            globalTransitId = source.globalTransitId,
+            peer = source.peer,
         )
     } else {
         FullScreenOverlay.ViewMessageData(
@@ -107,8 +106,7 @@ internal fun feedMediaOverlay(
             keyHeader = post.keyHeader,
             selectedPayloadKey = payload.key,
             isEncrypted = post.isEncrypted,
-            remoteOdinId = source.remoteOdinId,
-            globalTransitId = source.globalTransitId,
+            peer = source.peer,
         )
     }
 }

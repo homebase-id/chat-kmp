@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.moments.widget
 
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.chat.widget.video.VideoPreloadEffect
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -112,6 +113,7 @@ fun MomentInlineVideoTile(
     fileId: Uuid,
     driveId: Uuid,
     keyHeader: KeyHeader,
+    peer: PeerFileRef?,
     previewThumbnail: EmbeddedThumb? = null,
     localContext: LocalAttachmentContext? = null,
     isUploading: Boolean = false,
@@ -189,13 +191,14 @@ fun MomentInlineVideoTile(
     val perPayloadKeyHeader = remember(payloadIv, keyHeader.aesKey) {
         KeyHeader(iv = payloadIv, aesKey = keyHeader.aesKey)
     }
-    val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+    val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, peer) {
         VideoPlayerData(
             fileId = fileId,
             driveId = driveId,
             payloadKey = payload.key,
             keyHeader = perPayloadKeyHeader,
             descriptorContent = payload.descriptorContent,
+            peer = peer,
             contentType = payload.contentType,
         )
     }
@@ -353,6 +356,7 @@ fun MomentInlineVideoTile(
                     payloadKey = videoPlayerData.payloadKey,
                     keyHeader = videoPlayerData.keyHeader,
                     payload = payload,
+                    peer = videoPlayerData.peer,
                 )
             }
             VideoPlayerSurface(

@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.chat.services.builder.linkPreviews
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -236,8 +237,7 @@ private fun ArticleCardBody(
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 messageId = post.id,
-                remoteOdinId = source.remoteOdinId,
-                globalTransitId = source.globalTransitId,
+                peer = source.peer,
             )
             Spacer(Modifier.height(8.dp))
         }
@@ -444,8 +444,7 @@ private fun QuotedPostMedia(
         messageId = fileId,
         downloadingFiles = emptySet(),
         minAspect = FeedMinMediaAspect,
-        remoteOdinId = author,
-        globalTransitId = globalTransitId,
+        peer = PeerFileRef(author, globalTransitId),
     )
 }
 
@@ -482,7 +481,7 @@ private fun PostLinkPreview(
     )
 }
 
-internal class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
+internal class PostMediaSource(val driveId: Uuid, val peer: PeerFileRef?)
 
 // A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
 // reads over peer by globalTransitId; our own posts stay on the local driveId.
@@ -491,9 +490,9 @@ internal fun FeedPostItem.mediaSource(): PostMediaSource {
     val sender = senderOdinId
     val gtid = globalTransitId
     return if (sender != null && gtid != null && channelDriveAlias != null) {
-        PostMediaSource(channelDriveAlias, sender, gtid)
+        PostMediaSource(channelDriveAlias, PeerFileRef(sender, gtid))
     } else {
-        PostMediaSource(driveId, null, null)
+        PostMediaSource(driveId, null)
     }
 }
 
@@ -535,8 +534,7 @@ private fun PostMedia(
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,
-            remoteOdinId = source.remoteOdinId,
-            globalTransitId = source.globalTransitId,
+            peer = source.peer,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }

@@ -1,5 +1,6 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.image.SendQuality
 import id.homebase.chat.widget.preview.FilePreviewKind
 import androidx.compose.foundation.text.input.TextFieldState
@@ -353,9 +354,8 @@ sealed interface FullScreenOverlay {
         val selectedPayloadKey: String,
         /** False for a public feed post: plaintext payloads, no per-payload IV. */
         val isEncrypted: Boolean = true,
-        /** Set with [globalTransitId] to read the payloads over peer; both null for local media. */
-        val remoteOdinId: OdinId? = null,
-        val globalTransitId: Uuid? = null,
+        /** Set to read the payloads from a followed identity's drive; null for our own. */
+        val peer: PeerFileRef? = null,
         /** A Live or motion photo's clip payload, by its still's payload key: played when the photo opens. */
         val motionClips: Map<String, PayloadDescriptor> = emptyMap(),
     ) : FullScreenOverlay.MediaViewer
@@ -403,9 +403,8 @@ sealed interface FullScreenOverlay {
         val uploadMessageId: Uuid? = null,
         /** False for a public feed post: plaintext payload, no per-payload IV. */
         val isEncrypted: Boolean = true,
-        /** Set together for a followed identity's post; playback then reads the author's drive by gtid. */
-        val remoteOdinId: OdinId? = null,
-        val globalTransitId: Uuid? = null,
+        /** Set for a followed identity's post: playback reads the author's drive. */
+        val peer: PeerFileRef? = null,
         /** Where the decrypted MP4 temp goes; view-once keeps its own so the startup sweep can reap it. */
         val scratchSub: String = AppCacheDirs.EXPORT,
     ) : FullScreenOverlay.MediaViewer

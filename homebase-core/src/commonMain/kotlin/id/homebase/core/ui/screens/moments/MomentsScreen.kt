@@ -832,6 +832,7 @@ private fun MomentCommentsMediaBand(
                         mutableStateOf(true)
                     }
                     MomentInlineVideoTile(
+                        peer = null,
                         payload = targetPayload,
                         fileId = moment.fileId,
                         driveId = moment.driveId,
@@ -852,6 +853,7 @@ private fun MomentCommentsMediaBand(
                     // Reuse the gallery's single-payload (fit-to-content) layout
                     // so the whole image is visible, just like the video branch.
                     MomentMediaGallery(
+                        peer = null,
                         payloads = listOf(targetPayload),
                         fileId = moment.fileId,
                         driveId = moment.driveId,
@@ -1167,6 +1169,7 @@ private fun MomentPostCard(
                     val aspect = (aspectRatioFor(singleVideoPayload) ?: 1f)
                         .coerceAtMost(MaxFeedMediaAspect)
                     MomentInlineVideoTile(
+                        peer = null,
                         payload = singleVideoPayload,
                         fileId = moment.fileId,
                         driveId = moment.driveId,
@@ -1190,6 +1193,7 @@ private fun MomentPostCard(
                     )
                 } else {
                     MomentMediaGallery(
+                        peer = null,
                         payloads = moment.payloads,
                         fileId = moment.fileId,
                         driveId = moment.driveId,

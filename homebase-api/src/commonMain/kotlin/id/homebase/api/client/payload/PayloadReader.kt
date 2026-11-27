@@ -10,6 +10,9 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
+/** A followed identity's file, by its author and global transit id: the two travel together or not at all. */
+data class PeerFileRef(val odinId: OdinId, val globalTransitId: Uuid)
+
 /** Where a payload is read from: our own drive by file id, or a followed identity's drive by global transit id. */
 sealed interface PayloadLocation {
     val driveId: Uuid
@@ -20,8 +23,9 @@ sealed interface PayloadLocation {
     data class Peer(val peer: OdinId, override val driveId: Uuid, val globalTransitId: Uuid) : PayloadLocation
 
     companion object {
-        fun of(driveId: Uuid, fileId: Uuid, remoteOdinId: OdinId?, globalTransitId: Uuid?): PayloadLocation =
-            if (remoteOdinId != null && globalTransitId != null) Peer(remoteOdinId, driveId, globalTransitId) else Own(driveId, fileId)
+        /** [driveId] and [fileId] name our own copy; with [peer], the payload is read from the author's [driveId]. */
+        fun of(driveId: Uuid, fileId: Uuid, peer: PeerFileRef?): PayloadLocation =
+            if (peer != null) Peer(peer.odinId, driveId, peer.globalTransitId) else Own(driveId, fileId)
     }
 }
 

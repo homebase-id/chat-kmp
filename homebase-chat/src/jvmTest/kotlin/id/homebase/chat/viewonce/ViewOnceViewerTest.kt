@@ -538,7 +538,7 @@ class ViewOnceViewerTest {
         val overlayData = overlay.copy(payload = overlay.payload.copy(descriptorContent = stub)).videoPlayerData()
         val video = id.homebase.api.video.VideoPlayerData(
             overlayData.fileId, overlayData.driveId, overlayData.payloadKey, overlayData.keyHeader,
-            overlayData.payload.descriptorContent, overlayData.remoteOdinId, overlayData.globalTransitId, overlayData.scratchSub,
+            overlayData.payload.descriptorContent, overlayData.peer, overlayData.scratchSub,
         )
         val fileOps = object : id.homebase.api.file.FileOperationsProvider {
             override fun getCacheDirectory() = server.tempDir

@@ -150,10 +150,7 @@ actual fun VideoPlayerSurface(
                     .also { it.mkdirs() }
                 tempDir = dir
 
-                val videoData = VideoPlayerData(
-                    data.fileId, data.driveId, data.payloadKey, data.keyHeader,
-                    data.payload.descriptorContent, data.remoteOdinId, data.globalTransitId, contentType = data.payload.contentType,
-                )
+                val videoData = data.toVideoData()
                 val videoAccess =
                     payloadReader.videoAccess(videoData.location)
                 when (val content = resolveVideoContent(videoData, videoAccess, fileOps = fileOperationsProvider, onDownloadProgress = { onProgress(it * 0.5f) })) {

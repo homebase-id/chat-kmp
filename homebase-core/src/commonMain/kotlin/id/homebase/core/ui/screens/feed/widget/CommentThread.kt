@@ -362,6 +362,8 @@ private fun CommentMedia(comment: PostCommentItem) {
     if (mediaPayloads.isEmpty()) return
 
     MomentMediaGallery(
+        // A followed post's comment lives in the author's Comment file system, which the peer reads don't cover yet.
+        peer = null,
         payloads = mediaPayloads,
         fileId = comment.fileId,
         driveId = comment.driveId,

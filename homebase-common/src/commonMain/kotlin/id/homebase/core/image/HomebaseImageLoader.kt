@@ -220,7 +220,7 @@ class HomebaseImageLoader(
     }
 
     private fun fullPayloadCacheKey(data: HomebaseImageData): String =
-        "${data.remoteOdinId?.let { "$it@" } ?: ""}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
+        "${data.peer?.odinId?.let { "$it@" } ?: ""}${data.driveId}/${data.fileId}/${data.payloadKey}/${data.lastModified ?: 0}"
 
     private suspend fun fetchFullPayloadUncached(
         data: HomebaseImageData, retryConfig: RetryConfig

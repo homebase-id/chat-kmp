@@ -23,6 +23,7 @@ import id.homebase.api.client.contacts.AvatarResolver
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ThumbnailDescriptor
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.Base64Bytes
 import id.homebase.chat.services.LocalAttachmentContextStore
@@ -186,12 +187,11 @@ class PostCardArticleTest {
         val received = post().copy(channelId = channel.toString(), senderOdinId = sender, globalTransitId = gtid)
         val source = received.mediaSource()
         assertEquals(channel, source.driveId)
-        assertEquals(sender, source.remoteOdinId)
-        assertEquals(gtid, source.globalTransitId)
+        assertEquals(PeerFileRef(sender, gtid), source.peer)
 
         val own = post()
         assertEquals(own.driveId, own.mediaSource().driveId)
-        assertNull(own.mediaSource().remoteOdinId)
+        assertNull(own.mediaSource().peer)
     }
 
     @Test

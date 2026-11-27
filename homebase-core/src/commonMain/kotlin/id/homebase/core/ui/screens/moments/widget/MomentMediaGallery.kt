@@ -21,7 +21,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
-import id.homebase.api.common.OdinId
+import id.homebase.api.client.payload.PeerFileRef
 import kotlin.uuid.Uuid
 
 // Sizing is aspect-ratio driven so the gallery fills the parent's width, unlike the chat version which clamps
@@ -58,9 +58,8 @@ fun MomentMediaGallery(
     fitToContent: Boolean = false,
     // Null = no floor; the feed passes FeedMinMediaAspect to clamp very tall portraits.
     minAspect: Float? = null,
-    // Must be set together with [globalTransitId]; reads over peer from the followed author's drive.
-    remoteOdinId: OdinId? = null,
-    globalTransitId: Uuid? = null,
+    // A followed post's media is read from the author's drive; no default, so no caller can drop it.
+    peer: PeerFileRef?,
 ) {
     if (payloads.isEmpty()) return
 
@@ -84,8 +83,7 @@ fun MomentMediaGallery(
                 isUploading = isUploading,
                 fitToContent = fitToContent,
                 minAspect = minAspect,
-                remoteOdinId = remoteOdinId,
-                globalTransitId = globalTransitId,
+                peer = peer,
             )
         } else {
             MomentMediaCarousel(
@@ -109,8 +107,7 @@ fun MomentMediaGallery(
                 onVisiblePayloadChanged = onVisiblePayloadChanged,
                 onVideoTap = onVideoTap,
                 fitToContent = fitToContent,
-                remoteOdinId = remoteOdinId,
-                globalTransitId = globalTransitId,
+                peer = peer,
             )
         }
     }
@@ -134,8 +131,7 @@ private fun SingleImageLayout(
     isUploading: Boolean,
     fitToContent: Boolean = false,
     minAspect: Float? = null,
-    remoteOdinId: OdinId? = null,
-    globalTransitId: Uuid? = null,
+    peer: PeerFileRef?,
 ) {
     // Computed from thumbnail metadata so the cell sizes before the (possibly remote, encrypted) full image is
     // decoded. The photo is drawn ContentScale.Fit by the zoom wrapper, so the cell must match the photo's real
@@ -198,8 +194,7 @@ private fun SingleImageLayout(
             isDownloading = downloadingFiles.contains("${messageId}_${payload.key}"),
             messageId = messageId,
             isUploading = isUploading,
-            remoteOdinId = remoteOdinId,
-            globalTransitId = globalTransitId,
+            peer = peer,
             // Feed uses the non-zoom Fit path (loads a thumbnail, not the full payload); Moments keeps pinch-zoom.
             enableZoom = minAspect == null,
         )

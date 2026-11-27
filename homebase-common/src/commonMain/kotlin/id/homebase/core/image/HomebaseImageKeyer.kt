@@ -28,6 +28,6 @@ class HomebaseImageKeyer : Keyer<HomebaseImageData> {
         // Peer images share driveId/fileId space with local ones, so the author identity must be in
         // the key or an over-peer variant would collide with a same-id local entry. Empty for local.
         private fun identity(data: HomebaseImageData): String =
-            data.remoteOdinId?.let { "$it@" } ?: ""
+            data.peer?.odinId?.let { "$it@" } ?: ""
     }
 }

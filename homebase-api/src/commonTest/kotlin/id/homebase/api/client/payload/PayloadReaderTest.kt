@@ -98,10 +98,8 @@ class PayloadReaderTest {
 
     @Test
     fun onlyAPostFromSomeoneWeFollowIsReadFromTheirDrive() {
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = null, globalTransitId = null))
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = peer, globalTransitId = null))
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = null, globalTransitId = globalTransitId))
-        assertEquals(peers, PayloadLocation.of(driveId, fileId, remoteOdinId = peer, globalTransitId = globalTransitId))
+        assertEquals(own, PayloadLocation.of(driveId, fileId, peer = null))
+        assertEquals(peers, PayloadLocation.of(driveId, fileId, PeerFileRef(peer, globalTransitId)))
     }
 
     @Test
