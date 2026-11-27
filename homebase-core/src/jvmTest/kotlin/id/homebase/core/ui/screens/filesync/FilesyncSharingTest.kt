@@ -41,6 +41,7 @@ import io.ktor.http.headersOf
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.drives.shares.ShareRow
 import id.homebase.api.youauth.DrivePermissionSet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.io.encoding.Base64
@@ -49,13 +50,16 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.flow.MutableStateFlow
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -149,10 +153,44 @@ class FilesyncSharingTest {
     private var depositedByAddMany = emptyList<String>()
     private var circles = """[{"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"${Uuid.parseHex(filesyncAppRegistration.appId)}"},"members":["sam.test"]}]"""
 
+    // The server's ceiling: a Write row on Sam's own circle only while the editors circle gives him Write.
+    private var ceiling = false
+    private val editors: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    @Volatile private var samsWriteRowLanded = false
+    private var rowsRefused = false
+    private val rowsArrived = CompletableDeferred<Unit>()
+    private var rowsLand = CompletableDeferred(Unit)
+
     private val engine = MockEngine { request ->
         val call = Call(request, request.body.toByteArray()).also { calls += it }
         val path = call.path
         val body = when {
+            ceiling && path.endsWith("/connections/circles/add-many") -> {
+                val (circleId, added) = call.addedTo()
+                if (circleId == editorsCircle.toString()) editors += added
+                """{"enrolled":${added.size},"deposited":0,"skipped":0,"outcomes":[]}"""
+            }
+            ceiling && path.endsWith("/connections/circles/revoke") -> "{}".also {
+                val revoked = decrypted(call, filesyncSecret).jsonObject
+                if (revoked["circleId"]!!.jsonPrimitive.content == editorsCircle.toString()) editors -= revoked["odinId"]!!.jsonPrimitive.content
+            }
+            ceiling && path.endsWith("/circles/with-members") -> """[
+                {"circle":{"id":"$samsCircle","name":"sam.test","designation":"individual","appId":"$appId"},"members":["sam.test"]},
+                {"circle":{"id":"$editorsCircle","name":"Filesync editors","slug":"${FilesyncProtocol.EditorsCircleSlug}","appId":"$appId"},"members":[${editors.joinToString { "\"$it\"" }}]}
+            ]"""
+            ceiling && path.endsWith("/query-batch") ->
+                """{"searchResults":[${if (samsWriteRowLanded) sharedFile("plan.pdf", samsCircle, "readWrite") else ""}],"hasMoreRows":false}"""
+            ceiling && path.endsWith("/shares") && request.method != HttpMethod.Get -> {
+                rowsArrived.complete(Unit)
+                rowsLand.await()
+                val rows = decrypted(call, filesyncSecret).jsonObject["shares"]!!.jsonArray.map { it.jsonObject }
+                val samsWrite = rows.any { it["circleId"]!!.jsonPrimitive.content == samsCircle.toString() && it["permissions"]!!.jsonPrimitive.int and 2 != 0 }
+                if (rowsRefused || samsWrite && "sam.test" !in editors) {
+                    return@MockEngine respond("""{"title":"Individual circle's member isn't granted the drive","errorCode":"argumentError"}""", io.ktor.http.HttpStatusCode.BadRequest, json)
+                }
+                samsWriteRowLanded = samsWriteRowLanded || samsWrite
+                "{}"
+            }
             path.endsWith("/apps/filesync/drives/filesync/public-key") ->
                 if (!samGrantsWrite) return@MockEngine respond("""{"title":"Write access is required"}""", io.ktor.http.HttpStatusCode.Forbidden, json)
                 else if (!samHasFilesync) return@MockEngine respond("""{"title":"Not found"}""", io.ktor.http.HttpStatusCode.NotFound, json)
@@ -324,6 +362,44 @@ class FilesyncSharingTest {
         val granted = created["driveGrants"]!!.jsonArray.single().jsonObject["permissionedDrive"]!!.jsonObject["permission"]!!
         assertEquals(setOf(DrivePermission.Write), Json.decodeFromJsonElement(DrivePermissionsSerializer, granted).values.toSet())
         assertTrue(created["grantOn"].let { it == null || it.jsonPrimitive.content == "none" })
+    }
+
+    @Test
+    fun anEditShareWithSomeoneNewGivesThemWriteBeforeTheRowsThatAskIt() = runTest {
+        ceiling = true
+
+        sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null)
+
+        assertEquals(setOf("sam.test"), editors)
+        val enrolled = calls.indexOfFirst { it.path.endsWith("/add-many") && it.addedTo().first == editorsCircle.toString() }
+        assertTrue(enrolled in 0 until calls.indexOfFirst { it.path.endsWith("/shares") })
+    }
+
+    @Test
+    fun aFailedEditShareTakesBackTheWriteItGave() = runTest {
+        ceiling = true
+        rowsRefused = true
+
+        assertFails { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
+
+        assertEquals(emptySet(), editors)
+    }
+
+    @Test
+    fun aSyncOfTheEditorsDuringAnEditShareWaitsForItsRows() = runTest {
+        ceiling = true
+        rowsLand = CompletableDeferred()
+
+        val shared = async { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
+        rowsArrived.await()
+        val synced = async { sharing.syncEditors() }
+        testScheduler.runCurrent()
+        rowsLand.complete(Unit)
+        shared.await()
+        synced.await()
+
+        assertEquals(setOf("sam.test"), editors)
+        assertTrue(calls.none { it.path.endsWith("/revoke") })
     }
 
     private fun editorsAre(vararg members: String) {
