@@ -301,13 +301,15 @@ fun MomentMediaItem(
                 payloadIv?.let { KeyHeader(iv = it, aesKey = keyHeader.aesKey) }
                     ?: KeyHeader.empty()
             }
-            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent) {
+            val videoPlayerData = remember(fileId, driveId, payload.key, perPayloadKeyHeader, payload.descriptorContent, remoteOdinId, globalTransitId) {
                 VideoPlayerData(
                     fileId = fileId,
                     driveId = driveId,
                     payloadKey = payload.key,
                     keyHeader = perPayloadKeyHeader,
                     descriptorContent = payload.descriptorContent,
+                    remoteOdinId = remoteOdinId,
+                    globalTransitId = globalTransitId,
                     contentType = payload.contentType,
                 )
             }

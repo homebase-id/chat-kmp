@@ -10,6 +10,7 @@ import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.api.file.systemFileSystem
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -18,6 +19,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.decodeURLQueryComponent
 import io.ktor.http.headersOf
+import kotlin.test.AfterTest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -25,6 +27,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
+import okio.Path.Companion.toPath
 
 /** Each read goes to our own drive by file id, or to the author's drive by global transit id, never the other. */
 class PayloadReaderTest {
@@ -42,8 +45,14 @@ class PayloadReaderTest {
     private val requests = mutableListOf<String>()
     private val written = mutableMapOf<String, ByteArray>()
 
+    private val cacheDir = "/tmp/payload-reader-test-${Uuid.random()}"
+
+    @AfterTest
+    fun removeCache() {
+        systemFileSystem.deleteRecursively(cacheDir.toPath())
+    }
+
     private val fileOps = object : FileOperationsProvider {
-        private val cacheDir = "/tmp/payload-reader-test-${Uuid.random()}"
         override fun getCacheDirectory() = cacheDir
         override fun openFileInput(path: String): InputProvider = error("not used")
         override suspend fun readFileBytes(path: String): ByteArray = error("not used")
