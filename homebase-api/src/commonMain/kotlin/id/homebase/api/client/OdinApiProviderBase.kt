@@ -666,6 +666,6 @@ internal fun payloadContentType(headers: Headers): String =
 internal fun HttpRequestBuilder.reportDownloadProgress(onProgress: ((Float) -> Unit)?) {
     if (onProgress == null) return
     onDownload { bytesReceived, contentLength ->
-        if (contentLength != null && contentLength > 0L) onProgress(bytesReceived.toFloat() / contentLength.toFloat())
+        if (contentLength != null && contentLength > 0L) onProgress((bytesReceived.toFloat() / contentLength.toFloat()).coerceAtMost(1f))
     }
 }

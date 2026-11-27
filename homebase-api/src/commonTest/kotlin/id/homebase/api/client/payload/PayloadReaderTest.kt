@@ -148,6 +148,11 @@ class PayloadReaderTest {
         assertContentEquals(byteArrayOf(2), afterTheEdit?.bytes)
         // The CDN caches by URL: an edit must ask for a different one, or it serves the old thumb.
         assertTrue(requests.last().contains("lastModified=2"), "${requests.last()}")
+        if (at is PayloadLocation.Peer) {
+            cdnStatus = HttpStatusCode.Unauthorized
+            reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 3)
+            assertTrue(requests.last().let { "/peer/" in it && "lastModified=3" in it }, "the author's server too: ${requests.last()}")
+        }
     }
 
     @Test
@@ -164,11 +169,15 @@ class PayloadReaderTest {
 
     @Test
     fun aDownloadReportsItsProgressWhereverItLives() = runTest {
+        // Big enough to arrive in several reads, so progress moves before it ends.
+        served = ByteArray(512 * 1024)
         // One reader: a whole payload and a range live in different caches, so each read below is a download.
         val reader = reader()
         for (at in listOf(own, peers)) {
-            assertEquals(1f, reader.progressReading(at).lastOrNull(), "whole payload, $at")
-            assertEquals(1f, reader.progressReading(at, chunkStart = 0).lastOrNull(), "range, $at")
+            for (seen in listOf(reader.progressReading(at), reader.progressReading(at, chunkStart = 0))) {
+                assertTrue(seen.any { it > 0f && it < 1f }, "moving, $at: $seen")
+                assertEquals(1f, seen.last(), "done, $at")
+            }
         }
     }
 
@@ -176,12 +185,13 @@ class PayloadReaderTest {
     fun aFailedCdnReadReportsNoProgressBeforeTheAuthorsServerAnswers() = runTest {
         cdnStatus = HttpStatusCode.NotFound
 
-        reader().bytes(peers, key, KeyHeader.empty(), onProgress = { events += "progress $it" })
+        val progress = mutableListOf<Float>()
+        reader().bytes(peers, key, KeyHeader.empty(), onProgress = { events += "progress"; progress += it })
 
         val peerRequest = events.indexOfFirst { it.startsWith("GET") && "/peer/" in it }
         assertTrue(peerRequest >= 0, "$events")
         assertTrue(events.take(peerRequest).none { it.startsWith("progress") }, "the CDN's error body isn't the download: $events")
-        assertEquals("progress 1.0", events.last { it.startsWith("progress") })
+        assertEquals(1f, progress.last())
     }
 
     @Test

@@ -117,9 +117,10 @@ class PeerFileByGlobalTransitProvider(
         val creds = requireCreds()
         val base = "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey"
         // The by-gtid route takes the size as query params; the peer broker takes it as path segments.
-        // The route ignores lastModified, but the CDN caches by URL, so an edit must ask for a new one.
+        // Both routes ignore lastModified, but the CDN and the platform's HTTP cache (a year's max-age) key by URL,
+        // so an edit must ask for a new one.
         val remotePath = "$base/thumb?width=$width&height=$height" + lastModified?.let { "&lastModified=$it" }.orEmpty()
-        val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height")
+        val peerUrl = apiUrl(creds.domain, "/peer/$peer$base/thumb/$width/$height" + lastModified?.let { "?lastModified=$it" }.orEmpty())
         val cacheKey =
             peerCacheKey("thumb", peer, driveId, globalTransitId, payloadKey, width, height, lastModified)
         val response = try {
@@ -240,9 +241,8 @@ class PeerFileByGlobalTransitProvider(
         cdnUrlFor(peer, remotePath)?.let { cdnUrl ->
             try {
                 Logger.i(tag = TAG) { "CDN GET $cdnUrl" }
-                // An error body downloads too: only a read that succeeded may say it's done.
                 val response = requestBytes(maxBytes) {
-                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress?.let { report -> { if (it < 1f) report(it) } }) }
+                    httpClient.get(cdnUrl) { reportDownloadProgress(onDownloadProgress?.untilDone()) }
                 }
                 throwForFailure(response)
                 onDownloadProgress?.invoke(1f)
@@ -272,14 +272,18 @@ class PeerFileByGlobalTransitProvider(
         val response = requestBytes(maxBytes) {
             httpClient.get(url) {
                 bearerAuth(token)
-                reportDownloadProgress(onDownloadProgress)
+                reportDownloadProgress(onDownloadProgress?.untilDone())
             }
         }
         // 404 becomes NotFoundException, which the cache memoises so a followed post with no
         // server-side thumbnail stops being re-requested on every scroll past it.
         throwForFailure(response)
+        onDownloadProgress?.invoke(1f)
         return response
     }
+
+    // An error body downloads too: only a read that passed its status check may say it's done.
+    private fun ((Float) -> Unit).untilDone(): (Float) -> Unit = { if (it < 1f) this(it) }
 
     private suspend fun cdnUrlFor(peer: OdinId, remotePath: String): String? =
         cdnStateLock.withLock {
