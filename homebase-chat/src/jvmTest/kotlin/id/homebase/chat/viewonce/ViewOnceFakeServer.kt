@@ -128,6 +128,7 @@ internal class ViewOnceFakeServer(
         homebaseImageLoader = HomebaseImageLoader(payloadReader, fileOps)
         loader = ViewOncePayloadLoader(
             provider,
+            payloadReader,
             fileOps,
             tempDir = { viewOnceTempDir },
             canView = { true },

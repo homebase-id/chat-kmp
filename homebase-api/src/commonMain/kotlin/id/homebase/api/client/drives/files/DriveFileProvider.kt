@@ -201,9 +201,10 @@ public class DriveFileProvider(
         chunkStart: Long? = null,
         chunkLength: Long? = null,
         onDownloadProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
     ): BytesResponse? {
         return driveCache.getPayloadBytesDecrypted(
-            driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress
+            driveId, fileId, key, keyHeader, chunkStart, chunkLength, onDownloadProgress, lastModified
         )
     }
 
@@ -348,8 +349,9 @@ public class DriveFileProvider(
         outputPath: String,
         fileOps: FileOperationsProvider,
         onProgress: ((Float) -> Unit)? = null,
+        cache: Boolean = false,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress)
+        driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress, cache)
 
     /** The decrypted payload to [consume] as it streams in, at any size; false when it 404s. */
     suspend fun streamPayloadDecrypted(
@@ -360,17 +362,6 @@ public class DriveFileProvider(
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume = consume)
-
-    /** The player's read of a whole payload into [outputPath], kept in the payload cache as it streams for the next play. */
-    suspend fun playPayloadToPath(
-        driveId: Uuid,
-        fileId: Uuid,
-        key: String,
-        keyHeader: KeyHeader,
-        outputPath: String,
-        onProgress: ((Float) -> Unit)?,
-    ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress, cache = true)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

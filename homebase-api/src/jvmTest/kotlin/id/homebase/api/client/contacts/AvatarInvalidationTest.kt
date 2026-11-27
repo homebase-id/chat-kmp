@@ -153,14 +153,14 @@ class AvatarInvalidationTest {
     private fun avatarGateway() = ContactInfoGateway(
         contactRepository = { emptyContactRepository() },
         publicProfiles = provider,
-        driveFiles = unusedDriveFiles(),
+        payloadReader = unusedPayloadReader(),
         contactHeaders = { _, _ -> null },
     )
 
     private fun throwingGateway() = ContactInfoGateway(
         contactRepository = { throw RepositoryReached() },
         publicProfiles = provider,
-        driveFiles = unusedDriveFiles(),
+        payloadReader = unusedPayloadReader(),
         contactHeaders = { _, _ -> null },
     )
 

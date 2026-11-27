@@ -69,6 +69,7 @@ class ViewOnceMediaClickedTest {
             uiState = ui,
             messagesUiState = messages,
             driveFileProvider = server.provider,
+            payloadReader = server.payloadReader,
             fileOperationsProvider = NoopFileOperationsProvider(),
             chatMessageActionService = service,
             viewOnceActions = actions,
@@ -168,7 +169,7 @@ class ViewOnceMediaClickedTest {
     @Test
     fun theLoaderRefusesToReadPayloadBytesWhereViewingIsBlocked() = runTest {
         val server = ViewOnceFakeServer().start()
-        val blocked = ViewOncePayloadLoader(server.provider, server.fileOps, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
+        val blocked = ViewOncePayloadLoader(server.provider, server.payloadReader, server.fileOps, tempDir = { server.viewOnceTempDir }, canView = { false }) { _, _ -> }
 
         assertFailsWith<ViewOnceNotViewableHereException> { blocked.begin(server.fileId) }
         assertFailsWith<ViewOnceNotViewableHereException> {

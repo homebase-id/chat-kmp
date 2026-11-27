@@ -16,6 +16,7 @@ import id.homebase.api.client.contacts.ContactInfoGateway
 import id.homebase.api.client.contacts.ContactPayloadReader
 import id.homebase.api.client.contacts.ContactRepository
 import id.homebase.api.client.contacts.ContactsProvider
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.storage.StorageQuota
 import id.homebase.api.client.storage.StorageUsageProvider
@@ -171,14 +172,12 @@ val apiModule = module {
             driveFileProvider.getFileHeaderByUid(driveId, uniqueId)
         }
     }
-    // Reads + decrypts a contact's on-demand payloads (ext_data bios, appextdata). The list/index
-    // header omits per-payload IVs, so go through the full file header for the IV + file key, then
-    // decrypt via the normal cached payload path. Narrow seam (like ContactHeaderReader) keeps
-    // ContactRepository off the drive-file graph and fakeable in tests.
+    // A contact's on-demand payloads (ext_data bios, appextdata): the list header omits per-payload IVs, so the
+    // server supplies the key. The seam keeps ContactRepository fakeable in tests.
     single<ContactPayloadReader> {
-        val driveFileProvider = get<DriveFileProvider>()
+        val reader = get<PayloadReader>()
         ContactPayloadReader { driveId, fileId, payloadKey ->
-            driveFileProvider.getPayloadBytesDecryptedViaResponseHeader(driveId, fileId, payloadKey)
+            reader.bytesWithServerKey(PayloadLocation.Own(driveId, fileId), payloadKey)
         }
     }
     singleOf(::ContactsProvider)
@@ -197,7 +196,7 @@ val apiModule = module {
         ContactInfoGateway(
             contactRepository = { get() },
             publicProfiles = get(),
-            driveFiles = get(),
+            payloadReader = get(),
             contactHeaders = get(),
         )
     }

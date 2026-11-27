@@ -94,6 +94,7 @@ class CopyImageActionTest {
             uiState = MutableStateFlow(ConversationListUiState(ownerSession = owner)),
             messagesUiState = messages,
             driveFileProvider = server.provider,
+            payloadReader = server.payloadReader,
             fileOperationsProvider = NoopFileOperationsProvider(),
             chatMessageActionService = service,
             viewOnceActions = ViewOnceActions(service, fixture.credentialsManager),

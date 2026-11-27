@@ -5,7 +5,8 @@ package id.homebase.api.client.contacts
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.cache.CacheStats
-import id.homebase.api.client.drives.cache.DriveFileProviderCached
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.client.profile.ProfileCard
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import id.homebase.api.common.OdinId
@@ -21,7 +22,7 @@ class ContactInfoGateway internal constructor(
     // gateway before DatabaseManager.initialize() runs, and ContactRepository needs the database.
     private val contactRepository: () -> ContactRepository,
     private val publicProfiles: PublicProfileProviderCached,
-    private val driveFiles: DriveFileProviderCached,
+    private val payloadReader: PayloadReader,
     private val contactHeaders: ContactHeaderReader,
 ) {
 
@@ -89,9 +90,8 @@ class ContactInfoGateway internal constructor(
     // The response's payloadencrypted header decides, not ref.isEncrypted: decrypting the header
     // content clears fileMetadata.isEncrypted, so a synced contact always reads as unencrypted.
     private suspend fun readAvatar(ref: ContactImageRef): ByteArray {
-        return checkNotNull(driveFiles.getPayloadBytesDecrypted(
-            driveId = ref.driveId,
-            fileId = ref.fileId,
+        return checkNotNull(payloadReader.bytes(
+            at = PayloadLocation.Own(ref.driveId, ref.fileId),
             key = ref.payload.key,
             keyHeader = ref.payloadKeyHeader() ?: KeyHeader.empty(),
             lastModified = ref.payload.lastModified,

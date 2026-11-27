@@ -36,5 +36,5 @@ fun PayloadReader.videoAccess(at: PayloadLocation): VideoPrefetchDriveAccess = o
         keyHeader: KeyHeader,
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
-    ) = playToPath(at, key, keyHeader, outputPath, onProgress)
+    ) = toFile(at, key, keyHeader, outputPath, cache = true, onProgress)
 }

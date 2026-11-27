@@ -77,7 +77,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val result = provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null, lastModified = null)
 
         assertEquals(
             "/api/v2/peer/$peer/drives/$driveId/files/by-gtid/$gtid/payload/$key",
@@ -126,7 +126,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         val result = provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, gtid, key, keyHeader(), onDownloadProgress = null, lastModified = null)
 
         assertTrue(
             result != null && result.bytes.contentEquals(plaintext),
@@ -164,7 +164,7 @@ class PeerFileByGlobalTransitProviderTest {
         val engine = MockEngine { respond(ByteArray(0), HttpStatusCode.NotFound) }
         assertNull(
             provider(engine)
-                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null),
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null),
         )
     }
 
@@ -185,7 +185,7 @@ class PeerFileByGlobalTransitProviderTest {
 
         val e = assertFailsWith<PayloadTooLargeException> {
             provider(engine)
-                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
+                .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null)
         }
         assertEquals(oversized, e.sizeBytes)
         assertEquals(PayloadSizePolicy.RENDER_LIMIT_BYTES, e.limitBytes)
@@ -204,7 +204,7 @@ class PeerFileByGlobalTransitProviderTest {
         }
 
         provider(engine)
-            .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
+            .getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null)
 
         assertEquals(1, urls.size)
         assertTrue(urls[0].startsWith("$cdn/?forward="), "first read is CDN: ${urls[0]}")
@@ -234,10 +234,10 @@ class PeerFileByGlobalTransitProviderTest {
         }
         val p = provider(engine)
 
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
+        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null)
         val viaFallback =
-            p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
-        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null)
+            p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null)
+        p.getPayloadOverPeerByGlobalTransitId(peer, driveId, Uuid.random(), key, keyHeader(), onDownloadProgress = null, lastModified = null)
 
         assertTrue(viaFallback != null, "the peer fallback still returns the bytes")
         assertEquals(

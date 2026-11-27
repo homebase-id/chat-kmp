@@ -1,11 +1,13 @@
 package id.homebase.chat.conversationlist
 
+import id.homebase.api.client.drives.files.DriveFileProvider
+import id.homebase.api.client.payload.PayloadLocation
+import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.video.isHlsVideo
 import id.homebase.api.video.playableContentType
 import id.homebase.api.video.playableFileName
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
-import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.coroutines.ioDispatcher
 import id.homebase.api.file.AppCacheDirs
@@ -78,6 +80,7 @@ internal class MediaDownloadHandler(
     private val uiState: MutableStateFlow<ConversationListUiState>,
     private val messagesUiState: MutableStateFlow<MessageListUiState>,
     private val driveFileProvider: DriveFileProvider,
+    private val payloadReader: PayloadReader,
     private val fileOperationsProvider: FileOperationsProvider,
     private val chatMessageActionService: ChatMessageActionService,
     private val viewOnceActions: ViewOnceActions,
@@ -319,13 +322,12 @@ internal class MediaDownloadHandler(
                 val filePath = "${AppCacheDirs.scratchPath(fileOperationsProvider.getCacheDirectory(), AppCacheDirs.DOWNLOADS)}/" +
                     decryptedCopyName(message.fileId, action.payloadKey, payload.contentType)
 
-                val success = driveFileProvider.streamPayloadDecryptedToPath(
-                    driveId = chatTargetDrive.alias,
-                    fileId = message.fileId,
+                val success = payloadReader.toFile(
+                    at = PayloadLocation.Own(chatTargetDrive.alias, message.fileId),
                     key = action.payloadKey,
                     keyHeader = KeyHeader(payloadIv, message.keyHeader.aesKey),
                     outputPath = filePath,
-                    fileOps = fileOperationsProvider,
+                    cache = false,
                 )
 
                 if (success) {

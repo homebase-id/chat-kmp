@@ -101,8 +101,9 @@ class PayloadReaderTest {
         assertContentEquals(body, bytes(at, key, KeyHeader.empty())?.bytes)
         thumb(at, key, KeyHeader.empty(), width = 320, height = 320)
         encryptedChunk(at, key, chunkStart = 0, chunkLength = 32)
-        assertTrue(playToPath(at, key, KeyHeader.empty(), "/out-${at::class.simpleName}.mp4"))
+        assertTrue(toFile(at, key, KeyHeader.empty(), "/out-${at::class.simpleName}.mp4", cache = true))
         assertContentEquals(body, written["/out-${at::class.simpleName}.mp4"])
+        assertTrue(toFile(at, key, KeyHeader.empty(), "/preview-${at::class.simpleName}", cache = false))
     }
 
     @Test
@@ -155,6 +156,23 @@ class PayloadReaderTest {
         }
     }
 
+    private suspend fun assertAnEditedPayloadIsReadAgain(at: PayloadLocation) {
+        val reader = reader()
+        served = byteArrayOf(1)
+        reader.bytes(at, key, KeyHeader.empty(), lastModified = 1)
+        served = byteArrayOf(2)
+
+        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), lastModified = 2)?.bytes)
+        assertContentEquals(byteArrayOf(2), reader.bytes(at, key, KeyHeader.empty(), lastModified = 2)?.bytes, "and keeps it")
+        assertTrue(requests.last().contains("lastModified=2"), "${requests.last()}")
+    }
+
+    @Test
+    fun anEditedPayloadOfOursIsReadAgain() = runTest { assertAnEditedPayloadIsReadAgain(own) }
+
+    @Test
+    fun anEditedPayloadOfAFollowedPostIsReadAgain() = runTest { assertAnEditedPayloadIsReadAgain(peers) }
+
     @Test
     fun anEditedImageOfOursShowsItsNewThumb() = runTest { assertAnEditedImagesThumbIsReadAgain(own) }
 
@@ -192,6 +210,27 @@ class PayloadReaderTest {
         assertTrue(peerRequest >= 0, "$events")
         assertTrue(events.take(peerRequest).none { it.startsWith("progress") }, "the CDN's error body isn't the download: $events")
         assertEquals(1f, progress.last())
+    }
+
+    @Test
+    fun aFileReadForOnceIsNotKeptButOneForReplayIs() = runTest {
+        val reader = reader()
+
+        reader.toFile(own, key, KeyHeader.empty(), "/once", cache = false)
+        reader.toFile(own, key, KeyHeader.empty(), "/again", cache = false)
+        assertEquals(2, requests.size, "an uncached read downloads every time: $requests")
+
+        reader.toFile(own, key, KeyHeader.empty(), "/play", cache = true)
+        reader.toFile(own, key, KeyHeader.empty(), "/replay", cache = true)
+        assertEquals(3, requests.size, "a cached read downloads once: $requests")
+        assertContentEquals(body, written["/replay"])
+    }
+
+    @Test
+    fun aPayloadKeyedByTheServerIsReadFromOurDrive() = runTest {
+        reader().bytesWithServerKey(own, key)
+
+        assertTrue(requests.single().contains("/drives/$driveId/files/$fileId/payload/$key"), "$requests")
     }
 
     @Test

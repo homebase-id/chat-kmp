@@ -44,12 +44,13 @@ class PayloadReader(
         chunkStart: Long? = null,
         chunkLength: Long? = null,
         onProgress: ((Float) -> Unit)? = null,
+        lastModified: Long? = null,
     ): BytesResponse? = when (at) {
-        is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress)
+        is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress, lastModified)
         is PayloadLocation.Peer -> if (chunkStart == null && chunkLength == null) {
-            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress)
+            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress, lastModified)
         } else {
-            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength, onProgress)
+            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength, onProgress, lastModified)
         }
     }
 
@@ -71,15 +72,19 @@ class PayloadReader(
         is PayloadLocation.Peer -> peer.getPayloadChunkEncryptedOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, chunkStart, chunkLength)
     }
 
-    /** The player's read of a whole payload into [outputPath]; false when it isn't there. */
-    suspend fun playToPath(
+    /**
+     * The whole payload, decrypted, streamed into [outputPath] at any size; false when it isn't there. [cache] keeps our
+     * own drive's copy for the next read (a player's replay); a followed identity's isn't cached yet.
+     */
+    suspend fun toFile(
         at: PayloadLocation,
         key: String,
         keyHeader: KeyHeader,
         outputPath: String,
+        cache: Boolean,
         onProgress: ((Float) -> Unit)? = null,
     ): Boolean = when (at) {
-        is PayloadLocation.Own -> own.playPayloadToPath(at.driveId, at.fileId, key, keyHeader, outputPath, onProgress)
+        is PayloadLocation.Own -> own.streamPayloadDecryptedToPath(at.driveId, at.fileId, key, keyHeader, outputPath, fileOps, onProgress, cache)
         is PayloadLocation.Peer -> {
             var wroteAnything = false
             val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress) { bytes ->
@@ -91,6 +96,10 @@ class PayloadReader(
             found && wroteAnything
         }
     }
+
+    /** For a caller holding no key header: the server returns the payload's, encrypted to this session. */
+    suspend fun bytesWithServerKey(at: PayloadLocation.Own, key: String): ByteArray? =
+        own.getPayloadBytesDecryptedViaResponseHeader(at.driveId, at.fileId, key)
 
     // The preloader reads only our own drive: a peer's payload is fetched when it plays.
     suspend fun prefetch(at: PayloadLocation, key: String, onProgress: ((Float) -> Unit)? = null) {
