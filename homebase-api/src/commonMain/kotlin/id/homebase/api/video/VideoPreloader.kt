@@ -2,6 +2,7 @@ package id.homebase.api.video
 
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.PayloadTooLargeException
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +48,8 @@ class VideoPreloader(
      * fetched on demand by the player.
      */
     suspend fun preload(data: VideoPlayerData, onProgress: ((Float) -> Unit)? = null) {
+        // A followed post's video is fetched when it plays: preloading reads only our own drive.
+        if (data.location is PayloadLocation.Peer) return
         val key = cacheKey(data.fileId, data.payloadKey)
         val (mutex, progressSink) = mapLock.withLock {
             mutexMap.getOrPut(key) { Mutex() } to progressMap.getOrPut(key) { MutableStateFlow(0f) }

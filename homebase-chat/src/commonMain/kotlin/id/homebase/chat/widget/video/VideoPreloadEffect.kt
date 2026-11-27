@@ -2,6 +2,7 @@ package id.homebase.chat.widget.video
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
@@ -14,6 +15,7 @@ fun VideoPreloadEffect(
     onPreloading: ((Boolean) -> Unit)? = null,
     onProgress: ((Float) -> Unit)? = null,
 ) {
+    if (data.location is PayloadLocation.Peer) return
     val preloadService = koinInject<VideoPreloadService>()
     val preloader = koinInject<VideoPreloader>()
     LaunchedEffect(data.fileId, data.payloadKey) {

@@ -272,9 +272,7 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — AVPlayer's resource loader
                         // delegate bypasses onDownloadProgress entirely.
-                        // The preloader reads our own drive, so for a followed identity it would fetch the
-                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
-                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
+                        videoPreloader.preload(videoData)
 
                         // Hand AVPlayer a real `http://127.0.0.1:<port>/...` URL backed by a
                         // tiny CIO server. The server rewrites the playlist so #EXT-X-KEY

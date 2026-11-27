@@ -89,7 +89,10 @@ val apiModule = module {
     // try to resolve VideoCompressor/VideoProber from the graph (they aren't bound)
     // and fail at first video send.
     single { VideoPayloadProcessor(get()) }
-    single { VideoPreloader({ get<PayloadReader>().videoAccess(it.location) }, get()) }
+    single {
+        val reader = get<PayloadReader>()
+        VideoPreloader({ reader.videoAccess(it.location) }, get())
+    }
     singleOf(::VideoPreloadService)
     singleOf(::CredentialsManager)
     singleOf(::OwnerSessionRepository)
@@ -132,7 +135,7 @@ val apiModule = module {
 
     factoryOf(::DriveFileProvider)
     factoryOf(::PayloadDownloadService)
-    factoryOf(::PayloadReader)
+    singleOf(::PayloadReader)
     factoryOf(::DriveFileOperationsProvider)
     factoryOf(::DriveFileGroupReactionProvider)
     factoryOf(::FollowProvider)

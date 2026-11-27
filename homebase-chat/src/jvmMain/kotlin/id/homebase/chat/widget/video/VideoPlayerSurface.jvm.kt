@@ -171,9 +171,7 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — the player's own segment
                         // fetches bypass onDownloadProgress entirely.
-                        // The preloader reads our own drive, so for a followed identity it would fetch the
-                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
-                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
+                        videoPreloader.preload(videoData)
                         File(dir, "index.m3u8").writeText(
                             content.originalPlaylist.lines()
                                 .filter { !it.startsWith("#EXT-X-KEY") }

@@ -4,9 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.BytesResponse
 import kotlin.uuid.Uuid
 
-/** Narrow view of [id.homebase.api.client.drives.files.DriveFileProvider] that [VideoPreloader]
- *  and [resolveVideoMetadata] need. Kept separate so tests can fake the drive layer without
- *  constructing the real Ktor / credentials stack. */
+/** One video's payload reads, from [id.homebase.api.client.payload.PayloadReader.videoAccess]; a fake stands in for it in tests. */
 interface VideoPrefetchDriveAccess {
     suspend fun prefetchPayload(
         driveId: Uuid,
@@ -35,10 +33,8 @@ interface VideoPrefetchDriveAccess {
     ): BytesResponse?
 
     /**
-     * Stream-decrypt a full payload to [outputPath] with bounded memory (#845) —
-     * the export-shaped read [resolveVideoContent] uses for non-segmented MP4s so
-     * a large video is never buffered whole in RAM, and kept in the payload cache for the next play. Returns false
-     * on 404.
+     * The whole payload streamed to [outputPath], never held in memory, for [resolveVideoContent]'s non-segmented
+     * MP4s; false on 404.
      */
     suspend fun streamPayloadDecryptedToPath(
         driveId: Uuid,

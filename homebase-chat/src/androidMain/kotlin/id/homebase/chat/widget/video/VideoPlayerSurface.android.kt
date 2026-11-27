@@ -316,9 +316,7 @@ actual fun VideoPlayerSurface(
                         // If MediaItem's preload was cancelled when the chat list left composition,
                         // this is the only path that drives real progress — ExoPlayer's own data-source
                         // fetches bypass onDownloadProgress entirely.
-                        // The preloader reads our own drive, so for a followed identity it would fetch the
-                        // wrong file. Playback warms the chunk cache itself; only progress goes dark.
-                        if (data.remoteOdinId == null) videoPreloader.preload(videoData)
+                        videoPreloader.preload(videoData)
                         val dataSourceFactory = DataSource.Factory {
                             HomebaseVideoDataSource(
                                 strippedPlaylist = content.originalPlaylist.lines()

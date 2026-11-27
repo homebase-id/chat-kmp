@@ -68,8 +68,7 @@ internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip
         val preloader = koinInject<VideoPreloader>()
         // Played from the payload cache once this is done, so an opening downloads it once; swiping away cancels it.
         LaunchedEffect(motion) {
-            // The preloader reads only the owner's drive.
-            if (motion.clip.remoteOdinId == null) withContext(Dispatchers.Default) { preloader.preload(motion.clip.toVideoData()) }
+            withContext(Dispatchers.Default) { preloader.preload(motion.clip.toVideoData()) }
             motion.preloaded = true
         }
     }
