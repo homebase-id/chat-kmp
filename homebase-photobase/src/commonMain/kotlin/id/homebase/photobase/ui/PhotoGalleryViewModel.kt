@@ -3,7 +3,6 @@ package id.homebase.photobase.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
@@ -24,6 +23,7 @@ import id.homebase.photobase.gallery.syncedSoFar
 import id.homebase.photobase.gallery.toGalleryItem
 import kotlin.math.abs
 import kotlin.time.Instant
+import id.homebase.photobase.info.PhotoInfoReader
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -171,6 +171,7 @@ class PhotoGalleryViewModel(
     private val albumSource: PhotoAlbumSource? = null,
     private val comments: PhotoCommentsService? = null,
     private val actions: PhotoActionService? = null,
+    val photoInfo: PhotoInfoReader? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private val album = gallery as? PhotoGallery.Album
@@ -582,8 +583,7 @@ private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverla
     fileId = fileId,
     driveId = driveId,
     payloadKey = video.key,
-    // The player decrypts with exactly this header, and each payload has its own IV.
-    keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    keyHeader = video.keyHeaderIn(keyHeader),
     payload = video,
 )
 

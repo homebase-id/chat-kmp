@@ -67,8 +67,8 @@ import id.homebase.core.permissions.PermissionType
 import id.homebase.core.permissions.createPermissionsManager
 import id.homebase.core.permissions.isLocationPermissionGranted
 import id.homebase.core.ui.screens.location.MapsOffState
-import id.homebase.core.ui.screens.location.map.TiledMapView
-import id.homebase.core.ui.screens.location.map.rememberMapCameraState
+import id.homebase.core.location.map.TiledMapView
+import id.homebase.core.location.map.rememberMapCameraState
 import id.homebase.resources.MR
 import id.homebase.resources.cancel
 import id.homebase.resources.cd_location_pin

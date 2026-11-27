@@ -28,6 +28,7 @@ import id.homebase.photobase.social.PhotoReactions
 import id.homebase.photobase.social.PhotoTarget
 import id.homebase.photobase.sharing.SharedAlbum
 import kotlin.uuid.Uuid
+import id.homebase.photobase.info.PhotoInfoReader
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -71,6 +72,7 @@ class SharedAlbumViewModel(
     private val actions: PhotoActionService,
     /** The app's: a comment sent as the screen closes must still be sent. */
     private val appScope: CoroutineScope,
+    val photoInfo: PhotoInfoReader,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(SharedAlbumUiState())
     val uiState: StateFlow<SharedAlbumUiState> = _uiState.asStateFlow()

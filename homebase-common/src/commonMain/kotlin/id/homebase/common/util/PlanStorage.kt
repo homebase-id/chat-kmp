@@ -58,7 +58,7 @@ private fun percentUsed(used: Long, quota: Long): Int? {
 }
 
 // 500.0 -> "500", 0.10 -> "0.1": at most [places] decimals, no trailing zeros
-internal fun formatDecimal(value: Double, places: Int): String {
+fun formatDecimal(value: Double, places: Int): String {
     val factor = 10.0.pow(places).toLong()
     val scaled = (value * factor).roundToLong()
     val fraction = (scaled % factor).toString().padStart(places, '0').trimEnd('0')

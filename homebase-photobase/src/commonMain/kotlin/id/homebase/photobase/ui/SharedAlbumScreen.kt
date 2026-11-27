@@ -62,6 +62,8 @@ import id.homebase.resources.photobase_shared_album_added
 import id.homebase.resources.photobase_shared_album_empty
 import id.homebase.resources.photobase_shared_with_me_failed
 import org.jetbrains.compose.resources.getString
+import id.homebase.photobase.info.InfoButton
+import id.homebase.photobase.info.PhotoInfoSheet
 import org.jetbrains.compose.resources.stringResource
 
 /** The photo as its owner's drive holds it, read over peer by its global transit id. */
@@ -115,9 +117,26 @@ fun SharedAlbumScreen(
                 onDismiss = { commentsOn = null },
             )
         }
+        var infoOn by remember { mutableStateOf<SharedPhoto?>(null) }
+        // It goes with its photo, as when the photo leaves the album.
+        LaunchedEffect(uiState.photos) {
+            if (infoOn?.let { shown -> uiState.photos.none { it.file.fileId == shown.file.fileId } } == true) infoOn = null
+        }
+        infoOn?.let { photo ->
+            PhotoInfoSheet(
+                item = photo.item,
+                owner = viewModel.owner,
+                reader = viewModel.photoInfo,
+                albums = listOfNotNull(uiState.album?.name),
+                addedBy = photo.addedBy,
+                backedUp = false,
+                onDismiss = { infoOn = null },
+            )
+        }
         SharedPhotoViewer(uiState.photos, opened.coerceIn(0, uiState.photos.lastIndex), viewModel.owner, snackbar, onClose = { viewModel.open(null) }) { photo ->
             val photoId = photo.file.fileMetadata.globalTransitId
             if (photoId != null) CommentsButton { commentsOn = photoId }
+            InfoButton { infoOn = photo }
         }
         return
     }
