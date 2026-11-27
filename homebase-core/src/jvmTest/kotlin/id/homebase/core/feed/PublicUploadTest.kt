@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
 import id.homebase.api.client.drives.upload.UploadFileRequest
 import id.homebase.api.client.eventbus.EventBus
+import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
 import id.homebase.api.video.VideoPayloadProcessor
@@ -78,13 +79,14 @@ class PublicUploadTest {
             assertContentEquals(photo.readBytes(), File(sent).readBytes())
 
             // Every network request fails here: bytes back are the seeded entry, served as they are.
-            val payload = env.driveFileProvider.getPayloadBytesDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty(), null, null, null)
+            val seeded = PayloadLocation.Own(drive, fileId)
+            val payload = env.payloadReader.bytes(seeded, "pst_mdi0", KeyHeader.empty())
             assertContentEquals(photo.readBytes(), assertNotNull(payload).bytes)
-            val thumbnail = env.driveFileProvider.getThumbBytesDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty(), 320, 240)
+            val thumbnail = env.payloadReader.thumb(seeded, "pst_mdi0", KeyHeader.empty(), 320, 240)
             assertContentEquals(thumb, assertNotNull(thumbnail).bytes)
             // Streamed too (playing or saving a video), which mustn't try to decrypt it.
             var streamed = ByteArray(0)
-            assertTrue(env.driveFileProvider.streamPayloadDecrypted(drive, fileId, "pst_mdi0", KeyHeader.empty()) { flow ->
+            assertTrue(env.payloadReader.stream(seeded, "pst_mdi0", KeyHeader.empty(), cache = false) { flow ->
                 streamed = flow.toList().fold(ByteArray(0), ByteArray::plus)
             })
             assertContentEquals(photo.readBytes(), streamed)

@@ -54,7 +54,7 @@ class PeerFileByGlobalTransitProvider(
     private val cdnStateLock = Mutex()
 
     /** Null on 404. */
-    suspend fun getPayloadOverPeerByGlobalTransitId(
+    internal suspend fun getPayloadOverPeerByGlobalTransitId(
         peer: OdinId,
         driveId: Uuid,
         globalTransitId: Uuid,
@@ -88,7 +88,7 @@ class PeerFileByGlobalTransitProvider(
      * payload and HLS chunk caches: a whole-file download must neither depend on the CDN nor evict video segments.
      * The cipher's padding is stripped, so the plaintext is exactly the original bytes.
      */
-    suspend fun streamPayloadDecrypted(
+    internal suspend fun streamPayloadDecrypted(
         peer: OdinId,
         driveId: Uuid,
         globalTransitId: Uuid,
@@ -106,7 +106,7 @@ class PeerFileByGlobalTransitProvider(
     }
 
     /** Null on 404. */
-    suspend fun getThumbOverPeerByGlobalTransitId(
+    internal suspend fun getThumbOverPeerByGlobalTransitId(
         peer: OdinId,
         driveId: Uuid,
         globalTransitId: Uuid,
@@ -145,7 +145,7 @@ class PeerFileByGlobalTransitProvider(
      * [chunkStart]/[chunkLength] name the range the CALLER wants. An encrypted payload is AES-CBC, so the
      * request is widened to block boundaries and the surplus trimmed off here.
      */
-    suspend fun getPayloadChunkOverPeerByGlobalTransitId(
+    internal suspend fun getPayloadChunkOverPeerByGlobalTransitId(
         peer: OdinId,
         driveId: Uuid,
         globalTransitId: Uuid,
@@ -198,7 +198,7 @@ class PeerFileByGlobalTransitProvider(
      * iOS hands AVPlayer stock HLS-AES-128 and lets it decrypt, so its local video server must proxy
      * ciphertext untouched — no block-alignment widening, because the caller wants the literal range.
      */
-    suspend fun getPayloadChunkEncryptedOverPeerByGlobalTransitId(
+    internal suspend fun getPayloadChunkEncryptedOverPeerByGlobalTransitId(
         peer: OdinId,
         driveId: Uuid,
         globalTransitId: Uuid,

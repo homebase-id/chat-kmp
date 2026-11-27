@@ -218,7 +218,7 @@ class DriveFileProviderCached(
      * `SharedSecretEncryptedHeader64`, the authoritative per-payload key header for a payload whose
      * IV the server rotates on rewrite (e.g. a contact's `ext_data`).
      */
-    suspend fun getPayloadBytesRawFromNetwork(
+    internal suspend fun getPayloadBytesRawFromNetwork(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -276,7 +276,7 @@ class DriveFileProviderCached(
         }
     }
 
-    suspend fun getPayloadBytesDecrypted(
+    internal suspend fun getPayloadBytesDecrypted(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
@@ -323,7 +323,7 @@ class DriveFileProviderCached(
         return BytesResponse(bytes = decryptedBytes, contentType = raw.contentType)
     }
 
-    suspend fun streamPayloadDecryptedToPath(
+    internal suspend fun streamPayloadDecryptedToPath(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
@@ -354,7 +354,7 @@ class DriveFileProviderCached(
      * The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. On a miss, [cache]
      * also keeps it in the payload cache for the next read, written as it streams, never held in memory.
      */
-    suspend fun streamPayloadDecrypted(
+    internal suspend fun streamPayloadDecrypted(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
@@ -608,22 +608,22 @@ class DriveFileProviderCached(
     // PeerFileByGlobalTransitProvider, which injecting here would cycle, so it hands in its
     // own key and fetch instead. Cached bytes stay encrypted — callers decrypt post-read
     // with the KeyHeader from the file header, since no response headers survive a hit.
-    suspend fun readPayloadThrough(
+    internal suspend fun readPayloadThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch = fetch)
 
-    suspend fun readThumbThrough(
+    internal suspend fun readThumbThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse = readThrough(thumbDiskCache, cacheKey, thumbnailSemaphore, "ThumbIO", fetch = fetch)
 
-    suspend fun readHlsChunkThrough(
+    internal suspend fun readHlsChunkThrough(
             cacheKey: String,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse = readThrough(hlsChunkDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch = fetch)
 
-    suspend fun getThumbBytesDecrypted(
+    internal suspend fun getThumbBytesDecrypted(
             driveId: Uuid,
             fileId: Uuid,
             payloadKey: String,

@@ -39,13 +39,13 @@ class ResendablePayloadsTest {
     ) : ResendPayloadByteSource {
         val payloadRequests = mutableListOf<String>()
 
-        override suspend fun getPayloadBytesEncrypted(driveId: Uuid, fileId: Uuid, key: String): ByteArray? {
+        override suspend fun storedPayloadBytes(driveId: Uuid, fileId: Uuid, key: String): ByteArray? {
             payloadRequests += key
             if (key == throwOnKey) throw IllegalStateException("boom for $key")
             return payloadBytes[key]
         }
 
-        override suspend fun getThumbBytesEncrypted(
+        override suspend fun storedThumbBytes(
             driveId: Uuid,
             fileId: Uuid,
             payloadKey: String,

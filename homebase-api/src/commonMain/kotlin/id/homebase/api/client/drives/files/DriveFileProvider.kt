@@ -154,7 +154,7 @@ public class DriveFileProvider(
 
     /** Downloads the payload to the encrypted disk cache without decrypting it.
      *  Subsequent calls to [getPayloadBytesDecrypted] for the same key will be served from cache. */
-    suspend fun prefetchPayload(
+    internal suspend fun prefetchPayload(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -168,7 +168,7 @@ public class DriveFileProvider(
     /** Downloads a single byterange of a payload into the encrypted disk cache without decrypting.
      *  The cache is keyed by (chunkStart, chunkLength), so a later player request with the
      *  identical range will hit this entry. Used to warm the first HLS segment. */
-    suspend fun prefetchPayloadChunk(
+    internal suspend fun prefetchPayloadChunk(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -193,7 +193,7 @@ public class DriveFileProvider(
 
     suspend fun evictFile(driveId: Uuid, fileId: Uuid, key: String) = driveCache.evictFile(driveId, fileId, key)
 
-    suspend fun getPayloadBytesDecrypted(
+    internal suspend fun getPayloadBytesDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -216,7 +216,7 @@ public class DriveFileProvider(
      * file content IV is the wrong IV. Goes to the network because the disk cache doesn't persist
      * that header. Returns null on 404.
      */
-    suspend fun getPayloadBytesDecryptedViaResponseHeader(
+    internal suspend fun getPayloadBytesDecryptedViaResponseHeader(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -238,7 +238,7 @@ public class DriveFileProvider(
      * receiving the heal'd file also receive the payload bytes (the manifest would
      * otherwise be empty and the payload wouldn't ship).
      */
-    suspend fun getPayloadBytesEncrypted(
+    internal suspend fun getPayloadBytesEncrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -255,7 +255,7 @@ public class DriveFileProvider(
      * must be re-attached alongside the payload or the `updateFileByUniqueId`
      * AppendOrOverwrite wipes them server-side (see [ResendPayloadByteSource]).
      */
-    suspend fun getThumbBytesEncrypted(
+    internal suspend fun getThumbBytesEncrypted(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,
@@ -321,7 +321,7 @@ public class DriveFileProvider(
      * the disk cache. Used by the iOS HLS resource loader, which decrypts each HLS segment as a
      * standalone AES-CBC blob (FFmpeg encrypts each segment independently with PKCS7 padding).
      */
-    suspend fun getPayloadBytesEncryptedChunk(
+    internal suspend fun getPayloadBytesEncryptedChunk(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -341,7 +341,7 @@ public class DriveFileProvider(
         return response.bytes
     }
 
-    suspend fun streamPayloadDecryptedToPath(
+    internal suspend fun streamPayloadDecryptedToPath(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -355,7 +355,7 @@ public class DriveFileProvider(
         driveId, fileId, key, keyHeader, outputPath, fileOps, onProgress, cache, lastModified)
 
     /** The decrypted payload to [consume] as it streams in, at any size; false when it 404s. */
-    suspend fun streamPayloadDecrypted(
+    internal suspend fun streamPayloadDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         key: String,
@@ -366,7 +366,7 @@ public class DriveFileProvider(
         consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache, lastModified, consume)
 
-    suspend fun getThumbBytesDecrypted(
+    internal suspend fun getThumbBytesDecrypted(
         driveId: Uuid,
         fileId: Uuid,
         payloadKey: String,

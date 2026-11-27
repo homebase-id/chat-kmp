@@ -70,10 +70,10 @@ internal suspend fun resendablePayloads(
     val unavailableKeys = mutableListOf<String>()
     for (descriptor in existing) {
         try {
-            val bytes = byteSource.getPayloadBytesEncrypted(driveId, file.fileId, descriptor.key)
+            val bytes = byteSource.storedPayloadBytes(driveId, file.fileId, descriptor.key)
             if (bytes == null || bytes.isEmpty()) {
                 Logger.w(tag = logTag) {
-                    "resendablePayloads: payload key=${descriptor.key} unavailable — getPayloadBytesEncrypted returned ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                    "resendablePayloads: payload key=${descriptor.key} unavailable — storedPayloadBytes returned ${if (bytes == null) "null" else "empty"} (fileId=${file.fileId})"
                 }
                 unavailableKeys += descriptor.key
                 continue
@@ -114,7 +114,7 @@ internal suspend fun resendablePayloads(
                     }
                     continue
                 }
-                val thumbBytes = byteSource.getThumbBytesEncrypted(
+                val thumbBytes = byteSource.storedThumbBytes(
                     driveId = driveId,
                     fileId = file.fileId,
                     payloadKey = descriptor.key,
@@ -124,7 +124,7 @@ internal suspend fun resendablePayloads(
                 )
                 if (thumbBytes == null || thumbBytes.isEmpty()) {
                     Logger.w(tag = logTag) {
-                        "resendablePayloads: skipping thumbnail key=${descriptor.key} ${w}x$h — getThumbBytesEncrypted returned ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
+                        "resendablePayloads: skipping thumbnail key=${descriptor.key} ${w}x$h — storedThumbBytes returned ${if (thumbBytes == null) "null" else "empty"} (fileId=${file.fileId})"
                     }
                     continue
                 }

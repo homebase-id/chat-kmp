@@ -5,11 +5,11 @@ package id.homebase.chat.services.sticker
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.DeleteLocalFilesByFileIdRequest
+import id.homebase.api.client.drives.files.ExportDestination
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.PayloadDownloadService
 import id.homebase.api.client.drives.upload.UploadAppFileMetaData
 import id.homebase.api.client.drives.upload.UploadFileMetadata
-import id.homebase.api.client.payload.PayloadLocation
-import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.image.MediaQuality
 import id.homebase.api.image.convertHeicToJpeg
@@ -47,7 +47,7 @@ class StickerService(
     private val outboxSync: OutboxSync,
     private val uploadService: UploadService,
     private val fileOperationsProvider: FileOperationsProvider,
-    private val payloadReader: PayloadReader,
+    private val payloadDownloadService: PayloadDownloadService,
     private val optionalDriveActivation: OptionalDriveActivation,
     private val stickerStream: StickerStream,
 ) {
@@ -197,15 +197,12 @@ class StickerService(
                 sticker.keyHeader
             }
 
-            val bytes = payloadReader.bytes(
-                at = PayloadLocation.Own(sticker.driveId, sticker.fileId),
-                key = sticker.payloadKey,
-                keyHeader = keyHeader,
-            )?.bytes ?: return null
-
             val ext = sticker.contentType.substringAfter("/", "png")
                 .let { if (it == "jpeg") "jpg" else it }
-            fileOperationsProvider.writeBytesToTempFile(bytes, "sticker_send_", ".$ext")
+            payloadDownloadService.exportToTemp(
+                sticker.driveId, sticker.fileId, sticker.payloadKey, keyHeader, ExportDestination.UploadTemp("sticker_send_", ".$ext"),
+                cache = true,
+            )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to resolve sticker ${sticker.fileId} for send" }
             null
