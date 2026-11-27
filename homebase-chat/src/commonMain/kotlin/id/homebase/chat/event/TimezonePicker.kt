@@ -40,6 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import id.homebase.core.util.offsetLabel
 import id.homebase.resources.MR
 import id.homebase.resources.menu_back
 import id.homebase.resources.chat_event_tz_picker_search
@@ -57,7 +58,6 @@ import id.homebase.resources.chat_event_tz_suggested
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.offsetIn
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
@@ -78,17 +78,6 @@ internal fun friendlyZoneLabel(zoneId: String, now: Instant = Clock.System.now()
 internal fun currentOffsetLabel(zoneId: String, now: Instant = Clock.System.now()): String {
     val tz = runCatching { TimeZone.of(zoneId) }.getOrNull() ?: return "GMT"
     return offsetLabel(now, tz)
-}
-
-/** [zone]'s offset at [at], as `GMT±H` or `GMT±H:MM`. */
-fun offsetLabel(at: Instant, zone: TimeZone): String {
-    val totalMinutes = at.offsetIn(zone).totalSeconds / 60
-    val sign = if (totalMinutes < 0) "-" else "+"
-    val absMin = kotlin.math.abs(totalMinutes)
-    val hours = absMin / 60
-    val mins = absMin % 60
-    return if (mins == 0) "GMT$sign$hours"
-    else "GMT$sign$hours:${mins.toString().padStart(2, '0')}"
 }
 
 /** Current wall-clock time in `zoneId` at `now`, as 24h "HH:mm" (empty if the zone is invalid). */

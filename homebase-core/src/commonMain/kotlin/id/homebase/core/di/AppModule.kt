@@ -209,7 +209,7 @@ import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.photobase.gallery.HttpPhotoMoveServer
 import id.homebase.photobase.gallery.PhotoMover
-import id.homebase.photobase.info.PhotoInfoDrives
+import id.homebase.photobase.info.DrivePhotoInfoReader
 import id.homebase.photobase.info.PhotoInfoReader
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoShelf
@@ -1606,7 +1606,7 @@ val appModule = module {
             sync = { syncPhotos() },
         )
     }
-    factory<PhotoInfoReader> { PhotoInfoDrives(get(), get(), get()) }
+    factory<PhotoInfoReader> { DrivePhotoInfoReader(get(), get(), get()) }
     // The tab's own gallery has no parameter.
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {

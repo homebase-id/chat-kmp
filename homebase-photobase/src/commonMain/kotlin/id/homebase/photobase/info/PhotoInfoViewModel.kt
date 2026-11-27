@@ -38,7 +38,7 @@ interface PhotoInfoReader {
 }
 
 /** The camera details from the whole original's EXIF, and the place's name and map tiles from OpenStreetMap. */
-class PhotoInfoDrives(
+class DrivePhotoInfoReader(
     private val payloads: PayloadReader,
     private val places: LocationPreviewProvider,
     private val locationPreferences: LocationPreferences,

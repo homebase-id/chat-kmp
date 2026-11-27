@@ -1,6 +1,7 @@
 package id.homebase.core.util
 
 import androidx.compose.runtime.Composable
+import kotlinx.datetime.offsetIn
 import id.homebase.resources.MR
 import id.homebase.resources.day_friday
 import id.homebase.resources.day_monday
@@ -113,3 +114,13 @@ private fun getDayName(dayOfWeek: Int): String {
     }
 }
 
+/** [zone]'s offset at [at], as `GMT±H` or `GMT±H:MM`. */
+fun offsetLabel(at: Instant, zone: TimeZone): String {
+    val totalMinutes = at.offsetIn(zone).totalSeconds / 60
+    val sign = if (totalMinutes < 0) "-" else "+"
+    val absMin = kotlin.math.abs(totalMinutes)
+    val hours = absMin / 60
+    val mins = absMin % 60
+    return if (mins == 0) "GMT$sign$hours"
+    else "GMT$sign$hours:${mins.toString().padStart(2, '0')}"
+}

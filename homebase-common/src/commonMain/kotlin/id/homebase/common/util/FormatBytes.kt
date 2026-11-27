@@ -1,6 +1,8 @@
 package id.homebase.common.util
 
 import kotlin.math.abs
+import kotlin.math.pow
+import kotlin.math.roundToLong
 
 private const val KB = 1024.0
 private const val MB = KB * 1024.0
@@ -27,4 +29,12 @@ private fun formatUnit(value: Double, suffix: String): String {
     val tenths = ((rounded - whole) * 10).toLong()
     val tenthsAbs = if (tenths < 0) -tenths else tenths
     return "$whole.$tenthsAbs $suffix"
+}
+
+// 500.0 -> "500", 0.10 -> "0.1": at most [places] decimals, no trailing zeros
+fun formatDecimal(value: Double, places: Int): String {
+    val factor = 10.0.pow(places).toLong()
+    val scaled = (value * factor).roundToLong()
+    val fraction = (scaled % factor).toString().padStart(places, '0').trimEnd('0')
+    return if (fraction.isEmpty()) "${scaled / factor}" else "${scaled / factor}.$fraction"
 }

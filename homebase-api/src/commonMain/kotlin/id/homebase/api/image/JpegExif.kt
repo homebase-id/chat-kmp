@@ -104,7 +104,7 @@ private class Directory(val tiff: Tiff, val at: Int) {
 
     fun orientation(): Int? = long(0x0112)?.takeIf { it in 1..8 }
 
-    // The first value: inline when they all fit in four bytes, else at the offset written there.
+    // The first value.
     fun long(tag: Int): Int? {
         val entry = entry(tag) ?: return null
         val type = tiff.u16(entry + 2)
@@ -114,17 +114,22 @@ private class Directory(val tiff: Tiff, val at: Int) {
             4, 13 -> 4
             else -> return null
         }
-        val count = tiff.u32(entry + 4)
-        val at = if (count.toLong() * size <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
-        if (at + size > tiff.end) return null
-        return if (size == 2) tiff.u16(at.toInt()) else tiff.u32(at.toInt())
+        val at = valueAt(entry, tiff.u32(entry + 4).toLong() * size, size) ?: return null
+        return if (size == 2) tiff.u16(at) else tiff.u32(at)
+    }
+
+    // Inline when the values' [size] bytes fit in four, else at the offset written there; null when [read] bytes
+    // from there run past the end.
+    private fun valueAt(entry: Int, size: Long, read: Int): Int? {
+        val at = if (size <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
+        return at.takeIf { it + read <= tiff.end }?.toInt()
     }
 
     fun rational(tag: Int): Double? {
         val entry = entry(tag) ?: return null
         val type = tiff.u16(entry + 2)
         if (type != 5 && type != 10) return null
-        val value = (tiff.start.toLong() + tiff.u32(entry + 8)).takeIf { it + 8 <= tiff.end }?.toInt() ?: return null
+        val value = valueAt(entry, 8, 8) ?: return null
         val read = if (type == 10) tiff::s32 else tiff::u32long
         val denominator = read(value + 4)
         return if (denominator == 0L) null else read(value).toDouble() / denominator
@@ -134,10 +139,9 @@ private class Directory(val tiff: Tiff, val at: Int) {
         val entry = entry(tag) ?: return null
         if (tiff.u16(entry + 2) != 2) return null
         val count = tiff.u32(entry + 4)
-        val value = if (count <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
-        if (value + count > tiff.end) return null
+        val value = valueAt(entry, count.toLong(), count) ?: return null
         // Up to the first NUL, as the platforms' readers stop.
-        return tiff.bytes.copyOfRange(value.toInt(), value.toInt() + count).decodeToString().substringBefore('\u0000').trim().takeIf { it.isNotEmpty() }
+        return tiff.bytes.copyOfRange(value, value + count).decodeToString().substringBefore('\u0000').trim().takeIf { it.isNotEmpty() }
     }
 }
 

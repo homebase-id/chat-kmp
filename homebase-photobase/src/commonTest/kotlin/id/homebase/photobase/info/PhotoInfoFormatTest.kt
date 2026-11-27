@@ -5,7 +5,7 @@ import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
-import id.homebase.chat.event.offsetLabel
+import id.homebase.core.util.offsetLabel
 import id.homebase.common.util.formatDecimal
 import id.homebase.common.util.formatBytes
 import kotlinx.datetime.LocalDateTime

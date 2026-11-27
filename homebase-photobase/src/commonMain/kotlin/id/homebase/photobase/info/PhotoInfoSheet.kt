@@ -20,7 +20,6 @@ import androidx.compose.material.icons.outlined.PhotoAlbum
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -42,15 +41,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import id.homebase.api.client.location.WebMercator
 import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
-import id.homebase.chat.event.offsetLabel
+import id.homebase.core.util.offsetLabel
 import id.homebase.common.util.formatBytes
 import id.homebase.common.util.formatDecimal
 import id.homebase.core.location.map.TiledMapView
 import id.homebase.core.util.formatMediumDate
 import id.homebase.core.util.formatTime
 import id.homebase.core.widget.AdaptiveSheet
-import id.homebase.core.widget.WithTooltip
 import id.homebase.photobase.gallery.PhotoGalleryItem
+import id.homebase.photobase.ui.ToolbarAction
 import id.homebase.resources.MR
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.photobase_info_albums
@@ -81,15 +80,14 @@ import kotlin.math.roundToInt
 import kotlin.time.Instant
 
 /**
- * What's known of [item], as Google Photos' info panel shows it: when, where (with its map), the file, the camera,
- * and its [albums]. A section with nothing to say is left out.
+ * What's known of [item]: when, where (with its map), the file, the camera and its [albums]. A section with nothing to
+ * say is left out.
  */
 @Composable
 fun PhotoInfoSheet(
     item: PhotoGalleryItem,
     reader: PhotoInfoReader,
     albums: List<String>,
-    /** In this identity's library and not in its Bin, waiting to be deleted. */
     backedUp: Boolean,
     onDismiss: () -> Unit,
 ) {
@@ -115,7 +113,7 @@ fun PhotoInfoSheet(
     }
 }
 
-// In the zone it was taken in once its EXIF says, as Google Photos shows it; until then, or without one, this device's.
+// In the zone it was taken in once its EXIF says; until then, or without one, this device's.
 @Composable
 private fun WhenRow(capturedAtMs: Long, exif: ImageMetadata?) {
     val (at, captureOffset) = remember(capturedAtMs, exif) { takenAt(capturedAtMs, exif) }
@@ -231,8 +229,5 @@ private val PIN = 32.dp
 
 @Composable
 fun InfoButton(onClick: () -> Unit) {
-    val label = stringResource(MR.string.photobase_info_open)
-    WithTooltip(label) {
-        IconButton(onClick = onClick) { Icon(Icons.Outlined.Info, contentDescription = label) }
-    }
+    ToolbarAction(Icons.Outlined.Info, MR.string.photobase_info_open, enabled = true, onClick)
 }

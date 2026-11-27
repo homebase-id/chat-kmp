@@ -35,8 +35,7 @@ internal fun cameraName(make: String?, model: String?): String? = when {
     else -> "$make $model"
 }
 
-// OpenStreetMap's, the provider the Maps setting chose, so the tap sends the place nowhere else; https, since geo:
-// opens nothing on desktop or web.
+// https, since geo: opens nothing on desktop or web.
 internal fun mapsUrl(at: MediaLocation): String {
     val lat = fiveDecimals(at.latitude)
     val lon = fiveDecimals(at.longitude)
@@ -63,11 +62,8 @@ internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?): Pair<Instant, Ut
     return if (local != null && offset != null) local.toInstant(offset) to offset else Instant.fromEpochMilliseconds(capturedAtMs) to offset
 }
 
-/**
- * [at] shifted so a formatter that shows the [system] zone reads the clock at [offset], the zone the photo was taken
- * in. Shifted again by the system's offset where it lands, so a change of offset in between doesn't put it an hour out;
- * a time the system's clock skips, in the hour it springs forward, can't be shown and reads an hour off.
- */
+// [at] shifted so a formatter in the [system] zone shows the clock at [offset]; twice, in case the system's offset
+// changes in between. A time the system's clock skips reads an hour off.
 internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instant {
     val first = at + (offset.totalSeconds - system.offsetAt(at).totalSeconds).seconds
     return at + (offset.totalSeconds - system.offsetAt(first).totalSeconds).seconds

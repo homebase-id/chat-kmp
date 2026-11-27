@@ -318,7 +318,7 @@ fun PhotoGalleryScreen(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
                         heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
-                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { viewModel.photoInfo != null },
+                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { reader != null },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
