@@ -14,6 +14,7 @@ import id.homebase.api.client.drives.files.DriveFileHelpers
 import id.homebase.api.client.drives.files.DriveFileHttpProvider
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.PayloadOperationOptions
+import id.homebase.api.client.drives.files.StreamedBody
 import id.homebase.api.crypto.AesCbc
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.safeDeleteRecursively
@@ -29,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
@@ -330,15 +332,20 @@ class DriveFileProviderCached(
             outputPath: String,
             fileOps: FileOperationsProvider = fileOperationsProvider,
             onProgress: ((Float) -> Unit)? = null,
-    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress) { fileOps.writeDownload(outputPath, it) }
+            cache: Boolean = false,
+    ): Boolean = streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, cache) { fileOps.writeDownload(outputPath, it) }
 
-    /** The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. */
+    /**
+     * The decrypted payload to [consume], from the disk cache when it holds it; false when it 404s. On a miss, [cache]
+     * also keeps it in the payload cache for the next read, written as it streams, never held in memory.
+     */
     suspend fun streamPayloadDecrypted(
             driveId: Uuid,
             fileId: Uuid,
             key: String,
             keyHeader: KeyHeader,
             onProgress: ((Float) -> Unit)? = null,
+            cache: Boolean = false,
             consume: suspend (Flow<ByteArray>) -> Unit,
     ): Boolean {
         if (fileId in ephemeralFiles) {
@@ -346,7 +353,11 @@ class DriveFileProviderCached(
         }
         val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
         val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
-                ?: return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+                ?: return if (cache) {
+                    streamIntoCache(driveId, fileId, key, cacheKey, keyHeader, onProgress, consume)
+                } else {
+                    delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+                }
 
         return snapshot.use { snap ->
             // A plaintext file (a public post) is cached as the server serves it: decrypting it would throw.
@@ -377,6 +388,73 @@ class DriveFileProviderCached(
             // Cache hit is local-disk speed — progress jumps straight to done.
             onProgress?.invoke(1f)
             true
+        }
+    }
+
+    // Tees the encrypted body into an entry in readThrough's format, committed only once the whole body has arrived
+    // under the generation it started in. A failed write only costs the entry, never the read.
+    private suspend fun streamIntoCache(
+            driveId: Uuid,
+            fileId: Uuid,
+            key: String,
+            cacheKey: String,
+            keyHeader: KeyHeader,
+            onProgress: ((Float) -> Unit)?,
+            consume: suspend (Flow<ByteArray>) -> Unit,
+    ): Boolean {
+        val startedGeneration = generation
+        return delegate.streamPayloadBody(driveId, fileId, key, onProgress) { body ->
+            val size = body.contentLength
+            val editor = if (size == null || size in 1..PayloadSizePolicy.RENDER_LIMIT_BYTES) {
+                payloadDiskCache.openEditor(cacheKey.toDiskKey())
+            } else {
+                null
+            }
+            if (editor == null) return@streamPayloadBody consume(body.decrypted(keyHeader))
+
+            var written = 0L
+            var sink: okio.BufferedSink? = null
+            try {
+                sink = fileSystem.sink(editor.data).buffer().apply {
+                    writeInt(200)
+                    writeInt(body.contentType.length)
+                    writeUtf8(body.contentType)
+                    writeByte(if (body.encrypted) 1 else 0)
+                }
+            } catch (e: Exception) {
+                Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED to open key=$cacheKey" }
+            }
+            val teed = body.bytes.onEach { chunk ->
+                val out = sink ?: return@onEach
+                try {
+                    written += chunk.size
+                    check(written <= PayloadSizePolicy.RENDER_LIMIT_BYTES) { "over the render limit" }
+                    out.write(chunk)
+                } catch (e: Exception) {
+                    Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED key=$cacheKey" }
+                    runCatching { out.close() }
+                    sink = null
+                }
+            }
+            try {
+                consume(StreamedBody(body.contentType, size, body.encrypted, teed).decrypted(keyHeader))
+            } catch (e: Throwable) {
+                sink?.let { runCatching { it.close() } }
+                editor.abortQuietly()
+                throw e
+            }
+            val complete = sink?.let { out -> runCatching { out.close() }.isSuccess } == true && (size == null || written == size)
+            if (!complete || generation != startedGeneration) {
+                editor.abortQuietly()
+            } else {
+                try {
+                    editor.commit()
+                    if (generation != startedGeneration) payloadDiskCache.remove(cacheKey.toDiskKey())
+                } catch (e: Exception) {
+                    editor.abortQuietly()
+                    Logger.e(tag = "PayloadIO", throwable = e) { "cache-write FAILED to commit key=$cacheKey" }
+                }
+            }
         }
     }
 

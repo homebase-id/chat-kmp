@@ -359,7 +359,7 @@ public class DriveFileProvider(
         keyHeader: KeyHeader,
         onProgress: ((Float) -> Unit)? = null,
         consume: suspend (Flow<ByteArray>) -> Unit,
-    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume)
+    ): Boolean = driveCache.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, consume = consume)
 
     /** [VideoPrefetchDriveAccess] variant — the cached layer supplies its own file ops. */
     override suspend fun streamPayloadDecryptedToPath(
@@ -369,8 +369,9 @@ public class DriveFileProvider(
         keyHeader: KeyHeader,
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
+        cache: Boolean,
     ): Boolean = driveCache.streamPayloadDecryptedToPath(
-        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress)
+        driveId, fileId, key, keyHeader, outputPath, onProgress = onProgress, cache = cache)
 
     suspend fun getThumbBytesDecrypted(
         driveId: Uuid,

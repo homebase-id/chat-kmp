@@ -4,6 +4,7 @@ import id.homebase.chat.services.builder.locationPreviews
 import id.homebase.chat.services.builder.linkPreviews
 import id.homebase.chat.widget.preview.FilePreviewKind
 import id.homebase.chat.widget.preview.chatChipPreviewKind
+import id.homebase.chat.widget.video.VideoPreloadEffect
 import id.homebase.core.util.formatHms
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -23,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,8 +46,6 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.upload.EmbeddedThumb
 import id.homebase.api.image.toImageBitmap
 import id.homebase.api.video.VideoPlayerData
-import id.homebase.api.video.VideoPreloadService
-import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.DecryptedFileKey
 import id.homebase.chat.services.ChatProtocol
 import id.homebase.chat.services.LocalAttachmentContext
@@ -534,31 +532,6 @@ fun MediaItem(
     }
 }
 
-@Composable
-private fun VideoPreloadEffect(
-    data: VideoPlayerData,
-    onPreloading: (Boolean) -> Unit,
-    onProgress: (Float) -> Unit,
-) {
-    val preloadService = koinInject<VideoPreloadService>()
-    val preloader = koinInject<VideoPreloader>()
-    // Kick off the download on an app-scoped coroutine so it survives the chat list leaving
-    // composition when the user taps into a video. Without this, the tap cancels the in-flight
-    // fetch and the full-screen surface has to restart from byte 0.
-    LaunchedEffect(data.fileId, data.payloadKey) {
-        preloadService.requestPreload(data)
-    }
-    // Observe progress for the thumbnail's indicator. This collector is composition-scoped —
-    // when the thumbnail goes off-screen the UI stops updating, but the background download
-    // continues via the service.
-    LaunchedEffect(data.fileId, data.payloadKey) {
-        preloader.progressFlow(data.fileId, data.payloadKey).collect { p ->
-            onProgress(p)
-            onPreloading(p < 1f)
-        }
-    }
-}
-
 /** Placeholder component for unsupported media types. Shows an emoji icon and label. */
 @Composable
 private fun MediaPlaceholder(
@@ -578,5 +551,4 @@ private fun MediaPlaceholder(
         )
     }
 }
-
 

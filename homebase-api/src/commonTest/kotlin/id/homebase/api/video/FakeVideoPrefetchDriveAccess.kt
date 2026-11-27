@@ -40,6 +40,7 @@ class FakeVideoPrefetchDriveAccess(
             val fileId: Uuid,
             val key: String,
             val outputPath: String,
+            val cache: Boolean = false,
         ) : Call
     }
 
@@ -90,8 +91,9 @@ class FakeVideoPrefetchDriveAccess(
         keyHeader: KeyHeader,
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
+        cache: Boolean,
     ): Boolean {
-        _calls.add(Call.StreamPayloadDecryptedToPath(driveId, fileId, key, outputPath))
+        _calls.add(Call.StreamPayloadDecryptedToPath(driveId, fileId, key, outputPath, cache))
         onProgress?.invoke(1f)
         return getPayloadResponses.containsKey(key)
     }

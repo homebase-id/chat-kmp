@@ -62,10 +62,8 @@ class VideoContentResolverTest {
             mp4.filePath.startsWith("/cache/hb-scratch/export/hbvid_res_") && mp4.filePath.endsWith(".mp4"),
             "must stream into the swept hbvid_res_* pattern: ${mp4.filePath}",
         )
-        assertEquals(
-            1,
-            fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.StreamPayloadDecryptedToPath>().size,
-        )
+        val stream = fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.StreamPayloadDecryptedToPath>().single()
+        assertTrue(stream.cache, "the player's stream must keep the payload for the next play")
         assertTrue(
             fake.calls.filterIsInstance<FakeVideoPrefetchDriveAccess.Call.GetPayloadBytesDecrypted>().isEmpty(),
             "the payload must never be byte-buffered on the file path (calls=${fake.calls})",

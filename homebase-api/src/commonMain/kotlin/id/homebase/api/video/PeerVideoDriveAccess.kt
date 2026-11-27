@@ -78,6 +78,7 @@ class PeerVideoDriveAccess(
         keyHeader: KeyHeader,
         outputPath: String,
         onProgress: ((Float) -> Unit)?,
+        cache: Boolean,
     ): Boolean {
         var wroteAnything = false
         val found = peerProvider.streamPayloadDecrypted(peer, driveId, globalTransitId, key, keyHeader, onProgress) { bytes ->

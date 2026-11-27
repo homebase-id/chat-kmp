@@ -37,6 +37,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material.icons.filled.MoreVert
+import id.homebase.chat.widget.video.VideoPreloadEffect
+import id.homebase.chat.widget.video.toVideoData
 import id.homebase.resources.photobase_gallery_more
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -416,9 +418,11 @@ private fun GalleryViewer(
                 isFocused = settled && !animatedVisibilityScope.transition.isRunning,
             )
             // A player plays as soon as it's composed, so a neighbour shows its still until swiped to.
+            // The open video caches itself as it plays; preloading it too would download it twice.
             is FullScreenOverlay.VideoPlayerData -> if (settled) {
                 FullScreenVideoPlayer(data = viewer, onDismiss = close)
             } else {
+                VideoPreloadEffect(remember(viewer) { viewer.toVideoData() })
                 VideoStill(item)
             }
             else -> Unit
