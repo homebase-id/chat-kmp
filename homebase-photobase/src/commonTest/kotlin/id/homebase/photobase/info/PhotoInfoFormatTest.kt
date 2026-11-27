@@ -107,8 +107,8 @@ class PhotoInfoFormatTest {
 
     @Test
     fun theMapLinkSearchesForThePoint() {
-        assertEquals("https://www.google.com/maps/search/?api=1&query=37.77490,-122.41940", mapsUrl(MediaLocation(37.7749, -122.4194)))
-        assertEquals("https://www.google.com/maps/search/?api=1&query=51.47780,-0.00050", mapsUrl(MediaLocation(51.4778, -0.0005)), "never 5.0E-4")
+        assertEquals("https://www.openstreetmap.org/?mlat=37.77490&mlon=-122.41940#map=15/37.77490/-122.41940", mapsUrl(MediaLocation(37.7749, -122.4194)))
+        assertEquals("https://www.openstreetmap.org/?mlat=51.47780&mlon=-0.00050#map=15/51.47780/-0.00050", mapsUrl(MediaLocation(51.4778, -0.0005)), "never 5.0E-4")
     }
 
     @Test

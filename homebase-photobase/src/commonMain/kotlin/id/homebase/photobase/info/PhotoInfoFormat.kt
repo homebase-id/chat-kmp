@@ -35,8 +35,13 @@ internal fun cameraName(make: String?, model: String?): String? = when {
     else -> "$make $model"
 }
 
-// An https link every platform opens, in the maps app where there is one; geo: opens nothing on desktop or web.
-internal fun mapsUrl(at: MediaLocation): String = "https://www.google.com/maps/search/?api=1&query=${fiveDecimals(at.latitude)},${fiveDecimals(at.longitude)}"
+// OpenStreetMap's, the provider the Maps setting chose, so the tap sends the place nowhere else; https, since geo:
+// opens nothing on desktop or web.
+internal fun mapsUrl(at: MediaLocation): String {
+    val lat = fiveDecimals(at.latitude)
+    val lon = fiveDecimals(at.longitude)
+    return "https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=$MAP_ZOOM/$lat/$lon"
+}
 
 internal fun coordinates(at: MediaLocation): String = "${fiveDecimals(at.latitude)}, ${fiveDecimals(at.longitude)}"
 
