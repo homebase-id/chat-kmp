@@ -201,6 +201,7 @@ class StickerService(
                 .let { if (it == "jpeg") "jpg" else it }
             payloadDownloadService.exportToTemp(
                 sticker.driveId, sticker.fileId, sticker.payloadKey, keyHeader, ExportDestination.UploadTemp("sticker_send_", ".$ext"),
+                cache = true,
             )
         } catch (e: Exception) {
             Logger.e(e, TAG) { "Failed to resolve sticker ${sticker.fileId} for send" }

@@ -38,7 +38,7 @@ class ArchitectureTest {
 
     @Test
     fun `Forward and moment share stream the payload to disk instead of reading it whole`() {
-        val wholeFileRead = Regex("""\bpayloadReader\s*\.\s*bytes\s*\(""")
+        val wholeFileRead = Regex("""[Rr]eader\s*\.\s*bytes\s*\(""")
         val guarded = productionFiles
             .filter {
                 val path = it.path.replace('\\', '/')

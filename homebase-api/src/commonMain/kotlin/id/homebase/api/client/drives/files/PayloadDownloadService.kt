@@ -85,7 +85,7 @@ class PayloadDownloadService(
     /**
      * Stream-decrypt a payload into a reserved path at [destination] and return
      * the absolute path, or null when the payload 404s. Bounded memory for any
-     * payload size; reads a cached copy if there is one, writes none.
+     * payload size; reads a cached copy if there is one, and keeps one only with [cache].
      */
     suspend fun exportToTemp(
         driveId: Uuid,
@@ -94,8 +94,9 @@ class PayloadDownloadService(
         keyHeader: KeyHeader,
         destination: ExportDestination,
         onProgress: ((Float) -> Unit)? = null,
+        cache: Boolean = false,
     ): String? = exportWith(destination) { path ->
-        payloadReader.toFile(PayloadLocation.Own(driveId, fileId), key, keyHeader, path, cache = false, onProgress)
+        payloadReader.toFile(PayloadLocation.Own(driveId, fileId), key, keyHeader, path, cache, onProgress)
     }
 
     /**
