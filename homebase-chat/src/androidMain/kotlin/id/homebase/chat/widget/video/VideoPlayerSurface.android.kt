@@ -4,6 +4,7 @@ import android.net.Uri
 import android.view.LayoutInflater
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.payload.PayloadReader
+import id.homebase.api.video.videoAccess
 import id.homebase.chat.R
 import kotlin.time.measureTimedValue
 import androidx.annotation.OptIn

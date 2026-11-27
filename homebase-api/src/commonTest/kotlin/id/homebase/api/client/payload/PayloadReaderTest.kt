@@ -11,6 +11,7 @@ import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.systemFileSystem
+import id.homebase.api.video.videoAccess
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond

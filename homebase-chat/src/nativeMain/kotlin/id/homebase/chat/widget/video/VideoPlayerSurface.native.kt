@@ -22,6 +22,7 @@ import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPreloader
 import id.homebase.api.video.resolveVideoContent
+import id.homebase.api.video.videoAccess
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.audio.AudioSession
 import id.homebase.resources.MR

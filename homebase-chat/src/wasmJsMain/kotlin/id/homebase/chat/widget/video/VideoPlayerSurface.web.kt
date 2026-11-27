@@ -20,12 +20,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import id.homebase.api.browser.guardJsCallback
-import id.homebase.api.client.payload.PayloadLocation
 import id.homebase.api.client.payload.PayloadReader
 import id.homebase.api.util.toBlobObjectUrl
 import id.homebase.api.video.VideoContent
 import id.homebase.api.video.VideoPlayerData
 import id.homebase.api.video.resolveVideoContent
+import id.homebase.api.video.videoAccess
 import id.homebase.chat.conversationlist.FullScreenOverlay
 import id.homebase.core.util.showHtmlOverlay
 import id.homebase.resources.MR
@@ -88,16 +88,10 @@ actual fun VideoPlayerSurface(
     LaunchedEffect(data) {
         onProgress(0f)
         try {
+            val videoData = data.toVideoData()
             val content = resolveVideoContent(
-                VideoPlayerData(
-                    data.fileId,
-                    data.driveId,
-                    data.payloadKey,
-                    data.keyHeader,
-                    data.payload.descriptorContent,
-                    contentType = data.payload.contentType,
-                ),
-                payloadReader.videoAccess(PayloadLocation.Own(data.driveId, data.fileId)),
+                videoData,
+                payloadReader.videoAccess(videoData.location),
                 // Web builds a Blob object URL, so it needs bytes (the wasm FS
                 // is RAM-backed anyway). The render-limit guard bounds it: an
                 // oversized MP4 throws PayloadTooLargeException into the catch

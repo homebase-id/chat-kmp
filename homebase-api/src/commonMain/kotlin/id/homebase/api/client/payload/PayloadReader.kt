@@ -7,7 +7,6 @@ import id.homebase.api.client.drives.files.DriveFileProvider
 import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.file.FileOperationsProvider
-import id.homebase.api.video.VideoPrefetchDriveAccess
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
@@ -26,7 +25,7 @@ sealed interface PayloadLocation {
     }
 }
 
-/** Every read of a payload goes through here: the one place that tells our own drive from a peer's. */
+/** Reads a payload from our own drive or a followed identity's: the one place that tells the two apart. Exports and a few own-drive reads still call DriveFileProvider directly. */
 class PayloadReader(
     private val own: DriveFileProvider,
     private val peer: PeerFileByGlobalTransitProvider,
@@ -95,39 +94,5 @@ class PayloadReader(
 
     suspend fun prefetchChunk(at: PayloadLocation, key: String, chunkStart: Long, chunkLength: Long, onProgress: ((Float) -> Unit)? = null) {
         if (at is PayloadLocation.Own) own.prefetchPayloadChunk(at.driveId, at.fileId, key, chunkStart, chunkLength, onProgress)
-    }
-
-    /** The video access the player and preloader read [at] through; the ids each call passes name the same video. */
-    fun videoAccess(at: PayloadLocation): VideoPrefetchDriveAccess = object : VideoPrefetchDriveAccess {
-        override suspend fun prefetchPayload(driveId: Uuid, fileId: Uuid, key: String, onDownloadProgress: ((Float) -> Unit)?) =
-            prefetch(at, key, onDownloadProgress)
-
-        override suspend fun prefetchPayloadChunk(
-            driveId: Uuid,
-            fileId: Uuid,
-            key: String,
-            chunkStart: Long,
-            chunkLength: Long,
-            onDownloadProgress: ((Float) -> Unit)?,
-        ) = prefetchChunk(at, key, chunkStart, chunkLength, onDownloadProgress)
-
-        override suspend fun getPayloadBytesDecrypted(
-            driveId: Uuid,
-            fileId: Uuid,
-            key: String,
-            keyHeader: KeyHeader,
-            chunkStart: Long?,
-            chunkLength: Long?,
-            onDownloadProgress: ((Float) -> Unit)?,
-        ) = bytes(at, key, keyHeader, chunkStart, chunkLength, onDownloadProgress)
-
-        override suspend fun streamPayloadDecryptedToPath(
-            driveId: Uuid,
-            fileId: Uuid,
-            key: String,
-            keyHeader: KeyHeader,
-            outputPath: String,
-            onProgress: ((Float) -> Unit)?,
-        ) = playToPath(at, key, keyHeader, outputPath, onProgress)
     }
 }

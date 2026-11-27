@@ -59,6 +59,7 @@ import id.homebase.api.sync.database.OutboxUploader
 import id.homebase.api.video.VideoPayloadProcessor
 import id.homebase.api.video.VideoPreloadService
 import id.homebase.api.video.VideoPreloader
+import id.homebase.api.video.videoAccess
 import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.UsernameStorage
 import kotlinx.coroutines.CoroutineExceptionHandler
