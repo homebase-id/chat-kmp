@@ -16,7 +16,6 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
         orientation = ifd0.long(0x0112)?.takeIf { it in 1..8 },
         cameraMake = ifd0.ascii(0x010F),
         cameraModel = ifd0.ascii(0x0110),
-        // A manual lens writes 0: unknown, as every platform's reader has it.
         fNumber = exif?.rational(0x829D)?.takeIf { it > 0 },
         exposureTimeSeconds = exif?.rational(0x829A)?.takeIf { it > 0 },
         focalLengthMm = exif?.rational(0x920A)?.takeIf { it > 0 },
@@ -100,7 +99,6 @@ private class Directory(val tiff: Tiff, val at: Int) {
         return null
     }
 
-    /** A SHORT or LONG value. */
     fun long(tag: Int): Int? {
         val entry = entry(tag) ?: return null
         return when (tiff.u16(entry + 2)) {
@@ -110,7 +108,6 @@ private class Directory(val tiff: Tiff, val at: Int) {
         }
     }
 
-    /** A RATIONAL or SRATIONAL value; null for a zero denominator. */
     fun rational(tag: Int): Double? {
         val entry = entry(tag) ?: return null
         val type = tiff.u16(entry + 2)
@@ -121,14 +118,14 @@ private class Directory(val tiff: Tiff, val at: Int) {
         return if (denominator == 0L) null else read(value).toDouble() / denominator
     }
 
-    /** An ASCII value, trimmed; null when blank. */
     fun ascii(tag: Int): String? {
         val entry = entry(tag) ?: return null
         if (tiff.u16(entry + 2) != 2) return null
         val count = tiff.u32(entry + 4)
         val value = if (count <= 4) entry + 8L else tiff.start.toLong() + tiff.u32(entry + 8)
         if (value + count > tiff.end) return null
-        return tiff.bytes.copyOfRange(value.toInt(), value.toInt() + count).decodeToString().trimEnd('\u0000').trim().takeIf { it.isNotEmpty() }
+        // Up to the first NUL, as the platforms' readers stop.
+        return tiff.bytes.copyOfRange(value.toInt(), value.toInt() + count).decodeToString().substringBefore('\u0000').trim().takeIf { it.isNotEmpty() }
     }
 }
 

@@ -6,8 +6,12 @@ import id.homebase.api.media.MediaLocation
 import id.homebase.common.util.formatDecimal
 import kotlin.math.abs
 import kotlin.math.roundToLong
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.offsetAt
 
-/** Megapixels to one decimal: 4032 × 3024 is "12.2". */
 internal fun megapixels(width: Int, height: Int): String = formatDecimal(width.toLong() * height / 1_000_000.0, 1)
 
 /** An exposure that's a whole fraction of a second as one, "1/250"; any other as seconds, "0.8" or "2.5". */
@@ -26,10 +30,9 @@ internal fun cameraName(make: String?, model: String?): String? = when {
     else -> "$make $model"
 }
 
-/** A map app's search for the point, as an https link every platform opens: in the maps app where there is one. */
+// An https link every platform opens, in the maps app where there is one; geo: opens nothing on desktop or web.
 internal fun mapsUrl(at: MediaLocation): String = "https://www.google.com/maps/search/?api=1&query=${at.latitude},${at.longitude}"
 
-/** "37.77490, -122.41940". */
 internal fun coordinates(at: MediaLocation): String = "${fiveDecimals(at.latitude)}, ${fiveDecimals(at.longitude)}"
 
 /** The box to show around the unit-space point ([x], [y]): one tile across at [MAP_ZOOM], centred on it. */
@@ -40,7 +43,13 @@ internal fun mapBox(x: Double, y: Double): DoubleArray {
 
 internal const val MAP_ZOOM = 15
 
-/** What the descriptor says of the file itself. */
+/**
+ * [at] shifted so a formatter that shows the [system] zone reads the clock at [offset], the zone the photo was taken
+ * in. Near the system zone's own change of offset it can be an hour out.
+ */
+internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instant =
+    at + (offset.totalSeconds - system.offsetAt(at).totalSeconds).seconds
+
 internal data class FileFacts(val name: String?, val width: Int?, val height: Int?, val bytes: Long?)
 
 internal fun fileFacts(payload: PayloadDescriptor): FileFacts {

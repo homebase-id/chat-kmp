@@ -33,7 +33,10 @@ data class ImageMetadata(
     val pixelHeight: Int? = null,
     val cameraMake: String? = null,
     val cameraModel: String? = null,
-    /** The aperture, as its f-number: 1.8 for f/1.8. */
+    /**
+     * The aperture as its f-number (1.8 for f/1.8), the exposure, the focal length and the ISO: on every platform, null
+     * unless finite and above 0, as a manual lens writes 0 and a broken rational x/0.
+     */
     val fNumber: Double? = null,
     val exposureTimeSeconds: Double? = null,
     val focalLengthMm: Double? = null,

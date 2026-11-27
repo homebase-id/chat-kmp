@@ -51,4 +51,4 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
 }
 
 private fun ExifInterface.positiveDouble(tag: String): Double? =
-    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { it > 0 } else null
+    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { it.isFinite() && it > 0 } else null

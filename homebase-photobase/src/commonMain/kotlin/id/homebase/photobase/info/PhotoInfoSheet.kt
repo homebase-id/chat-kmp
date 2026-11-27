@@ -74,6 +74,9 @@ import id.homebase.resources.photobase_info_shutter
 import id.homebase.resources.photobase_info_title
 import id.homebase.resources.photobase_photo_added_by
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.asTimeZone
+import co.touchlab.kermit.Logger
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.time.Instant
@@ -97,7 +100,7 @@ fun PhotoInfoSheet(
     val viewModel = viewModel(key = "photo-info") { PhotoInfoViewModel(reader) }
     LaunchedEffect(viewModel, item.fileId) { viewModel.show(item, owner) }
     DisposableEffect(viewModel) { onDispose { viewModel.close() } }
-    val uiState = viewModel.uiState.collectAsStateWithLifecycle().value?.takeIf { it.fileId == item.fileId }
+    val uiState = viewModel.uiState.collectAsStateWithLifecycle().value.takeIf { it.fileId == item.fileId }
     AdaptiveSheet(onDismiss = onDismiss, maxWidth = 480.dp) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
             Text(
@@ -105,7 +108,7 @@ fun PhotoInfoSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
             )
-            WhenRow(item.capturedAtMs)
+            WhenRow(item.capturedAtMs, ((uiState?.camera as? InfoPart.Read)?.value)?.captureUtcOffset)
             uiState?.location?.let { at -> WhereSection(at, uiState.place, reader) }
             FileRow(item)
             CameraRow(uiState?.camera ?: InfoPart.Loading)
@@ -116,25 +119,33 @@ fun PhotoInfoSheet(
     }
 }
 
+// In the zone it was taken in once its EXIF says, as Google Photos shows it; until then, or without one, this device's.
 @Composable
-private fun WhenRow(capturedAtMs: Long) {
+private fun WhenRow(capturedAtMs: Long, captureOffset: UtcOffset?) {
     val at = remember(capturedAtMs) { Instant.fromEpochMilliseconds(capturedAtMs) }
-    val time = stringResource(MR.string.photobase_info_date_time, formatTime(at), offsetLabel(at, TimeZone.currentSystemDefault()))
-    InfoRow(Icons.Outlined.CalendarToday, formatMediumDate(at), time)
+    val system = TimeZone.currentSystemDefault()
+    val shown = captureOffset?.let { shiftedTo(at, it, system) } ?: at
+    val zone = captureOffset?.asTimeZone() ?: system
+    InfoRow(Icons.Outlined.CalendarToday, formatMediumDate(shown), stringResource(MR.string.photobase_info_date_time, formatTime(shown), offsetLabel(at, zone)))
 }
 
 @Composable
 private fun WhereSection(at: MediaLocation, place: InfoPart<String>, reader: PhotoInfoReader) {
     val uriHandler = LocalUriHandler.current
     val openMap = stringResource(MR.string.photobase_info_open_map)
-    // As the event dialog's map link does: a platform with nothing to open it with mustn't take the sheet down.
-    Column(Modifier.clickable(onClickLabel = openMap, role = Role.Button) { runCatching { uriHandler.openUri(mapsUrl(at)) } }) {
-        if (reader.mapsOnline) PlaceMap(at, reader)
-        val headline = when (place) {
-            InfoPart.Failed -> stringResource(MR.string.photobase_info_place_failed)
-            InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
-            is InfoPart.Read -> place.value ?: stringResource(MR.string.photobase_info_location)
-        }
+    val headline = when (place) {
+        InfoPart.Failed -> stringResource(MR.string.photobase_info_place_failed)
+        InfoPart.Loading -> stringResource(MR.string.photobase_info_location)
+        is InfoPart.Read -> place.value ?: stringResource(MR.string.photobase_info_location)
+    }
+    // With Maps at None the place stays on the device: no map, no lookup and no link.
+    if (!reader.mapsOnline) return InfoRow(Icons.Outlined.Place, headline, coordinates(at))
+    val open = {
+        runCatching { uriHandler.openUri(mapsUrl(at)) }.onFailure { Logger.w(tag = "PhotoInfoSheet", throwable = it) { "maps link not opened" } }
+        Unit
+    }
+    Column(Modifier.clickable(onClickLabel = openMap, role = Role.Button, onClick = open)) {
+        PlaceMap(at, reader)
         InfoRow(Icons.Outlined.Place, headline, coordinates(at))
     }
 }
@@ -198,7 +209,7 @@ private fun CameraRow(camera: InfoPart<ImageMetadata>) {
     }
 }
 
-/** [title] over [details]; with no title the first detail leads, and with neither the row is left out. */
+// With no title the first detail leads; with neither the row is left out.
 @Composable
 private fun InfoRow(icon: ImageVector, title: String?, details: List<String>) {
     val headline = title ?: details.firstOrNull() ?: return

@@ -40,9 +40,9 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item(located), owner = null)
 
-        assertEquals(InfoPart.Failed, viewModel.uiState.value?.camera)
-        assertEquals(InfoPart.Read("San Francisco"), viewModel.uiState.value?.place)
-        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value?.location)
+        assertEquals(InfoPart.Failed, viewModel.uiState.value.camera)
+        assertEquals(InfoPart.Read("San Francisco"), viewModel.uiState.value.place)
+        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.location)
     }
 
     @Test
@@ -53,8 +53,8 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item(located), owner = null)
 
-        assertEquals(InfoPart.Read(exif), viewModel.uiState.value?.camera)
-        assertEquals(InfoPart.Failed, viewModel.uiState.value?.place)
+        assertEquals(InfoPart.Read(exif), viewModel.uiState.value.camera)
+        assertEquals(InfoPart.Failed, viewModel.uiState.value.place)
     }
 
     @Test
@@ -65,7 +65,7 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item(null), owner = null)
 
-        assertNull(viewModel.uiState.value?.location)
+        assertNull(viewModel.uiState.value.location)
         assertEquals(0, reader.placeReads)
     }
 
@@ -77,9 +77,9 @@ class PhotoInfoViewModelTest {
 
         viewModel.show(item(located), owner = null)
 
-        assertEquals(InfoPart.Read(null), viewModel.uiState.value?.place)
+        assertEquals(InfoPart.Read(null), viewModel.uiState.value.place)
         assertEquals(0, reader.placeReads)
-        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value?.location, "its coordinates still show")
+        assertEquals(MediaLocation(37.7749, -122.4194), viewModel.uiState.value.location, "its coordinates still show")
     }
 
     @Test
@@ -100,10 +100,10 @@ class PhotoInfoViewModelTest {
         viewModel.show(first, owner = null)
         val second = item(null)
         viewModel.show(second, owner = null)
-        assertEquals(second.fileId, viewModel.uiState.value?.fileId)
+        assertEquals(second.fileId, viewModel.uiState.value.fileId)
         viewModel.close()
 
-        assertNull(viewModel.uiState.value)
+        assertNull(viewModel.uiState.value.fileId)
         assertEquals(2, cancelled, "the first photo's read when the second opened, the second's when the sheet closed")
     }
 }

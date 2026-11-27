@@ -7,7 +7,11 @@ import id.homebase.api.media.MediaLocation
 import id.homebase.chat.event.offsetLabel
 import id.homebase.common.util.formatDecimal
 import id.homebase.common.util.formatBytes
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.UtcOffset
+import kotlinx.datetime.asTimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -53,6 +57,17 @@ class PhotoInfoFormatTest {
         assertEquals("GMT-8", offsetLabel(winter, TimeZone.of("America/Los_Angeles")))
         assertEquals("GMT-7", offsetLabel(summer, TimeZone.of("America/Los_Angeles")))
         assertEquals("GMT+5:30", offsetLabel(winter, TimeZone.of("Asia/Kolkata")))
+    }
+
+    @Test
+    fun aPhotoTakenInTokyoShowsTokyosClockWhereverItsViewed() {
+        val at = Instant.parse("2026-01-15T06:00:00Z")
+        val newYork = TimeZone.of("America/New_York")
+
+        val shown = shiftedTo(at, UtcOffset(hours = 9), newYork)
+
+        assertEquals(LocalDateTime(2026, 1, 15, 15, 0), shown.toLocalDateTime(newYork))
+        assertEquals("GMT+9", offsetLabel(at, UtcOffset(hours = 9).asTimeZone()))
     }
 
     @Test

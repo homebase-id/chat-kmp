@@ -65,7 +65,6 @@ class PhotoInfoDrives(
     override suspend fun tile(zoom: Int, x: Int, y: Int): ByteArray? = places.getTilePng(zoom, x, y)
 }
 
-/** A part of the sheet read on demand. */
 sealed interface InfoPart<out T> {
     data object Loading : InfoPart<Nothing>
     data class Read<T>(val value: T?) : InfoPart<T>
@@ -73,26 +72,26 @@ sealed interface InfoPart<out T> {
 }
 
 data class PhotoInfoUiState(
-    val fileId: Uuid,
-    val location: MediaLocation?,
+    /** The open sheet's photo; null while none is open. */
+    val fileId: Uuid? = null,
+    val location: MediaLocation? = null,
     val camera: InfoPart<ImageMetadata> = InfoPart.Loading,
     /** Read(null) when the place has no name, or isn't looked up because maps are offline. */
     val place: InfoPart<String> = InfoPart.Loading,
 )
 
-/** The open sheet's photo: its camera details and place, each read on its own, so one failing leaves the other. */
+/** The camera details and place are read each on its own, so one failing leaves the other. */
 class PhotoInfoViewModel(private val reader: PhotoInfoReader) : ViewModel() {
-    private val _uiState = MutableStateFlow<PhotoInfoUiState?>(null)
-    /** Null while no sheet is open. */
-    val uiState: StateFlow<PhotoInfoUiState?> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(PhotoInfoUiState())
+    val uiState: StateFlow<PhotoInfoUiState> = _uiState.asStateFlow()
 
     private var reading: Job? = null
 
-    /** Reads [item]'s details, dropping what was being read for the photo before. */
+    /** Drops what was being read for the photo before. */
     fun show(item: PhotoGalleryItem, owner: OdinId?) {
         reading?.cancel()
         val location = item.location()
-        _uiState.value = PhotoInfoUiState(item.fileId, location, place = if (reader.mapsOnline) InfoPart.Loading else InfoPart.Read(null))
+        _uiState.update { PhotoInfoUiState(item.fileId, location, place = if (reader.mapsOnline) InfoPart.Loading else InfoPart.Read(null)) }
         reading = viewModelScope.launch {
             launch {
                 val camera = read(item.fileId, "camera details") { reader.camera(item, owner) }
@@ -107,15 +106,15 @@ class PhotoInfoViewModel(private val reader: PhotoInfoReader) : ViewModel() {
         }
     }
 
-    /** Stops the reads: a download nobody's looking at isn't worth finishing. */
+    // A download nobody's looking at isn't worth finishing.
     fun close() {
         reading?.cancel()
-        _uiState.value = null
+        _uiState.update { PhotoInfoUiState() }
     }
 
     // A read finishing as it's cancelled mustn't land on the next photo's sheet.
     private fun update(fileId: Uuid, change: (PhotoInfoUiState) -> PhotoInfoUiState) =
-        _uiState.update { state -> state?.takeIf { it.fileId == fileId }?.let(change) ?: state }
+        _uiState.update { state -> if (state.fileId == fileId) change(state) else state }
 
     private suspend fun <T> read(fileId: Uuid, what: String, block: suspend () -> T?): InfoPart<T> =
         try {

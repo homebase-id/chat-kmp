@@ -123,7 +123,7 @@ private fun buildMetadata(props: NSDictionary): ImageMetadata {
 }
 
 private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? =
-    (objectForKey(key.ns) as? NSNumber)?.doubleValue?.takeIf { it > 0 }
+    (objectForKey(key.ns) as? NSNumber)?.doubleValue?.takeIf { it.isFinite() && it > 0 }
 
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
 internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!

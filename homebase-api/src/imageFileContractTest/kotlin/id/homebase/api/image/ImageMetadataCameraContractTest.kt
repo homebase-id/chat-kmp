@@ -26,5 +26,9 @@ class ImageMetadataCameraContractTest {
         val manual = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, manualLens = true), jpeg)))
         assertNull(manual.fNumber, "a manual lens's 0 is unknown, as the common reader has it")
         assertNull(manual.focalLengthMm)
+
+        val broken = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, brokenFocalLength = true), jpeg)))
+        assertNull(broken.focalLengthMm, "50/0 is no focal length, not infinity")
+        assertEquals(1.8, broken.fNumber)
     }
 }

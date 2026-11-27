@@ -81,4 +81,4 @@ private fun com.drew.metadata.Directory.getRationalOrNull(tag: Int): com.drew.la
     if (containsTag(tag)) getRational(tag) else null
 
 private fun com.drew.metadata.Directory.positiveDouble(tag: Int): Double? =
-    getRationalOrNull(tag)?.takeIf { it.denominator != 0L }?.toDouble()?.takeIf { it > 0 }
+    getRationalOrNull(tag)?.takeIf { it.denominator != 0L }?.toDouble()?.takeIf { it.isFinite() && it > 0 }

@@ -52,7 +52,7 @@ class JpegExifCameraTest {
     @Test
     fun aCorruptOffsetOrCountReadsAsMissingNotAThrow() {
         val tiff = CameraExifFixture.tiff(littleEndian = true)
-        // IFD0's offset, FF FF FF FF: clamped to Int.MAX_VALUE, it once wrapped past the bounds check.
+        // IFD0's offset, FF FF FF FF: clamped to Int.MAX_VALUE, past the end.
         val noIfd = tiff.copyOf().also { for (i in 4..7) it[i] = 0xFF.toByte() }
         assertNull(readJpegExifCamera(CameraExifFixture.inJpeg(noIfd)))
         assertNull(readJpegExifOrientation(CameraExifFixture.inJpeg(noIfd)))
@@ -63,6 +63,19 @@ class JpegExifCameraTest {
         assertNull(exif.cameraMake)
         assertEquals(CameraExifFixture.MODEL, exif.cameraModel)
         assertEquals(6, readJpegExifOrientation(CameraExifFixture.inJpeg(hugeMake)))
+    }
+
+    @Test
+    fun aBrokenRationalIsUnknown() {
+        assertNull(assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = true, brokenFocalLength = true)))).focalLengthMm)
+    }
+
+    @Test
+    fun aNameEndsAtItsFirstNul() {
+        // Make's value starts right after the two IFDs, at 116: "Ca\u0000on\u0000".
+        val tiff = CameraExifFixture.tiff(littleEndian = true).also { it[118] = 0 }
+
+        assertEquals("Ca", assertNotNull(readJpegExifCamera(CameraExifFixture.inJpeg(tiff))).cameraMake)
     }
 
     @Test
