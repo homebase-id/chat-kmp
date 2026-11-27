@@ -3,6 +3,9 @@ package id.homebase.photobase.gallery
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.media.MediaLocation
+import id.homebase.photobase.backup.PhotoContent
+import id.homebase.photobase.parseRecord
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
@@ -18,8 +21,13 @@ data class PhotoGalleryItem(
     val motion: PayloadDescriptor? = null,
     /** Its local tags: the favourites' and its albums'. */
     val tags: Set<Uuid> = emptySet(),
+    /** Its header content, a [PhotoContent]: read only when asked for, see [location]. */
+    val content: String? = null,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
+
+    /** Where it was taken, from its header; parsed each call, so read it once. */
+    fun location(): MediaLocation? = parseRecord<PhotoContent>(content, "photo $fileId")?.location
 
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload
@@ -46,5 +54,6 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         playableCopy = payload.takeIf { it.isVideo() }?.playableCopyIn(payloads),
         motion = live?.playableIn(payloads),
         tags = localTags().toSet(),
+        content = appData.content,
     )
 }

@@ -99,6 +99,8 @@ import id.homebase.core.image.forGridTile
 import id.homebase.core.media.subsample.fullScreenImageSharedBounds
 import id.homebase.photobase.gallery.GalleryLayout
 import id.homebase.photobase.gallery.PhotoGalleryItem
+import id.homebase.photobase.info.InfoButton
+import id.homebase.photobase.info.PhotoInfoSheet
 import id.homebase.core.util.formatMomentDate
 import id.homebase.resources.MR
 import kotlinx.datetime.LocalDate
@@ -287,6 +289,21 @@ fun PhotoGalleryScreen(
             )
         }
     }
+    var infoOn by remember { mutableStateOf<PhotoGalleryItem?>(null) }
+    // The sheet goes with its photo, or it opens again over the next one viewed.
+    LaunchedEffect(uiState.openedFileId) { infoOn = null }
+    val reader = viewModel.photoInfo
+    val item = infoOn
+    if (item != null && reader != null && uiState.openedFileId != null) {
+        val albums by viewModel.albums.collectAsStateWithLifecycle()
+        PhotoInfoSheet(
+            item = item,
+            reader = reader,
+            albums = remember(albums, item) { albums.orEmpty().filter { it.id in item.tags }.map { it.name } },
+            backedUp = gallery != PhotoGallery.Bin,
+            onDismiss = { infoOn = null },
+        )
+    }
     // On the shared-bounds clock, or the tile and viewer fade out of step with the morph.
     val fadeSpec = tween<Float>(HomebaseConstants.Animation.CHAT_IMAGE_FULL_SCREEN_TRANSITION_DURATION)
     Box(Modifier.fillMaxSize()) {
@@ -301,6 +318,7 @@ fun PhotoGalleryScreen(
                         uiState.openedFileId, layout, loaded.value, onAction, moveToBin,
                         // A heart waits for the one before it, so a second tap can't send the same again.
                         heart = if (gallery == PhotoGallery.Bin) null else !uiState.busy,
+                        onInfo = { item: PhotoGalleryItem -> infoOn = item }.takeIf { viewModel.photoInfo != null },
                         onUnreadPage = { memory.returnToSlot = it },
                         sharedTransitionScope = this@SharedTransitionLayout,
                         animatedVisibilityScope = this@AnimatedContent,
@@ -339,6 +357,7 @@ private fun GalleryViewer(
     onMoveToBin: ((Uuid) -> Unit)?,
     /** Whether the heart is enabled; null shows none. */
     heart: Boolean?,
+    onInfo: ((PhotoGalleryItem) -> Unit)?,
     onUnreadPage: (Pair<Int, Int>?) -> Unit,
     sharedTransitionScope: SharedTransitionScope,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -409,6 +428,7 @@ private fun GalleryViewer(
                 onDelete = onMoveToBin,
                 extraActions = {
                     if (heart != null) FavoriteButton(item.favorite, enabled = heart) { onAction(PhotoGalleryUiAction.SetFavorite(!item.favorite, item.fileId)) }
+                    if (onInfo != null) InfoButton { onInfo(item) }
                 },
                 onDismiss = close,
                 sharedTransitionScope = null,
