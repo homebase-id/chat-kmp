@@ -4,7 +4,8 @@ package id.homebase.api.image
  * A JPEG's EXIF orientation, 1..8; null when the bytes aren't JPEG or carry none. The web image decoder needs it
  * before it decodes, and browsers expose no EXIF reader.
  */
-fun readJpegExifOrientation(bytes: ByteArray): Int? = readJpegExifCamera(bytes)?.orientation
+fun readJpegExifOrientation(bytes: ByteArray): Int? =
+    jpegExifTiff(bytes)?.let { (tiffStart, end) -> Tiff.at(bytes, tiffStart, end)?.ifd0()?.orientation() }
 
 /** A JPEG's camera EXIF, capture time and orientation, in pure Kotlin; null when the bytes aren't a JPEG with EXIF. */
 fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
@@ -15,7 +16,7 @@ fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     return ImageMetadata(
         capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003)),
         captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011)),
-        orientation = ifd0.long(0x0112)?.takeIf { it in 1..8 },
+        orientation = ifd0.orientation(),
         cameraMake = ifd0.ascii(0x010F),
         cameraModel = ifd0.ascii(0x0110),
         fNumber = exif?.rational(0x829D)?.takeIf { it > 0 },
@@ -100,6 +101,8 @@ private class Directory(val tiff: Tiff, val at: Int) {
         }
         return null
     }
+
+    fun orientation(): Int? = long(0x0112)?.takeIf { it in 1..8 }
 
     // The first value: inline when they all fit in four bytes, else at the offset written there.
     fun long(tag: Int): Int? {

@@ -118,6 +118,10 @@ fun SharedAlbumScreen(
             )
         }
         var infoOn by remember { mutableStateOf<SharedPhoto?>(null) }
+        // It goes with its photo, as when the photo leaves the album.
+        LaunchedEffect(uiState.photos) {
+            if (infoOn?.let { shown -> uiState.photos.none { it.file.fileId == shown.file.fileId } } == true) infoOn = null
+        }
         infoOn?.let { photo ->
             PhotoInfoSheet(
                 item = photo.item,

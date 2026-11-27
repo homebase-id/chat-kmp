@@ -3,6 +3,7 @@ package id.homebase.photobase.info
 import id.homebase.api.client.location.WebMercator
 import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.image.ImageMetadata
 import id.homebase.api.media.MediaLocation
 import id.homebase.chat.event.offsetLabel
 import id.homebase.common.util.formatDecimal
@@ -73,6 +74,17 @@ class PhotoInfoFormatTest {
 
         assertEquals(LocalDateTime(2026, 1, 15, 15, 0), shown.toLocalDateTime(newYork))
         assertEquals("GMT+9", offsetLabel(at, UtcOffset(hours = 9).asTimeZone()))
+    }
+
+    @Test
+    fun theExifsOwnTimeAndOffsetWinOverTheBackupsReading() {
+        // Backed up where no offset was read: 15:00 taken as New York's, 20:00Z.
+        val backedUp = Instant.parse("2026-01-15T20:00:00Z").toEpochMilliseconds()
+        val exif = ImageMetadata(capturedAt = LocalDateTime(2026, 1, 15, 15, 0), captureUtcOffset = UtcOffset(hours = 9))
+
+        assertEquals(Instant.parse("2026-01-15T06:00:00Z") to UtcOffset(hours = 9), takenAt(backedUp, exif))
+        assertEquals(Instant.fromEpochMilliseconds(backedUp) to UtcOffset(hours = 9), takenAt(backedUp, exif.copy(capturedAt = null)))
+        assertEquals(Instant.fromEpochMilliseconds(backedUp) to null, takenAt(backedUp, null))
     }
 
     @Test

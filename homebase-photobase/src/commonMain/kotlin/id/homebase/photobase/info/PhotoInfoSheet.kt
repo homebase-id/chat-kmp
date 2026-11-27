@@ -76,7 +76,6 @@ import id.homebase.resources.photobase_info_shutter
 import id.homebase.resources.photobase_info_title
 import id.homebase.resources.photobase_photo_added_by
 import kotlinx.datetime.TimeZone
-import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.asTimeZone
 import co.touchlab.kermit.Logger
 import org.jetbrains.compose.resources.StringResource
@@ -113,7 +112,7 @@ fun PhotoInfoSheet(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 8.dp),
             )
-            WhenRow(item.capturedAtMs, ((uiState?.camera as? InfoPart.Read)?.value)?.captureUtcOffset)
+            WhenRow(item.capturedAtMs, (uiState?.camera as? InfoPart.Read)?.value)
             uiState?.location?.let { at -> WhereSection(at, uiState.place, reader) }
             FileRow(item)
             CameraRow(uiState?.camera ?: InfoPart.Loading)
@@ -126,8 +125,8 @@ fun PhotoInfoSheet(
 
 // In the zone it was taken in once its EXIF says, as Google Photos shows it; until then, or without one, this device's.
 @Composable
-private fun WhenRow(capturedAtMs: Long, captureOffset: UtcOffset?) {
-    val at = remember(capturedAtMs) { Instant.fromEpochMilliseconds(capturedAtMs) }
+private fun WhenRow(capturedAtMs: Long, exif: ImageMetadata?) {
+    val (at, captureOffset) = remember(capturedAtMs, exif) { takenAt(capturedAtMs, exif) }
     val system = TimeZone.currentSystemDefault()
     val shown = captureOffset?.let { shiftedTo(at, it, system) } ?: at
     val zone = captureOffset?.asTimeZone() ?: system

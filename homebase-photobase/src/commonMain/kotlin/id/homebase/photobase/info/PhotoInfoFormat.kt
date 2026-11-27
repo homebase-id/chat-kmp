@@ -11,6 +11,8 @@ import kotlin.time.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.offsetAt
+import kotlinx.datetime.toInstant
+import id.homebase.api.image.ImageMetadata
 
 // Null under 0.05, where it would read "0".
 internal fun megapixels(width: Int, height: Int): String? =
@@ -45,6 +47,16 @@ internal fun mapBox(x: Double, y: Double): DoubleArray {
 }
 
 internal const val MAP_ZOOM = 15
+
+/**
+ * When it was taken and the offset it was taken at: the EXIF's own time and offset when it has both, since the backup
+ * may have read them differently on another platform; else [capturedAtMs] at the EXIF's offset, or with none.
+ */
+internal fun takenAt(capturedAtMs: Long, exif: ImageMetadata?): Pair<Instant, UtcOffset?> {
+    val offset = exif?.captureUtcOffset
+    val local = exif?.capturedAt
+    return if (local != null && offset != null) local.toInstant(offset) to offset else Instant.fromEpochMilliseconds(capturedAtMs) to offset
+}
 
 /**
  * [at] shifted so a formatter that shows the [system] zone reads the clock at [offset], the zone the photo was taken
