@@ -377,6 +377,7 @@ class FilesyncSharingTest {
 
         assertFails { sharing.share(listOf(file), toSam, FilesyncAccess.Edit, expiresAt = null) }
 
+        assertEquals(listOf(editorsCircle.toString() to "sam.test"), revocations())
         assertEquals(emptySet(), editors)
     }
 

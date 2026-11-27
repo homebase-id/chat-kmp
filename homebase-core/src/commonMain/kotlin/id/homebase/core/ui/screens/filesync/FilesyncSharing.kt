@@ -253,7 +253,7 @@ class FilesyncSharing(
                     enroll(editorsCircle(), members).takeIf { it.isNotEmpty() }?.let { throw FilesyncSharingException.RecipientNotAdded(it.toList()) }
                     writeRows()
                 }
-            } catch (e: Throwable) {
+            } catch (e: Exception) {
                 // A cancelled share mustn't leave anyone Write on the whole drive.
                 withContext(NonCancellable) { editorsMayHaveChanged(removalsOnly = true) }
                 throw e
