@@ -1,6 +1,7 @@
 package id.homebase.core.files
 
 import id.homebase.api.file.FileOperationsProvider
+import id.homebase.common.TestTempDirs
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.path
@@ -18,8 +19,8 @@ class MaterializeKeepsPickedNameTest {
 
     @Test
     fun theSandboxCopyCarriesTheOriginalPickedName() = runTest {
-        val cache = Files.createTempDirectory("cache").toFile().apply { deleteOnExit() }
-        val picked = File(Files.createTempDirectory("picked").toFile(), "Quarterly report.pdf").apply {
+        val cache = TestTempDirs.dir("cache").toFile().apply { deleteOnExit() }
+        val picked = File(TestTempDirs.dir("picked").toFile(), "Quarterly report.pdf").apply {
             writeText("x")
             deleteOnExit()
         }
@@ -33,8 +34,8 @@ class MaterializeKeepsPickedNameTest {
 
     @Test
     fun twoCopiesOfTheSameNameDoNotCollide() = runTest {
-        val cache = Files.createTempDirectory("cache").toFile().apply { deleteOnExit() }
-        val picked = File(Files.createTempDirectory("picked").toFile(), "a.png").apply {
+        val cache = TestTempDirs.dir("cache").toFile().apply { deleteOnExit() }
+        val picked = File(TestTempDirs.dir("picked").toFile(), "a.png").apply {
             writeText("x")
             deleteOnExit()
         }

@@ -1,5 +1,6 @@
 package id.homebase.api.video.hls
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
@@ -41,7 +42,7 @@ import okio.FileSystem
  * stores it, through the real DriveFileProvider download and decrypt, remuxed, and compared with the source.
  */
 class HlsDownloadTest {
-    private val cache = Files.createTempDirectory("hls-download").toFile()
+    private val cache = TestTempDirs.dir("hls-download").toFile()
     private val tsUses = mutableListOf<String>()
     private val fileOps = object : OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath) {
         override fun readFileAsFlow(path: String, chunkSize: Int) = super.readFileAsFlow(path, chunkSize).also { if (path.endsWith(".ts")) tsUses += "read $path" }

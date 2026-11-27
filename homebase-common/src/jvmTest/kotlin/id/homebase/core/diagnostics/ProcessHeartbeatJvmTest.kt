@@ -1,5 +1,6 @@
 package id.homebase.core.diagnostics
 
+import id.homebase.common.TestTempDirs
 import kotlinx.io.files.Path
 import java.nio.file.Files
 import kotlin.test.Test
@@ -17,7 +18,7 @@ import kotlin.test.assertTrue
  */
 class ProcessHeartbeatJvmTest {
 
-    private val dir = Path(Files.createTempDirectory("heartbeat").toString())
+    private val dir = Path(TestTempDirs.dir("heartbeat").toString())
     private val file = Path(dir, "heartbeat")
 
     private fun processStartingAt(nowEpochMs: Long) = ProcessHeartbeat(file) { nowEpochMs }

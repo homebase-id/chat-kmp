@@ -1,5 +1,6 @@
 package id.homebase.api.image.gif
 
+import id.homebase.api.TestTempDirs
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.Test
@@ -9,7 +10,7 @@ import kotlin.test.assertTrue
 
 /** With an ffmpeg on the machine: our decoder reads GIFs as ffmpeg does, and ffmpeg reads ours as we do. */
 class GifAgainstFfmpegTest {
-    private val dir = Files.createTempDirectory("gif").toFile()
+    private val dir = TestTempDirs.dir("gif").toFile()
     private val ffmpeg = "ffmpeg".takeIf { runCatching { ProcessBuilder(it, "-version").start().waitFor() == 0 }.getOrDefault(false) }
 
     private fun run(vararg command: String): ByteArray {

@@ -1,5 +1,6 @@
 package id.homebase.core.logging
 
+import id.homebase.common.TestTempDirs
 import kotlinx.io.files.Path
 import java.nio.file.Files
 import kotlin.test.Test
@@ -7,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class LogFileExporterSelectionTest {
-    private fun dir() = Files.createTempDirectory("log-export").toFile().apply { deleteOnExit() }
+    private fun dir() = TestTempDirs.dir("log-export").toFile().apply { deleteOnExit() }
 
     @Test
     fun handsEachHomebaseLogFileToTheSelectorAndWritesItsResultBesideThem() {

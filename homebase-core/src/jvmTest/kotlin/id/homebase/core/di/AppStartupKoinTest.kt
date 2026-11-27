@@ -5,6 +5,7 @@ import coil3.annotation.DelicateCoilApi
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.core.TestTempDirs
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import java.nio.file.Files
@@ -14,7 +15,7 @@ import kotlin.test.Test
 // Its ceiling: work an eager definition launches in a coroutine can still reach the database after this has passed.
 @OptIn(DelicateCoilApi::class)
 class AppStartupKoinTest {
-    private val cache = Files.createTempDirectory("app-startup")
+    private val cache = TestTempDirs.dir("app-startup")
 
     @AfterTest
     fun cleanUp() {

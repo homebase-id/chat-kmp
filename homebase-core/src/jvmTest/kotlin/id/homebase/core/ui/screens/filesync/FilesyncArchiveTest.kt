@@ -4,6 +4,7 @@ import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDamagedException
 import id.homebase.api.client.drives.files.PayloadHash
 import id.homebase.api.common.SecureByteArray
+import id.homebase.core.TestTempDirs
 import id.homebase.core.filesync.FilesyncProtocol
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -54,7 +55,7 @@ class FilesyncArchiveTest {
 
     private suspend fun zipOf(selection: List<Pair<FilesyncNode, FilesyncHandle>>): File {
         val entries = archive.plan(selection.map { it.first }, selection.associate { it.first.nodeId to it.second })
-        val file = File.createTempFile("filesync-archive", ".zip").apply { deleteOnExit() }
+        val file = TestTempDirs.file("filesync-archive", ".zip").apply { deleteOnExit() }
         file.outputStream().buffered().use { out -> archive.write(entries, { out.write(it) }, {}) }
         return file
     }

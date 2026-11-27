@@ -1,5 +1,6 @@
 package id.homebase.api.video
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadFile
 import id.homebase.api.file.OkioFileOperationsProvider
@@ -13,7 +14,7 @@ import org.junit.Test
 
 /** The send path around [meetsWithoutTranscode], whose rule is tested on every platform in SendAsIsRuleTest. */
 class SendAsIsTest {
-    private val cache = Files.createTempDirectory("sendasis").toFile()
+    private val cache = TestTempDirs.dir("sendasis").toFile()
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
     private val source = hlsFixture(cache, "moov_first.mp4")
 

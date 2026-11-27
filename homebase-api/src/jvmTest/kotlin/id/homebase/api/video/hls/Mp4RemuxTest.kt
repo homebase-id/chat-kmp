@@ -1,5 +1,6 @@
 package id.homebase.api.video.hls
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.video.mp4Boxes
 import id.homebase.api.video.readMoov
@@ -16,7 +17,7 @@ import org.junit.Test
 
 /** A video sent as it is: the source's own frames and audio in a new MP4 that carries nothing else. */
 class Mp4RemuxTest {
-    private val cache = Files.createTempDirectory("mp4remux").toFile()
+    private val cache = TestTempDirs.dir("mp4remux").toFile()
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
 
     @Test

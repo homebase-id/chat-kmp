@@ -33,6 +33,7 @@ import id.homebase.api.sync.database.OdinDatabase
 import id.homebase.api.sync.database.Outbox
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.sync.database.OutboxUploader
+import id.homebase.chat.TestTempDirs
 import id.homebase.chat.data.MessageUiModel
 import id.homebase.chat.services.convo.ConversationService
 import id.homebase.chat.services.convo.LocalLastReadUpdater
@@ -574,7 +575,7 @@ class ChatMessageActionServiceTestFixture(
  */
 internal class NoopFileOperationsProvider : FileOperationsProvider {
     private val uniqueCacheDir: String =
-        java.nio.file.Files.createTempDirectory("hb-chat-test-cache").toString()
+        TestTempDirs.create("hb-chat-test-cache")
     private fun nope(): Nothing =
         error("NoopFileOperationsProvider: no file IO expected in markAsReadByFiles tests")
     override fun openFileInput(path: String) = nope()

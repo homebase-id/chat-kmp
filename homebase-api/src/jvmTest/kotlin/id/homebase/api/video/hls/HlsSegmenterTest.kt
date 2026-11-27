@@ -1,5 +1,6 @@
 package id.homebase.api.video.hls
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.AesCbc
@@ -24,7 +25,7 @@ import org.junit.Test
  * AAC (658 packets, the first priming): `moov_first`, the same with its moov after the media, and one rotated 90°.
  */
 class HlsSegmenterTest {
-    private val cache = Files.createTempDirectory("hls").toFile()
+    private val cache = TestTempDirs.dir("hls").toFile()
     private val fileOps = OkioFileOperationsProvider(FileSystem.SYSTEM, cache.absolutePath)
     private val keyHeader = KeyHeader(Random.nextBytes(16), SecureByteArray(Random.nextBytes(16)))
 

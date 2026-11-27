@@ -8,6 +8,7 @@ import id.homebase.api.client.drives.files.DescriptorContentV1
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.file.JvmFileOperationsProvider
 import id.homebase.api.image.MediaQuality
+import id.homebase.chat.TestTempDirs
 import id.homebase.upload.LibraryKind
 import id.homebase.upload.MetadataPolicy
 import id.homebase.upload.PayloadBundle
@@ -34,7 +35,7 @@ import kotlin.test.assertTrue
 class UserUploadBuilderCurrentFormatTest {
 
     private val fileOps = JvmFileOperationsProvider()
-    private val dir = kotlin.io.path.createTempDirectory("hb-builder-test").toFile()
+    private val dir = java.io.File(TestTempDirs.create("hb-builder-test"))
 
     private fun image(w: Int, h: Int, format: EncodedImageFormat = EncodedImageFormat.JPEG): ByteArray {
         val info = ImageInfo(ColorInfo(ColorType.BGRA_8888, ColorAlphaType.UNPREMUL, ColorSpace.sRGB), w, h)

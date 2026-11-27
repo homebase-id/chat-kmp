@@ -1,5 +1,6 @@
 package id.homebase.api.client.contacts
 
+import id.homebase.api.TestTempDirs
 import id.homebase.api.client.profile.FakeFileOperationsProvider
 import id.homebase.api.client.profile.PublicProfileProviderCached
 import io.ktor.client.HttpClient
@@ -24,7 +25,7 @@ class ContactInfoGatewayLazyRepositoryTest {
     private val imageBytes = ByteArray(32) { it.toByte() }
 
     private fun provider(): PublicProfileProviderCached {
-        val tempDir = Files.createTempDirectory("hb-gateway-lazy-test").toString()
+        val tempDir = TestTempDirs.create("hb-gateway-lazy-test")
         return PublicProfileProviderCached(
             httpClient = HttpClient(MockEngine { respond(imageBytes, HttpStatusCode.OK) }),
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
