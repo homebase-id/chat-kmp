@@ -67,8 +67,10 @@ class DrivePhotoInfoSource(
     override suspend fun preview(latitude: Double, longitude: Double): LocationPreview {
         val name = places.reverseGeocode(latitude, longitude)
         // With no name, not kept: the provider's cache is everyone's, and a name it never looked up mustn't be in it.
-        val preview = places.getLocationPreview(latitude, longitude, knownAddress = name ?: coordinates(MediaLocation(latitude, longitude)), keep = name != null)
-        return if (name == null) preview.copy(address = "") else preview
+        val fallback = coordinates(MediaLocation(latitude, longitude))
+        val preview = places.getLocationPreview(latitude, longitude, knownAddress = name ?: fallback, keep = name != null)
+        // A name the cache had from before stays.
+        return if (preview.address == fallback) preview.copy(address = "") else preview
     }
 
     override suspend fun address(latitude: Double, longitude: Double): String? = places.reverseGeocode(latitude, longitude)
@@ -124,6 +126,8 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock:
     private class SavedEdit(val facts: HeaderFacts, val stampMs: Long, val at: TimeMark)
     private var reading: Job? = null
     private var placing: Job? = null
+    // A save outlives the sheet: reopened while it runs, the photo still can't be edited again until it's done.
+    private val savingFor = mutableSetOf<Uuid>()
 
     /** Drops what was being read for the photo before. */
     fun show(item: PhotoGalleryItem) {
@@ -131,7 +135,7 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock:
         placing?.cancel()
         this.item = item
         val shown = heldEdit(item) ?: item.headerFacts()
-        _uiState.update { PhotoInfoUiState(fileId = item.fileId, place = placeUnread()).with(shown) }
+        _uiState.update { PhotoInfoUiState(fileId = item.fileId, place = placeUnread(), saving = item.fileId in savingFor).with(shown) }
         reading = viewModelScope.launch {
             val camera = read(item.fileId, "camera details") { source.camera(item) }
             update(item.fileId) { it.copy(camera = camera) }
@@ -158,10 +162,16 @@ class PhotoInfoViewModel(private val source: PhotoInfoSource, private val clock:
     /** [onSaved] runs once the server has it. */
     fun save(edit: PhotoEdit, onSaved: () -> Unit = {}) {
         val item = item ?: return
-        val before = _uiState.value.takeIf { it.fileId == item.fileId && !it.saving }?.facts() ?: return
+        if (item.fileId in savingFor) return
+        val before = _uiState.value.takeIf { it.fileId == item.fileId }?.facts() ?: return
+        savingFor += item.fileId
         update(item.fileId) { it.copy(saving = true, saveFailed = false) }
         viewModelScope.launch {
-            val ok = read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
+            val ok = try {
+                read(item.fileId, "edit") { source.save(item, edit) } is InfoPart.Read
+            } finally {
+                savingFor -= item.fileId
+            }
             // A newer copy that came while it saved is the one the edit lands on.
             val base = this@PhotoInfoViewModel.item?.takeIf { it.fileId == item.fileId && it.changedAtMs > item.changedAtMs }?.headerFacts() ?: before
             // Kept whatever the sheet shows by now: closed or on another photo, this one reopens with it.

@@ -169,7 +169,8 @@ private class AndroidImageSource(private val input: AndroidImageInput) : ImageSo
 
     override fun metadata(): ImageMetadata? = try {
         // A failed side read only loses the byte order, guessed then: not the rest of the photo's metadata.
-        exif.toImageMetadata { runCatching { input.exifByteOrder() }.getOrNull() }
+        val byteOrder by lazy { runCatching { input.exifByteOrder() }.getOrNull() }
+        exif.toImageMetadata { byteOrder }
     } catch (e: Throwable) {
         Logger.w(tag = TAG, throwable = e) { "Android EXIF read failed" }
         null

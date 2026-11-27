@@ -124,8 +124,10 @@ class PhotoDayIndex(
         orCountAgainLater {
             // A catch-up after time offline: one count of the whole library beats hundreds of days. A new time zone
             // since the count: days counted now mustn't go in among the old ones.
-            // A photo timed by hand may have left a day this change doesn't name: rare, so counted again in full.
-            if (files.size > REBUILD_ABOVE || builtFor != countedFor() || files.any { it.timedByHand() }) return@orCountAgainLater rebuild()
+            if (files.size > REBUILD_ABOVE || builtFor != countedFor()) return@orCountAgainLater rebuild()
+            // A photo timed by hand may have left a day this change doesn't name: rare, so counted again in full, and
+            // the change's own days still touched, so a big day held merges what arrived.
+            if (files.any { it.timedByHand() }) rebuild()
             // A quarter hour of photos is on at most two days (a few historical zones were odd minutes from UTC), so
             // its earliest and latest photo settle each one's day without a lookup per photo.
             val byDay = mutableMapOf<Int, MutableList<HomebaseFile>>()

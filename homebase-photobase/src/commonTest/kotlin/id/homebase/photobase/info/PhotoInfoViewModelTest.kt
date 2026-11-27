@@ -268,4 +268,29 @@ class PhotoInfoViewModelTest {
         saving.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), null)) { heard++ }
         assertEquals(1, heard)
     }
+
+    @Test
+    fun reopenedWhileASaveRunsItCantBeEditedAgainYet() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        val gate = CompletableDeferred<Unit>()
+        val reader = Reader(camera = { null }, place = { null })
+        val slow = object : PhotoInfoSource by reader {
+            override suspend fun save(item: PhotoGalleryItem, edit: PhotoEdit) {
+                gate.await()
+                reader.save(item, edit)
+            }
+        }
+        val viewModel = PhotoInfoViewModel(slow)
+        val photo = item(located)
+        viewModel.show(photo)
+        viewModel.save(PhotoEdit.Time(Instant.parse("2020-01-01T00:00:00Z"), null))
+        viewModel.close()
+
+        viewModel.show(photo)
+        assertEquals(true, viewModel.uiState.value.saving)
+        viewModel.save(PhotoEdit.Place(null))
+        gate.complete(Unit)
+
+        assertEquals(1, reader.saved.size, "the second edit wasn't sent alongside the first")
+    }
 }

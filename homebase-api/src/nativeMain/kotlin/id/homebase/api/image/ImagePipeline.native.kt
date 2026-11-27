@@ -35,7 +35,10 @@ private class ImageIoSource(
     override fun auxiliaryGainmap(): HdrGainmap? = source.auxiliaryGainmap(header)
 
     // The header read only for a comment, so a backup reads no more of each photo.
-    override fun metadata(): ImageMetadata? = source.readMetadata()?.let { if (it.userComment == null) it else it.withJpegComment(header()) }
+    // A failed read of it loses the comment's correction, not the rest, as on Android.
+    override fun metadata(): ImageMetadata? = source.readMetadata()?.let { read ->
+        if (read.userComment == null) read else runCatching { read.withJpegComment(header()) }.getOrDefault(read)
+    }
 
     override fun close() {
         try {

@@ -73,7 +73,7 @@ internal fun ExifInterface.toImageMetadata(littleEndian: () -> Boolean?): ImageM
         bodySerial = exifName(getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER)),
         lensSerial = exifName(getAttribute(ExifInterface.TAG_LENS_SERIAL_NUMBER)),
         // The raw rationals: getAttribute writes a 0/0 part as "00", a real-looking time the other platforms reject.
-        gpsTime = gpsTimeStamp(littleEndian)?.let { (h, m, s) -> exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), h, m, s) },
+        gpsTime = gpsTimeStamp()?.let { (h, m, s) -> exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), h, m, s) },
         speedKmh = exifSpeedKmh(double(ExifInterface.TAG_GPS_SPEED), getAttribute(ExifInterface.TAG_GPS_SPEED_REF)),
     )
 }
@@ -85,11 +85,14 @@ private fun ExifInterface.int(tag: String): Int? = if (hasAttribute(tag)) getAtt
 
 private fun ExifInterface.positiveDouble(tag: String): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }
 
-// Three RATIONALs, in the file's byte order (a guess when unknown: these are small numbers, so it shows); null for x/0.
-private fun ExifInterface.gpsTimeStamp(littleEndian: () -> Boolean?): Triple<Double, Double, Double>? {
+// Three RATIONALs. No look-up of the byte order, which would read the file again for every photo: these are small
+// numbers, so the order that gives a time of day is the file's; null for x/0.
+private fun ExifInterface.gpsTimeStamp(): Triple<Double, Double, Double>? {
     val raw = getAttributeBytes(ExifInterface.TAG_GPS_TIMESTAMP)?.takeIf { it.size == 24 } ?: return null
-    val le = littleEndian() ?: (raw[0].toInt() != 0 || raw[3].toInt() == 0)
-    fun u32(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((raw[at + i].toLong() and 0xFF) shl (8 * if (le) i else 3 - i)) }
-    val parts = (0 until 3).map { i -> u32(i * 8).toDouble() / u32(i * 8 + 4).takeIf { it != 0L }?.toDouble().let { it ?: return null } }
-    return Triple(parts[0], parts[1], parts[2])
+    fun read(le: Boolean): Triple<Double, Double, Double>? {
+        fun u32(at: Int): Long = (0 until 4).fold(0L) { acc, i -> acc or ((raw[at + i].toLong() and 0xFF) shl (8 * if (le) i else 3 - i)) }
+        val parts = (0 until 3).map { i -> u32(i * 8 + 4).takeIf { it != 0L }?.let { u32(i * 8).toDouble() / it } ?: return null }
+        return Triple(parts[0], parts[1], parts[2]).takeIf { (h, m, s) -> h < 24 && m < 60 && s < 61 }
+    }
+    return read(le = true) ?: read(le = false)
 }

@@ -187,7 +187,7 @@ class PhotoGalleryViewModelTest {
 
         viewModel.onAction(PhotoGalleryUiAction.Moved(photo.fileId, toMs))
         // The viewer closed as it left day 9; then the sync brings it on day 30.
-        viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
+        viewModel.onAction(PhotoGalleryUiAction.PhotoLeft)
         library.photos[9] = library.photos.getValue(9).drop(1)
         library.photos[30] = listOf(photo.copy(capturedAtMs = toMs))
         library.publish()
@@ -196,6 +196,25 @@ class PhotoGalleryViewModelTest {
 
         assertEquals(photo.fileId, viewModel.uiState.value.openedFileId)
         assertEquals(toMs, viewModel.uiState.value.loaded.getValue(30).single().capturedAtMs)
+        screen.cancel()
+    }
+
+    @Test
+    fun closedByHandAPhotoWhoseTimeWasSavedStaysClosed() = runTest {
+        val library = Library(1..10, perDay = 3)
+        val (viewModel, screen) = viewModel(library, dayOf = { (it / DAY_MS).toInt() })
+        val photo = library.photos.getValue(9).first()
+        viewModel.onAction(PhotoGalleryUiAction.Open(photo))
+        val toMs = 30 * DAY_MS + 5
+
+        viewModel.onAction(PhotoGalleryUiAction.Moved(photo.fileId, toMs))
+        viewModel.onAction(PhotoGalleryUiAction.CloseViewer)
+        library.photos[30] = listOf(photo.copy(capturedAtMs = toMs))
+        library.publish()
+        advanceTimeBy(2_000)
+        runCurrent()
+
+        assertEquals(null, viewModel.uiState.value.openedFileId)
         screen.cancel()
     }
 

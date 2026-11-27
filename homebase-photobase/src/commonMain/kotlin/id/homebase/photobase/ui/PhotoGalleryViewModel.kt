@@ -107,6 +107,9 @@ sealed interface PhotoGalleryUiAction {
 
     /** The open photo's time was saved as [toMs]: once it's on its new day, it opens there. */
     data class Moved(val fileId: Uuid, val toMs: Long) : PhotoGalleryUiAction
+
+    /** The viewer closed because its photo left the days held, not because it was closed. */
+    data object PhotoLeft : PhotoGalleryUiAction
     /** A long press, or a tap while selecting. */
     data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
     /** All of a day's photos, or none if all are picked. */
@@ -246,26 +249,41 @@ class PhotoGalleryViewModel(
     }
 
     // A photo whose time was saved leaves its day, and the viewer closes as for any gone photo: it opens again once
-    // its new day is counted and holds it, read here rather than waiting for the grid to ask. A while at most: one
-    // deleted meanwhile never comes.
+    // its new day is counted and holds it, read here rather than waiting for the grid to ask. A while at most, and
+    // not once another photo is opened or the viewer closed by hand.
     private var reopening: Job? = null
+    private var reopeningFileId: Uuid? = null
+
+    private fun stopReopening() {
+        reopening?.cancel()
+        reopeningFileId = null
+    }
 
     private fun reopen(fileId: Uuid, toMs: Long) {
-        reopening?.cancel()
+        stopReopening()
+        reopeningFileId = fileId
         reopening = viewModelScope.launch(reading) {
             withTimeoutOrNull(REOPEN_WITHIN) {
                 val day = dayOf(toMs) ?: return@withTimeoutOrNull
                 while (true) {
-                    if ((library.value?.countOf(day) ?: 0) > 0) {
-                        val photos = source.photosOnDays(day, day)[day].orEmpty()
-                        if (photos.any { it.fileId == fileId && it.capturedAtMs == toMs }) {
-                            _uiState.update { it.copy(loaded = it.loaded + (day to photos), openedFileId = fileId) }
+                    if ((library.value?.countOf(day) ?: 0) > 0 && day !in inFlight) {
+                        // Marked as the window's reads are, so a change while it reads isn't lost under it.
+                        stale -= day
+                        inFlight = inFlight + day
+                        val photos = try {
+                            source.photosOnDays(day, day)[day].orEmpty()
+                        } finally {
+                            inFlight = inFlight - day
+                        }
+                        if (day !in stale && photos.any { it.fileId == fileId && it.capturedAtMs == toMs }) {
+                            _uiState.update { it.copy(loaded = it.loaded + (day to photos), openedFileId = it.openedFileId ?: fileId) }
                             return@withTimeoutOrNull
                         }
                     }
                     delay(REOPEN_POLL)
                 }
             }
+            reopeningFileId = null
         }
     }
 
@@ -279,8 +297,15 @@ class PhotoGalleryViewModel(
             PhotoGalleryUiAction.ThumbnailShown -> logThumbnailShown()
             PhotoGalleryUiAction.ToggleSort -> _uiState.update { it.copy(newestFirst = !it.newestFirst) }
             is PhotoGalleryUiAction.Showing -> window.value = Window(action.first, action.last)
-            is PhotoGalleryUiAction.Open -> _uiState.update { it.copy(openedFileId = action.item.fileId) }
-            PhotoGalleryUiAction.CloseViewer -> _uiState.update { it.copy(openedFileId = null) }
+            is PhotoGalleryUiAction.Open -> {
+                if (action.item.fileId != reopeningFileId) stopReopening()
+                _uiState.update { it.copy(openedFileId = action.item.fileId) }
+            }
+            PhotoGalleryUiAction.CloseViewer -> {
+                stopReopening()
+                _uiState.update { it.copy(openedFileId = null) }
+            }
+            PhotoGalleryUiAction.PhotoLeft -> _uiState.update { it.copy(openedFileId = null) }
             is PhotoGalleryUiAction.Moved -> reopen(action.fileId, action.toMs)
             is PhotoGalleryUiAction.ToggleSelected -> _uiState.update { state ->
                 state.copy(selected = if (action.fileId in state.selected) state.selected - action.fileId else state.selected + action.fileId)
