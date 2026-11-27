@@ -39,6 +39,7 @@ class PayloadReaderTest {
     private val peer = OdinId("sam.dotyou.cloud")
     private val key = "vid_payload"
     private val body = ByteArray(64) { it.toByte() }
+    private var served = body
 
     private val own = PayloadLocation.Own(driveId, fileId)
     private val peers = PayloadLocation.Peer(PeerFileRef(peer, globalTransitId), driveId)
@@ -75,9 +76,9 @@ class PayloadReaderTest {
         val http = HttpClient(MockEngine { request ->
             requests += request.url.toString().decodeURLQueryComponent()
             respond(
-                body,
+                served,
                 HttpStatusCode.OK,
-                headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${body.size}")),
+                headersOf("payloadencrypted" to listOf("false"), HttpHeaders.ContentLength to listOf("${served.size}")),
             )
         })
         val cached = DriveFileProviderCached(http, credentials, fileOps)
@@ -126,6 +127,39 @@ class PayloadReaderTest {
         reader.prefetchChunk(peers, key, chunkStart = 0, chunkLength = 32)
 
         assertTrue(requests.isEmpty(), "$requests")
+    }
+
+    private suspend fun assertAnEditedImagesThumbIsReadAgain(at: PayloadLocation) {
+        val reader = reader()
+        served = byteArrayOf(1)
+        reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 1)
+        served = byteArrayOf(2)
+
+        val afterTheEdit = reader.thumb(at, key, KeyHeader.empty(), width = 320, height = 320, lastModified = 2)
+
+        assertContentEquals(byteArrayOf(2), afterTheEdit?.bytes)
+    }
+
+    @Test
+    fun anEditedImageOfOursShowsItsNewThumb() = runTest { assertAnEditedImagesThumbIsReadAgain(own) }
+
+    @Test
+    fun anEditedImageOfAFollowedPostShowsItsNewThumb() = runTest { assertAnEditedImagesThumbIsReadAgain(peers) }
+
+    private suspend fun PayloadReader.progressReading(at: PayloadLocation, chunkStart: Long? = null): List<Float> {
+        val seen = mutableListOf<Float>()
+        bytes(at, key, KeyHeader.empty(), chunkStart = chunkStart, onProgress = { seen += it })
+        return seen
+    }
+
+    @Test
+    fun aDownloadReportsItsProgressWhereverItLives() = runTest {
+        // One reader: a whole payload and a range live in different caches, so each read below is a download.
+        val reader = reader()
+        for (at in listOf(own, peers)) {
+            assertEquals(1f, reader.progressReading(at).lastOrNull(), "whole payload, $at")
+            assertEquals(1f, reader.progressReading(at, chunkStart = 0).lastOrNull(), "range, $at")
+        }
     }
 
     @Test
