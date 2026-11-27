@@ -72,7 +72,7 @@ class PhotobaseRecord(
      * a record that's gone stays gone and this throws.
      */
     suspend fun write(uniqueId: Uuid, fileType: Int, create: Boolean = true, content: (stored: String?) -> String) =
-        retryingConflicts("Photobase record $uniqueId", isConflict = { it.isExistingFileWithUniqueId() || it.isVersionConflict() }) {
+        retryingConflicts("Photobase record $uniqueId", TAG, isConflict = { it.isExistingFileWithUniqueId() || it.isVersionConflict() }) {
             val existing = header(uniqueId)
             if (!create && existing?.fileState != FileState.Active) throw RecordGoneException(uniqueId)
             val stored = existing?.fileMetadata?.appData?.content
@@ -150,6 +150,7 @@ internal fun ClientException.isVersionConflict() = errorCode == OdinClientErrorC
 /** [attempt] again, reading afresh, while another device's save got in first; [what] names it in the failure. */
 internal suspend fun <T> retryingConflicts(
     what: String,
+    tag: String,
     isConflict: (ClientException) -> Boolean = { it.isVersionConflict() },
     attempt: suspend () -> T,
 ): T {
@@ -158,7 +159,7 @@ internal suspend fun <T> retryingConflicts(
             return attempt()
         } catch (e: ClientException) {
             if (!isConflict(e)) throw e
-            Logger.i(tag = "PhotobaseRecord") { "$what: ${e.errorCode}, retrying" }
+            Logger.i(tag = tag) { "$what: ${e.errorCode}, retrying" }
         }
     }
     throw IllegalStateException("Could not save $what after $MAX_CONFLICT_RETRIES conflicts")

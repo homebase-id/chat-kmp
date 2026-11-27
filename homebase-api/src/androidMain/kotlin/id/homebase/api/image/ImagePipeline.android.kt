@@ -59,7 +59,8 @@ private class AndroidPipelineBitmap(private val bitmap: Bitmap) : PipelineBitmap
 }
 
 private const val TAG = "ImagePipeline"
-private const val EXIF_HEAD_BYTES = 4096
+// Room for an XMP or ICC segment ahead of the APP1; read only for a UNICODE comment, so rarely.
+private const val EXIF_HEAD_BYTES = 256 * 1024
 
 private class HeaderRead : RuntimeException(null, null, false, false)
 
@@ -69,7 +70,7 @@ private sealed interface AndroidImageInput {
     fun allBytes(): ByteArray = openStream().use { it.readBytes() }
     fun exif(): ExifInterface = openStream().use { ExifInterface(it) }
 
-    // A JPEG's APP1 comes first, so its head holds the byte order ExifInterface doesn't say.
+    // A JPEG's APP1 sits in its head, which holds the byte order ExifInterface doesn't say.
     fun exifByteOrder(): Boolean? = openStream().use { stream ->
         val head = ByteArray(EXIF_HEAD_BYTES)
         var read = 0

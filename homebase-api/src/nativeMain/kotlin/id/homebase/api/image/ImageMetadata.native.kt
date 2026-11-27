@@ -72,11 +72,7 @@ actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? {
     return try {
         val source = ImageIoDecode.open(srcBytes) ?: return null
         try {
-            // ImageIO reads a UNICODE UserComment big-endian whatever the file's order, and keeps a JIS one the shared
-            // rule drops: a JPEG's comes from the shared reader.
-            source.readMetadata()?.let { read ->
-                if (jpegExifLittleEndian(srcBytes) != null) read.copy(userComment = readJpegExifCamera(srcBytes)?.userComment) else read
-            }
+            source.readMetadata()?.withJpegComment(srcBytes)
         } finally {
             CFRelease(source)
         }
@@ -190,3 +186,10 @@ private fun NSDictionary.positiveDouble(key: CFStringRef?): Double? = double(key
 
 // NSDictionary.objectForKey boxes a raw CFStringRef instead of bridging it, so every lookup would miss.
 internal val CFStringRef?.ns: Any get() = CFBridgingRelease(CFRetain(this))!!
+
+/**
+ * ImageIO reads a UNICODE UserComment big-endian whatever the file's order, and keeps a JIS one the shared rule drops:
+ * a JPEG's comes from the shared reader, from [bytes], all of it or its head.
+ */
+internal fun ImageMetadata.withJpegComment(bytes: ByteArray): ImageMetadata =
+    if (jpegExifLittleEndian(bytes) != null) copy(userComment = readJpegExifCamera(bytes)?.userComment) else this

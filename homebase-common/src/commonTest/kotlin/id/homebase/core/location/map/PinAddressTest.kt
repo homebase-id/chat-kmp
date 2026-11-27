@@ -33,12 +33,22 @@ class PinAddressTest {
         settle()
 
         assertEquals(1, asked)
-        assertEquals("35.0, 139.0", pin.state.value.address, "no address: its coordinates")
+        assertEquals("35, 139", pin.state.value.address, "no address: its coordinates")
     }
 
     // advanceUntilIdle leaves backgroundScope's work alone.
     private fun TestScope.settle() {
         advanceTimeBy(1_000)
         runCurrent()
+    }
+
+    @Test
+    fun coordinatesNearZeroAreNotWrittenAsExponents() = runTest {
+        val pin = PinAddress(backgroundScope) { _, _ -> null }
+
+        pin.moved(0.00001, 139.0)
+        settle()
+
+        assertEquals("0.00001, 139", pin.state.value.address)
     }
 }

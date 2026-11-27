@@ -122,8 +122,7 @@ internal fun EditPlaceDialog(at: MediaLocation?, source: PhotoInfoSource, onSave
     var latitude by remember { mutableStateOf(at?.latitude?.toString().orEmpty()) }
     var longitude by remember { mutableStateOf(at?.longitude?.toString().orEmpty()) }
     val chosen = if (source.mapsOnline) {
-        // Panned round the world, the map's x runs past 0..1: back into -180..180.
-        camera.centerUnit?.takeIf { camera.isUserPositioned }?.let { (x, y) -> WebMercator.unitToLatLon(x - floor(x), y) }?.let { (lat, lon) -> MediaLocation.of(lat, lon) }
+        camera.pickedPoint()?.takeIf { camera.isUserPositioned }
     } else {
         typedLocation(latitude, longitude)?.takeIf { it.latitude != at?.latitude || it.longitude != at.longitude }
     }
@@ -168,8 +167,8 @@ private fun PlacePicker(at: MediaLocation?, source: PhotoInfoSource, camera: Map
     // The world, with no place yet: its middle means nothing until the map is moved.
     val box = remember(at) { at?.let { WebMercator.latLonToUnit(it.latitude, it.longitude) }?.let { (x, y) -> mapBox(x, y) } ?: WORLD }
     LaunchedEffect(camera) {
-        snapshotFlow { camera.centerUnit }.filterNotNull().collect { (x, y) ->
-            if (at != null || camera.isUserPositioned) WebMercator.unitToLatLon(x, y).let { (lat, lon) -> pinAddress.moved(lat, lon) }
+        snapshotFlow { camera.centerUnit }.filterNotNull().collect {
+            if (at != null || camera.isUserPositioned) camera.pickedPoint()?.let { pinAddress.moved(it.latitude, it.longitude) }
         }
     }
     var acquiring by remember { mutableStateOf(false) }
@@ -215,3 +214,7 @@ internal fun typedLocation(latitude: String, longitude: String): MediaLocation? 
 private fun String.coordinate(): Double? = trim().replace(',', '.').toDoubleOrNull()
 
 private val WORLD = doubleArrayOf(0.0, 0.0, 1.0, 1.0)
+
+// Panned round the world, the map's x runs past 0..1: back into -180..180, for the lookup and the save alike.
+private fun MapCameraState.pickedPoint(): MediaLocation? =
+    centerUnit?.let { (x, y) -> WebMercator.unitToLatLon(x - floor(x), y) }?.let { (lat, lon) -> MediaLocation.of(lat, lon) }

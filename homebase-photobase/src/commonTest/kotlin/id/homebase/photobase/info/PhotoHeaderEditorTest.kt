@@ -72,8 +72,9 @@ class PhotoHeaderEditorTest {
         val removed = Json.parseToJsonElement(editedContent(photo.fileMetadata.appData.content, PhotoEdit.Place(null))).jsonObject
         assertFalse("latitude" in removed || "longitude" in removed || "altitude" in removed)
 
-        val timed = Json.parseToJsonElement(editedContent(null, PhotoEdit.Time(Instant.fromEpochSeconds(0), UtcOffset(hours = -4)))).jsonObject
+        val timed = Json.parseToJsonElement(editedContent(null, PhotoEdit.Time(Instant.fromEpochSeconds(0), UtcOffset(hours = -4)), userDateBefore = 1_000)).jsonObject
         assertEquals("-14400", timed["offsetSeconds"]?.jsonPrimitive?.content)
+        assertEquals("1000", timed["timeWasMs"]?.jsonPrimitive?.content, "the time it replaced, for the day it left")
         assertEquals("1", timed["v"]?.jsonPrimitive?.content)
     }
 

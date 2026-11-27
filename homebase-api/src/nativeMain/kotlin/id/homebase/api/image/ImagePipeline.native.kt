@@ -34,7 +34,8 @@ private class ImageIoSource(
 
     override fun auxiliaryGainmap(): HdrGainmap? = source.auxiliaryGainmap(header)
 
-    override fun metadata(): ImageMetadata? = source.readMetadata()
+    // The header read only for a comment to put right, so a backup doesn't read a megabyte more of every photo.
+    override fun metadata(): ImageMetadata? = source.readMetadata()?.let { if (it.userComment == null) it else it.withJpegComment(header()) }
 
     override fun close() {
         try {

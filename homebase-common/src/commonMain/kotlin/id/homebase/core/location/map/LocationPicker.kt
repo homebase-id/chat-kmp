@@ -26,6 +26,8 @@ import id.homebase.resources.MR
 import id.homebase.resources.cd_location_pin
 import id.homebase.resources.share_location_recenter_cd
 import id.homebase.resources.share_location_resolving
+import id.homebase.common.util.formatDecimal
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -138,7 +140,14 @@ class PinAddress(private val scope: CoroutineScope, private val reverseGeocode: 
         job?.cancel()
         job = scope.launch {
             delay(DEBOUNCE_MS)
-            val address = runCatching { reverseGeocode(lat, lon) }.getOrNull()
+            val address = try {
+                reverseGeocode(lat, lon)
+            } catch (e: CancellationException) {
+                // Cancelled for a newer point: it mustn't write over that one's address.
+                throw e
+            } catch (_: Exception) {
+                null
+            }
             lastLat = lat
             lastLon = lon
             _state.value = State(address = address ?: formatLatLon(lat, lon), resolving = false)
@@ -157,10 +166,7 @@ class PinAddress(private val scope: CoroutineScope, private val reverseGeocode: 
             return dLat + dLon
         }
 
-        fun formatLatLon(lat: Double, lon: Double): String {
-            val latStr = ((lat * 1e5).toLong() / 1e5).toString()
-            val lonStr = ((lon * 1e5).toLong() / 1e5).toString()
-            return "$latStr, $lonStr"
-        }
+        // formatDecimal, not toString: near 0 that writes "1.0E-5".
+        fun formatLatLon(lat: Double, lon: Double): String = "${formatDecimal(lat, 5)}, ${formatDecimal(lon, 5)}"
     }
 }

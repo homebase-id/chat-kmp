@@ -19,6 +19,8 @@ data class PhotoContent(
      */
     val timeSetAtMs: Long? = null,
     val offsetSeconds: Int? = null,
+    /** The userDate a time set by hand replaced: every device recounts the day it left. */
+    val timeWasMs: Long? = null,
     /** The place was set by hand: the original's GPS details no longer describe it. */
     val placeByHand: Boolean? = null,
 ) {
