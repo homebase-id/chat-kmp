@@ -3,7 +3,6 @@ package id.homebase.photobase.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.sync.DriveState
@@ -24,6 +23,7 @@ import id.homebase.photobase.gallery.syncedSoFar
 import id.homebase.photobase.gallery.toGalleryItem
 import kotlin.math.abs
 import kotlin.time.Instant
+import id.homebase.photobase.info.PhotoInfoSource
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
@@ -100,6 +100,8 @@ sealed interface PhotoGalleryUiAction {
     /** Tapped in the grid, or swiped to in the viewer. */
     data class Open(val item: PhotoGalleryItem) : PhotoGalleryUiAction
     data object CloseViewer : PhotoGalleryUiAction
+
+
     /** A long press, or a tap while selecting. */
     data class ToggleSelected(val fileId: Uuid) : PhotoGalleryUiAction
     /** All of a day's photos, or none if all are picked. */
@@ -143,6 +145,7 @@ class PhotoGalleryViewModel(
     // The app's: leaving the Bin mustn't stop an Empty halfway. Null runs it on the view model's own.
     private val moveScope: CoroutineScope? = null,
     private val albumSource: PhotoAlbumSource? = null,
+    val photoInfo: PhotoInfoSource? = null,
 ) : ViewModel() {
     private val shelf = (gallery as? PhotoGallery.OnShelf)?.shelf
     private val album = gallery as? PhotoGallery.Album
@@ -516,8 +519,7 @@ private fun PhotoGalleryItem.player(video: PayloadDescriptor) = FullScreenOverla
     fileId = fileId,
     driveId = driveId,
     payloadKey = video.key,
-    // The player decrypts with exactly this header, and each payload has its own IV.
-    keyHeader = video.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    keyHeader = video.keyHeaderIn(keyHeader),
     payload = video,
 )
 

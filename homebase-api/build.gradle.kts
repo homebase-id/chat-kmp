@@ -307,6 +307,9 @@ kotlin {
         getByName("androidDeviceTest").kotlin.srcDir("src/imageFileContractTest/kotlin")
         // The official hash vectors, also on a phone: Android's BLAKE3 is native there.
         commonTest.get().kotlin.srcDir("src/hasherContractTest/kotlin")
+        // A camera's EXIF, for the common reader's tests and each platform's.
+        commonTest.get().kotlin.srcDir("src/exifFixture/kotlin")
+        getByName("androidDeviceTest").kotlin.srcDir("src/exifFixture/kotlin")
         getByName("androidDeviceTest").kotlin.srcDir("src/hasherContractTest/kotlin")
         androidMain.dependencies {
             implementation(project(":homebase-imageresize"))

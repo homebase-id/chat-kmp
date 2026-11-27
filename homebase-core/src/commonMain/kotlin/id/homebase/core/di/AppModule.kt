@@ -211,6 +211,9 @@ import id.homebase.photobase.PhotobaseUninstallCleanup
 import id.homebase.photobase.gallery.PhotoGalleryStore
 import id.homebase.photobase.gallery.HttpPhotoMoveServer
 import id.homebase.photobase.gallery.PhotoMover
+import id.homebase.photobase.info.DrivePhotoInfoSource
+import id.homebase.photobase.info.PhotoHeaderEditor
+import id.homebase.photobase.info.PhotoInfoSource
 import id.homebase.photobase.gallery.PhotoMoveServer
 import id.homebase.photobase.gallery.PhotoShelf
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
@@ -1608,6 +1611,16 @@ val appModule = module {
             sync = { syncPhotos() },
         )
     }
+    factory<PhotoInfoSource> {
+        val files = get<DriveFileProvider>()
+        val uploader = get<DriveUploadProvider>()
+        val editor = PhotoHeaderEditor(
+            header = { driveId, fileId -> files.getFileHeader(driveId, fileId) },
+            update = { request -> uploader.updateFileByFileId(request) },
+            sync = { syncPhotos() },
+        )
+        DrivePhotoInfoSource(get(), get(), get(), editor)
+    }
     // The tab's own gallery has no parameter.
     viewModel { params -> photoGalleryViewModel(params.getOrNull<PhotoGallery>() ?: PhotoGallery.Library) }
     viewModel {
@@ -1853,5 +1866,6 @@ private fun Scope.photoGalleryViewModel(gallery: PhotoGallery): PhotoGalleryView
         recount = index::recount,
         moveScope = get(),
         albumSource = get(),
+        photoInfo = get(),
     )
 }

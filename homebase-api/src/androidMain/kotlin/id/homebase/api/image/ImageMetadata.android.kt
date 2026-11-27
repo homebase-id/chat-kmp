@@ -5,13 +5,14 @@ import co.touchlab.kermit.Logger
 import java.io.ByteArrayInputStream
 
 actual fun readImageMetadata(srcBytes: ByteArray): ImageMetadata? = try {
-    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata()
+    ExifInterface(ByteArrayInputStream(srcBytes)).toImageMetadata { jpegExifLittleEndian(srcBytes) }
 } catch (e: Throwable) {
     Logger.w(throwable = e, tag = "readImageMetadata") { "Android EXIF read failed" }
     null
 }
 
-internal fun ExifInterface.toImageMetadata(): ImageMetadata {
+/** [littleEndian]: the EXIF's byte order where known, which ExifInterface doesn't say; a UNICODE comment needs it. */
+internal fun ExifInterface.toImageMetadata(littleEndian: () -> Boolean?): ImageMetadata {
     val capturedAt = parseExifLocalDateTime(
         getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL)
             ?: getAttribute(ExifInterface.TAG_DATETIME)
@@ -43,5 +44,46 @@ internal fun ExifInterface.toImageMetadata(): ImageMetadata {
         pixelHeight = pixelHeight,
         cameraMake = getAttribute(ExifInterface.TAG_MAKE)?.trim()?.takeIf { it.isNotEmpty() },
         cameraModel = getAttribute(ExifInterface.TAG_MODEL)?.trim()?.takeIf { it.isNotEmpty() },
+        fNumber = positiveDouble(ExifInterface.TAG_F_NUMBER),
+        exposureTimeSeconds = positiveDouble(ExifInterface.TAG_EXPOSURE_TIME),
+        focalLengthMm = positiveDouble(ExifInterface.TAG_FOCAL_LENGTH),
+        // getAttributeInt gives up on a tag of several values; the attribute is them joined by commas.
+        iso = getAttribute(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY)?.substringBefore(',')?.trim()?.toIntOrNull()?.takeIf { it > 0 },
+        lensMake = exifName(getAttribute(ExifInterface.TAG_LENS_MAKE)),
+        lensModel = exifName(getAttribute(ExifInterface.TAG_LENS_MODEL)),
+        exposureBiasEv = exifExposureBias(double(ExifInterface.TAG_EXPOSURE_BIAS_VALUE)),
+        exposureProgram = exifExposureProgram(int(ExifInterface.TAG_EXPOSURE_PROGRAM)),
+        meteringMode = exifMeteringMode(int(ExifInterface.TAG_METERING_MODE)),
+        flash = int(ExifInterface.TAG_FLASH),
+        whiteBalance = exifWhiteBalance(int(ExifInterface.TAG_WHITE_BALANCE)),
+        software = exifName(getAttribute(ExifInterface.TAG_SOFTWARE)),
+        modifiedAt = parseExifLocalDateTime(getAttribute(ExifInterface.TAG_DATETIME)),
+        imageDirectionDegrees = exifImageDirection(double(ExifInterface.TAG_GPS_IMG_DIRECTION)),
+        horizontalErrorMeters = exifHorizontalError(double(ExifInterface.TAG_GPS_H_POSITIONING_ERROR)),
+        focalLength35mm = exifFocalLength35mm(int(ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM)),
+        digitalZoomRatio = exifDigitalZoom(double(ExifInterface.TAG_DIGITAL_ZOOM_RATIO)),
+        sceneCaptureType = exifSceneCaptureType(int(ExifInterface.TAG_SCENE_CAPTURE_TYPE)),
+        customRendered = exifCustomRendered(int(ExifInterface.TAG_CUSTOM_RENDERED)),
+        colorSpace = exifColorSpace(int(ExifInterface.TAG_COLOR_SPACE)),
+        subjectDistanceMeters = exifSubjectDistance(double(ExifInterface.TAG_SUBJECT_DISTANCE)),
+        imageDescription = exifName(getAttribute(ExifInterface.TAG_IMAGE_DESCRIPTION)),
+        artist = exifName(getAttribute(ExifInterface.TAG_ARTIST)),
+        copyright = exifName(getAttribute(ExifInterface.TAG_COPYRIGHT)),
+        userComment = exifUserComment(getAttributeBytes(ExifInterface.TAG_USER_COMMENT), littleEndian),
+        bodySerial = exifName(getAttribute(ExifInterface.TAG_BODY_SERIAL_NUMBER)),
+        lensSerial = exifName(getAttribute(ExifInterface.TAG_LENS_SERIAL_NUMBER)),
+        // The raw rationals: getAttribute writes a 0/0 part as "00", a real-looking time the other platforms reject.
+        gpsTime = gpsTimeStamp()?.let { (h, m, s) -> exifGpsTime(getAttribute(ExifInterface.TAG_GPS_DATESTAMP), h, m, s) },
+        speedKmh = exifSpeedKmh(double(ExifInterface.TAG_GPS_SPEED), getAttribute(ExifInterface.TAG_GPS_SPEED_REF)),
     )
 }
+
+private fun ExifInterface.double(tag: String): Double? =
+    if (hasAttribute(tag)) getAttributeDouble(tag, Double.NaN).takeIf { !it.isNaN() } else null
+
+private fun ExifInterface.int(tag: String): Int? = if (hasAttribute(tag)) getAttributeInt(tag, -1).takeIf { it >= 0 } else null
+
+private fun ExifInterface.positiveDouble(tag: String): Double? = double(tag)?.takeIf { it.isFinite() && it > 0 }
+
+private fun ExifInterface.gpsTimeStamp(): Triple<Double, Double, Double>? =
+    exifGpsTimeStamp(getAttributeBytes(ExifInterface.TAG_GPS_TIMESTAMP))

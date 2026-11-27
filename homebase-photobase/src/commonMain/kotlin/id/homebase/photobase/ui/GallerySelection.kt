@@ -117,7 +117,7 @@ internal fun FavoriteButton(favorite: Boolean, enabled: Boolean, onClick: () -> 
 
 // Icons only, so four fit a small phone; a long press says what each does.
 @Composable
-private fun ToolbarAction(icon: ImageVector, label: StringResource, enabled: Boolean, onClick: () -> Unit) {
+internal fun ToolbarAction(icon: ImageVector, label: StringResource, enabled: Boolean, onClick: () -> Unit) {
     val text = stringResource(label)
     WithTooltip(text) {
         IconButton(onClick = onClick, enabled = enabled) {

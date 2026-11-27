@@ -1,6 +1,7 @@
 package id.homebase.api.client.location
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CancellationException
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -57,11 +58,15 @@ class LocationPreviewProvider(
          * geocoding) — skips the Nominatim round-trip entirely. Blank/null ⇒ resolve here.
          */
         knownAddress: String? = null,
+        /** False: not kept in the cache, for an address the caller made up. */
+        keep: Boolean = true,
     ): LocationPreview {
         cache[CacheKey(lat, lon, zoom)]?.let { return it }
 
         val address = knownAddress?.takeIf { it.isNotBlank() } ?: try {
             reverseGeocode(lat, lon, zoom) ?: formatLatLon(lat, lon)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "reverseGeocode threw — falling back to lat/lon" }
             formatLatLon(lat, lon)
@@ -69,6 +74,8 @@ class LocationPreviewProvider(
 
         val pngBytes = try {
             fetchStaticMap(lat, lon, zoom)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Logger.w(throwable = e, tag = TAG) { "fetchStaticMap threw — sending coordinates only" }
             null
@@ -85,7 +92,7 @@ class LocationPreviewProvider(
         )
         // Only cache successful image fetches — if the map service is temporarily down we want
         // the next attempt to retry instead of being stuck with a coords-only preview.
-        if (pngBytes != null) cache[CacheKey(lat, lon, zoom)] = preview
+        if (pngBytes != null && keep) cache[CacheKey(lat, lon, zoom)] = preview
         return preview
     }
 

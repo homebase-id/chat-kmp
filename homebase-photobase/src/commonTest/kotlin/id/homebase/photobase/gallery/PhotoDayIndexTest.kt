@@ -105,6 +105,26 @@ class PhotoDayIndexTest {
     }
 
     @Test
+    fun aPhotoTimedByHandCountsEverythingAgain() = runTest {
+        val (library, changes, index) = setUp()
+        val watching = launch { index.days.collect { } }
+        runCurrent()
+
+        // Moved from day 15 to day 19: the change names only 19.
+        library.days[15] = 6
+        library.days[19] = 1
+        val moved = galleryTestFile(19 * DAY_MS).let {
+            it.copy(fileMetadata = it.fileMetadata.copy(appData = it.fileMetadata.appData.copy(content = """{"v":1,"timeSetAtMs":1}""")))
+        }
+        changes.emit(PhotoChange.FilesArrived(listOf(moved)))
+        runCurrent()
+
+        assertEquals(2, library.builds)
+        assertEquals(6, index.days.first().countOf(15))
+        watching.cancel()
+    }
+
+    @Test
     fun whileItsShownAFinishedRoundCountsAgain() = runTest {
         val (library, changes, index) = setUp()
         val watching = launch { index.days.collect { } }

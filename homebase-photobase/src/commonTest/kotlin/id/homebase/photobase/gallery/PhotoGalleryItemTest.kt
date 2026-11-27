@@ -10,9 +10,13 @@ import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.drives.ServerMetadata
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.drives.files.ThumbnailDescriptor
+import id.homebase.api.common.time.UnixTimeUtc
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import id.homebase.api.media.MediaLocation
 import kotlin.uuid.Uuid
 
 class PhotoGalleryItemTest {
@@ -33,6 +37,44 @@ class PhotoGalleryItemTest {
         assertEquals(PhotobaseProtocol.VideoPayloadKey, item.payload.key, "the original is the item")
         assertEquals("vcp_0000", item.shown.key, "its copy is what the gallery shows and plays")
     }
+
+    @Test
+    fun itsDatesSpaceAndShelfComeFromItsRecord() {
+        val payload = PayloadDescriptor(
+            key = PhotobaseProtocol.ImagePayloadKey,
+            contentType = "image/jpeg",
+            bytesWritten = 3_000,
+            thumbnails = listOf(ThumbnailDescriptor(bytesWritten = 200), ThumbnailDescriptor(bytesWritten = null)),
+        )
+        val file = galleryTestFile(1, payload = payload).let {
+            it.copy(fileMetadata = it.fileMetadata.copy(created = UnixTimeUtc(1_000), updated = UnixTimeUtc(9_000)))
+        }.at(ArchivalStatus.Archived)
+
+        val item = file.toGalleryItem()!!
+
+        assertEquals(1_000, item.backedUpAtMs)
+        assertEquals(9_000, item.changedAtMs)
+        assertEquals(3_200, item.storedBytes)
+        assertEquals(true, item.archived)
+        assertNull(galleryTestFile(1).toGalleryItem()!!.storedBytes, "nothing written: unknown, not 0 bytes")
+    }
+
+    @Test
+    fun whereItWasTakenComesFromItsHeader() {
+        val file = galleryTestFile(1).withContent("""{"v":1,"latitude":37.7749,"longitude":-122.4194,"altitude":12.5}""")
+
+        assertEquals(MediaLocation(37.7749, -122.4194, 12.5), file.toGalleryItem()!!.location())
+    }
+
+    @Test
+    fun aHeaderWithoutBothCoordinatesOrUnreadableHasNoLocation() {
+        assertNull(galleryTestFile(1).toGalleryItem()!!.location())
+        assertNull(galleryTestFile(1).withContent("""{"v":1,"latitude":37.7749}""").toGalleryItem()!!.location())
+        assertNull(galleryTestFile(1).withContent("not json").toGalleryItem()!!.location())
+    }
+
+    private fun HomebaseFile.withContent(content: String) =
+        copy(fileMetadata = fileMetadata.copy(appData = fileMetadata.appData.copy(content = content)))
 
     @Test
     fun aVideosPlaylistPayloadIsNeverTheOneShown() {

@@ -20,7 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.geometry.Offset
 import id.homebase.api.client.location.WebMercator
-import id.homebase.core.ui.screens.location.map.TiledMapView
+import id.homebase.core.location.map.TiledMapView
 import kotlin.math.cos
 import kotlin.math.PI
 import kotlin.math.roundToInt

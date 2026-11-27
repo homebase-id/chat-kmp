@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import id.homebase.api.client.location.WebMercator
-import id.homebase.core.ui.screens.location.map.TiledMapView
+import id.homebase.core.location.map.TiledMapView
 import kotlin.math.max
 import kotlin.math.min
 
@@ -33,7 +33,7 @@ val mapTraceColors = listOf(
  * History/Find-Device map: GPS traces (and optional playback + dwell dots) drawn over an OSM basemap.
  * A thin wrapper over the shared [TiledMapView] — this composable owns only the History-specific
  * overlay (trace polylines, playhead, dwell dots); all viewport/zoom/tile behaviour lives in
- * [TiledMapView]/[id.homebase.core.ui.screens.location.map].
+ * [TiledMapView]/[id.homebase.core.location.map].
  */
 @Composable
 fun LocationTraceCanvas(

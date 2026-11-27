@@ -1,4 +1,4 @@
-package id.homebase.core.ui.screens.location.map
+package id.homebase.core.location.map
 
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.AnimationState

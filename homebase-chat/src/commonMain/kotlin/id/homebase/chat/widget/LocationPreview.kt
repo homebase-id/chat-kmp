@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,11 +110,16 @@ fun LocationPreviewCard(
     modifier: Modifier = Modifier,
     isCompact: Boolean = false,
     onCancel: (() -> Unit)? = null,
+    /** In place of the `geo:` link, which opens nothing on desktop or web. */
+    onOpen: (() -> Unit)? = null,
+    /** What a screen reader says the tap does. */
+    openLabel: String? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     val geoUri = remember(locationPreview.lat, locationPreview.lon, locationPreview.address) {
         buildGeoUri(locationPreview.lat, locationPreview.lon, locationPreview.address)
     }
+    val open = onOpen ?: { uriHandler.openUri(geoUri) }
 
     val imageBitmap = remember(locationPreview.imageUrl) {
         locationPreview.imageUrl?.let {
@@ -129,7 +135,7 @@ fun LocationPreviewCard(
         Row(
             modifier = modifier.fillMaxWidth().background(
                 MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)
-            ).clip(RoundedCornerShape(12.dp)).clickable { uriHandler.openUri(geoUri) },
+            ).clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = openLabel, role = Role.Button, onClick = open),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f).padding(12.dp)) {
@@ -174,7 +180,7 @@ fun LocationPreviewCard(
         }
     } else {
         Column(
-            modifier = modifier.fillMaxWidth().clickable { uriHandler.openUri(geoUri) }
+            modifier = modifier.fillMaxWidth().clickable(onClickLabel = openLabel, role = Role.Button, onClick = open)
         ) {
             Box {
                 if (imageBitmap != null) {

@@ -1,8 +1,12 @@
 package id.homebase.photobase.gallery
 
+import id.homebase.api.client.drives.files.ArchivalStatus
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.media.MediaLocation
+import id.homebase.photobase.backup.PhotoContent
+import id.homebase.photobase.parseRecord
 import id.homebase.core.photobase.PhotobaseProtocol
 import kotlin.uuid.Uuid
 
@@ -18,8 +22,21 @@ data class PhotoGalleryItem(
     val motion: PayloadDescriptor? = null,
     /** Its local tags: the favourites' and its albums'. */
     val tags: Set<Uuid> = emptySet(),
+    /** Its header content, a [PhotoContent]: read only when asked for, see [photoContent]. */
+    val content: String? = null,
+    /** When it reached the drive, and when its record last changed there; 0 when unknown. */
+    val backedUpAtMs: Long = 0,
+    val changedAtMs: Long = 0,
+    /** What all its payloads and their thumbnails take on the drive. */
+    val storedBytes: Long? = null,
+    val archived: Boolean = false,
 ) {
     val favorite: Boolean get() = PhotobaseProtocol.FavoriteTag in tags
+
+    /** Where it was taken, from its header; parsed each call, so read it once. */
+    fun photoContent(): PhotoContent? = parseRecord<PhotoContent>(content, "photo $fileId")
+
+    fun location(): MediaLocation? = photoContent()?.location
 
     /** What the gallery shows and plays. */
     val shown: PayloadDescriptor get() = playableCopy ?: payload
@@ -46,5 +63,12 @@ internal fun HomebaseFile.toGalleryItem(): PhotoGalleryItem? {
         playableCopy = payload.takeIf { it.isVideo() }?.playableCopyIn(payloads),
         motion = live?.playableIn(payloads),
         tags = localTags().toSet(),
+        content = appData.content,
+        backedUpAtMs = fileMetadata.created.milliseconds,
+        changedAtMs = fileMetadata.updated.milliseconds,
+        storedBytes = payloads.sumOf { it.storedBytes() }.takeIf { it > 0 },
+        archived = appData.archivalStatus == ArchivalStatus.Archived,
     )
 }
+
+private fun PayloadDescriptor.storedBytes(): Long = (bytesWritten ?: 0) + thumbnails.orEmpty().sumOf { it.bytesWritten ?: 0 }

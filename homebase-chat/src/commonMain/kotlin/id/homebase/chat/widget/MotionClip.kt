@@ -16,7 +16,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.video.VideoPreloader
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -53,16 +52,16 @@ internal fun FullScreenOverlay.ViewMessageData.motionPlayer(clip: PayloadDescrip
     fileId = fileId,
     driveId = driveId,
     payloadKey = clip.key,
-    keyHeader = clip.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
+    keyHeader = clip.keyHeaderIn(keyHeader),
     payload = clip,
     isEncrypted = isEncrypted,
     peer = peer,
 )
 
 @Composable
-internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip: PayloadDescriptor?, settled: Boolean): MotionState? {
+internal fun rememberMotionState(viewer: FullScreenOverlay.ViewMessageData, clip: PayloadDescriptor?, settled: Boolean, replay: Int = 0): MotionState? {
     if (clip == null || !playsMotionClips) return null
-    val motion = remember(viewer, clip, settled) { MotionState(viewer.motionPlayer(clip), play = settled) }
+    val motion = remember(viewer, clip, settled, replay) { MotionState(viewer.motionPlayer(clip), play = settled) }
     if (settled) {
         val preloader = koinInject<VideoPreloader>()
         // Played from the payload cache once this is done, so an opening downloads it once; swiping away cancels it.

@@ -1,7 +1,6 @@
 package id.homebase.core.ui.screens.card
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.AclViewer
 import id.homebase.api.client.drives.HomebaseFile
 import id.homebase.api.client.drives.QueryBatchRequest
@@ -122,14 +121,13 @@ internal fun cardPostHref(odinId: String, channelSlug: String, postKey: String):
 @OptIn(ExperimentalEncodingApi::class)
 internal fun postImage(file: HomebaseFile, content: PostContent): HomebaseImageData? {
     val payload = file.ownPrimaryMedia(content) ?: return null
-    val iv = payload.iv?.bytes
     return HomebaseImageData.from(
         driveId = file.driveId,
         fileId = file.fileId,
         descriptor = payload,
         previewThumbnail = null,
-        isEncrypted = iv != null,
-        keyHeader = iv?.let { KeyHeader(iv = it, aesKey = file.keyHeader.aesKey) } ?: file.keyHeader,
+        isEncrypted = payload.iv != null,
+        keyHeader = payload.keyHeaderIn(file.keyHeader),
     )
 }
 

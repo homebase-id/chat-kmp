@@ -71,23 +71,14 @@ class PhotobaseRecord(
      * Saves [content] of what's stored, or of null; another device's save in between asks again. Without [create],
      * a record that's gone stays gone and this throws.
      */
-    suspend fun write(uniqueId: Uuid, fileType: Int, create: Boolean = true, content: (stored: String?) -> String) {
-        repeat(MAX_CONFLICT_RETRIES) {
+    suspend fun write(uniqueId: Uuid, fileType: Int, create: Boolean = true, content: (stored: String?) -> String) =
+        retryingConflicts("Photobase record $uniqueId", TAG, isConflict = { it.isExistingFileWithUniqueId() || it.isVersionConflict() }) {
             val existing = header(uniqueId)
             if (!create && existing?.fileState != FileState.Active) throw RecordGoneException(uniqueId)
             val stored = existing?.fileMetadata?.appData?.content
-            val merged = merged(stored, content(stored))
-            try {
-                if (existing == null) create(uniqueId, fileType, merged) else update(existing, uniqueId, fileType, merged)
-                return
-            } catch (e: ClientException) {
-                val conflict = e.isExistingFileWithUniqueId() || e.errorCode == OdinClientErrorCode.VersionTagMismatch
-                if (!conflict) throw e
-                Logger.i(tag = TAG) { "write: ${e.errorCode}, retrying" }
-            }
+            val merged = mergedContent(stored, Json.parseToJsonElement(content(stored)).jsonObject)
+            if (existing == null) create(uniqueId, fileType, merged) else update(existing, uniqueId, fileType, merged)
         }
-        throw IllegalStateException("Could not save Photobase record $uniqueId after $MAX_CONFLICT_RETRIES conflicts")
-    }
 
     /** Nothing to do for a record that's gone already. */
     suspend fun delete(uniqueId: Uuid) {
@@ -101,12 +92,6 @@ class PhotobaseRecord(
             }
         }
         throw IllegalStateException("Could not delete Photobase record $uniqueId after $MAX_CONFLICT_RETRIES conflicts")
-    }
-
-    // Keeps fields this app version doesn't know, so an older phone saving can't erase a newer one's.
-    private fun merged(stored: String?, known: String): String {
-        val previous = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() } ?: return known
-        return JsonObject(previous + Json.parseToJsonElement(known).jsonObject).toString()
     }
 
     private suspend fun create(uniqueId: Uuid, fileType: Int, content: String) {
@@ -127,17 +112,7 @@ class PhotobaseRecord(
                 driveId = PhotobaseProtocol.DriveAlias,
                 uniqueId = uniqueId,
                 keyHeader = keyHeader,
-                instructions = FileUpdateInstructionSet(
-                    transferIv = ByteArrayUtil.getRndByteArray(16),
-                    locale = UpdateLocale.Local,
-                    recipients = emptyList(),
-                    manifest = UpdateManifest.build(
-                        payloads = null,
-                        toDeletePayloads = null,
-                        thumbnails = null,
-                        generatePayloadIv = false,
-                    ),
-                ),
+                instructions = headerOnlyUpdate(),
                 metadata = metadata(uniqueId, fileType, content, existing.serverFileIsEncrypted, existing.fileMetadata.versionTag)
                     .encryptContent(keyHeader),
             ),
@@ -159,6 +134,44 @@ class PhotobaseRecord(
 
     private companion object {
         const val TAG = "PhotobaseRecord"
-        const val MAX_CONFLICT_RETRIES = 5
     }
 }
+
+/** An update of the header alone: a new transfer IV, no payload or recipient change. */
+internal fun headerOnlyUpdate() = FileUpdateInstructionSet(
+    transferIv = ByteArrayUtil.getRndByteArray(16),
+    locale = UpdateLocale.Local,
+    recipients = emptyList(),
+    manifest = UpdateManifest.build(payloads = null, toDeletePayloads = null, thumbnails = null, generatePayloadIv = false),
+)
+
+internal fun ClientException.isVersionConflict() = errorCode == OdinClientErrorCode.VersionTagMismatch
+
+/** [attempt] again, reading afresh, while another device's save got in first; [what] names it in the failure. */
+internal suspend fun <T> retryingConflicts(
+    what: String,
+    tag: String,
+    isConflict: (ClientException) -> Boolean = { it.isVersionConflict() },
+    attempt: suspend () -> T,
+): T {
+    repeat(MAX_CONFLICT_RETRIES) {
+        try {
+            return attempt()
+        } catch (e: ClientException) {
+            if (!isConflict(e)) throw e
+            Logger.i(tag = tag) { "$what: ${e.errorCode}, retrying" }
+        }
+    }
+    throw IllegalStateException("Could not save $what after $MAX_CONFLICT_RETRIES conflicts")
+}
+
+/**
+ * [stored] JSON with [set] put in and [remove] taken out. Keeps fields this app version doesn't know, so an older phone
+ * saving can't erase a newer one's.
+ */
+internal fun mergedContent(stored: String?, set: JsonObject, remove: Set<String> = emptySet()): String {
+    val previous = stored?.let { runCatching { Json.parseToJsonElement(it).jsonObject }.getOrNull() }.orEmpty()
+    return JsonObject(previous - remove + set).toString()
+}
+
+private const val MAX_CONFLICT_RETRIES = 5

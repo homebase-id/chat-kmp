@@ -24,9 +24,13 @@ data class MediaLocation(val latitude: Double, val longitude: Double, val altitu
         fun parse(iso6709: String): MediaLocation? {
             val match = ISO_6709.find(iso6709.trim()) ?: return null
             val (lat, lon, alt) = match.destructured
-            val latitude = lat.toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return null
-            val longitude = lon.toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return null
-            return MediaLocation(latitude, longitude, alt.toDoubleOrNull())
+            return of(lat.toDoubleOrNull(), lon.toDoubleOrNull(), alt.toDoubleOrNull())
+        }
+
+        /** Null unless [latitude] and [longitude] are a point on Earth. */
+        fun of(latitude: Double?, longitude: Double?, altitude: Double? = null): MediaLocation? {
+            if (latitude == null || latitude !in -90.0..90.0 || longitude == null || longitude !in -180.0..180.0) return null
+            return MediaLocation(latitude, longitude, altitude)
         }
     }
 }
