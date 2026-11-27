@@ -184,7 +184,7 @@ fun FullScreenMediaViewer(
                 is MediaPageSource.LocalFile -> remember(resolved.path) {
                     SubSamplingImageSource.LocalFile(filePath = resolved.path)
                 }
-                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn) {
+                is MediaPageSource.Remote -> remember(data.driveId, data.fileId, payload.key, resolved.iv, resolved.standIn, data.peer) {
                     val imageData = HomebaseImageData.from(
                         driveId = data.driveId,
                         fileId = data.fileId,
@@ -194,8 +194,7 @@ fun FullScreenMediaViewer(
                         keyHeader = resolved.iv
                             ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
                             ?: KeyHeader.empty(),
-                        remoteOdinId = data.remoteOdinId,
-                        globalTransitId = data.globalTransitId,
+                        peer = data.peer,
                     )
                     SubSamplingImageSource.Remote(imageData, standIn = resolved.standIn)
                 }
@@ -389,6 +388,7 @@ fun FullScreenMediaViewer(
                             payload.key,
                             payload.lastModified,
                             railIv,
+                            data.peer,
                         ) {
                             HomebaseImageData.from(
                                 driveId = data.driveId,
@@ -399,8 +399,7 @@ fun FullScreenMediaViewer(
                                 keyHeader = railIv
                                     ?.let { KeyHeader(iv = it, aesKey = data.keyHeader.aesKey) }
                                     ?: KeyHeader.empty(),
-                                remoteOdinId = data.remoteOdinId,
-                                globalTransitId = data.globalTransitId,
+                                peer = data.peer,
                             )
                         }
                         HomebaseImage(

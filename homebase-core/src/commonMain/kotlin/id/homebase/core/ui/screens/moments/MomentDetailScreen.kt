@@ -1711,6 +1711,7 @@ private fun MomentDetailContent(
                             payload = payload,
                             fileId = moment.fileId,
                             driveId = moment.driveId,
+                            peer = null,
                             keyHeader = moment.keyHeader,
                             previewThumbnail = payload.previewThumbnail?.toEmbeddedThumb()
                                 ?: moment.previewThumbnail,
@@ -1741,6 +1742,7 @@ private fun MomentDetailContent(
                             payload = payload,
                             fileId = moment.fileId,
                             driveId = moment.driveId,
+                            peer = null,
                             previewThumbnail = moment.previewThumbnail,
                             keyHeader = moment.keyHeader,
                             isEncrypted = moment.isEncrypted,

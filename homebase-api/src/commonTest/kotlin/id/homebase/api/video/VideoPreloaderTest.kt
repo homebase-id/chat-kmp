@@ -1,6 +1,7 @@
 package id.homebase.api.video
 
 import id.homebase.api.client.KeyHeader
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.client.profile.FakeFileOperationsProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
@@ -148,7 +149,7 @@ class VideoPreloaderTest {
         val stub = VideoMetadata(mimeType = "video/mp4", isDescriptorContentComplete = true, isSegmented = false, key = metadataKey, fileSize = 1024)
         val fake = FakeVideoPrefetchDriveAccess()
 
-        newPreloader(fake).preload(playerData(stub).copy(remoteOdinId = OdinId("sam.dotyou.cloud"), globalTransitId = Uuid.random()))
+        newPreloader(fake).preload(playerData(stub).copy(peer = PeerFileRef(OdinId("sam.dotyou.cloud"), Uuid.random())))
 
         assertTrue(fake.calls.isEmpty(), "${fake.calls}")
     }

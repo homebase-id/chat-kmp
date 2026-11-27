@@ -135,8 +135,7 @@ fun FullScreenOverlay.VideoPlayerData.toVideoData() = VideoPlayerData(
     payloadKey = payloadKey,
     keyHeader = keyHeader,
     descriptorContent = payload.descriptorContent,
-    remoteOdinId = remoteOdinId,
-    globalTransitId = globalTransitId,
+    peer = peer,
     scratchSub = scratchSub,
     contentType = payload.contentType,
 )

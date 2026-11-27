@@ -41,7 +41,7 @@ class PayloadReaderTest {
     private val body = ByteArray(64) { it.toByte() }
 
     private val own = PayloadLocation.Own(driveId, fileId)
-    private val peers = PayloadLocation.Peer(peer, driveId, globalTransitId)
+    private val peers = PayloadLocation.Peer(PeerFileRef(peer, globalTransitId), driveId)
 
     private val requests = mutableListOf<String>()
     private val written = mutableMapOf<String, ByteArray>()
@@ -98,10 +98,8 @@ class PayloadReaderTest {
 
     @Test
     fun onlyAPostFromSomeoneWeFollowIsReadFromTheirDrive() {
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = null, globalTransitId = null))
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = peer, globalTransitId = null))
-        assertEquals(own, PayloadLocation.of(driveId, fileId, remoteOdinId = null, globalTransitId = globalTransitId))
-        assertEquals(peers, PayloadLocation.of(driveId, fileId, remoteOdinId = peer, globalTransitId = globalTransitId))
+        assertEquals(own, PayloadLocation.of(driveId, fileId, peer = null))
+        assertEquals(peers, PayloadLocation.of(driveId, fileId, PeerFileRef(peer, globalTransitId)))
     }
 
     @Test

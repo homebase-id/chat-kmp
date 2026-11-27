@@ -1,5 +1,6 @@
 package id.homebase.api.client.payload
 
+import androidx.compose.runtime.Immutable
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.BytesResponse
@@ -10,6 +11,10 @@ import id.homebase.api.file.FileOperationsProvider
 import kotlinx.coroutines.flow.onEach
 import kotlin.uuid.Uuid
 
+/** A followed identity's file, by its author and global transit id: the two travel together or not at all. */
+@Immutable
+data class PeerFileRef(val odinId: OdinId, val globalTransitId: Uuid)
+
 /** Where a payload is read from: our own drive by file id, or a followed identity's drive by global transit id. */
 sealed interface PayloadLocation {
     val driveId: Uuid
@@ -17,11 +22,11 @@ sealed interface PayloadLocation {
     data class Own(override val driveId: Uuid, val fileId: Uuid) : PayloadLocation
 
     /** [driveId] is the author's drive, which has no file of ours to name. */
-    data class Peer(val peer: OdinId, override val driveId: Uuid, val globalTransitId: Uuid) : PayloadLocation
+    data class Peer(val ref: PeerFileRef, override val driveId: Uuid) : PayloadLocation
 
     companion object {
-        fun of(driveId: Uuid, fileId: Uuid, remoteOdinId: OdinId?, globalTransitId: Uuid?): PayloadLocation =
-            if (remoteOdinId != null && globalTransitId != null) Peer(remoteOdinId, driveId, globalTransitId) else Own(driveId, fileId)
+        fun of(driveId: Uuid, fileId: Uuid, peer: PeerFileRef?): PayloadLocation =
+            if (peer != null) Peer(peer, driveId) else Own(driveId, fileId)
     }
 }
 
@@ -42,9 +47,9 @@ class PayloadReader(
     ): BytesResponse? = when (at) {
         is PayloadLocation.Own -> own.getPayloadBytesDecrypted(at.driveId, at.fileId, key, keyHeader, chunkStart, chunkLength, onProgress)
         is PayloadLocation.Peer -> if (chunkStart == null && chunkLength == null) {
-            peer.getPayloadOverPeerByGlobalTransitId(at.peer, at.driveId, at.globalTransitId, key, keyHeader)
+            peer.getPayloadOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader)
         } else {
-            peer.getPayloadChunkOverPeerByGlobalTransitId(at.peer, at.driveId, at.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength)
+            peer.getPayloadChunkOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, chunkStart ?: 0L, chunkLength)
         }
     }
 
@@ -57,13 +62,13 @@ class PayloadReader(
         lastModified: Long? = null,
     ): BytesResponse? = when (at) {
         is PayloadLocation.Own -> own.getThumbBytesDecrypted(at.driveId, at.fileId, key, keyHeader, width, height, lastModified)
-        is PayloadLocation.Peer -> peer.getThumbOverPeerByGlobalTransitId(at.peer, at.driveId, at.globalTransitId, key, width, height, keyHeader)
+        is PayloadLocation.Peer -> peer.getThumbOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, width, height, keyHeader)
     }
 
     /** A range of the payload as the server sends it, still encrypted, for a player that decrypts it itself. */
     suspend fun encryptedChunk(at: PayloadLocation, key: String, chunkStart: Long, chunkLength: Long): ByteArray? = when (at) {
         is PayloadLocation.Own -> own.getPayloadBytesEncryptedChunk(at.driveId, at.fileId, key, chunkStart, chunkLength)
-        is PayloadLocation.Peer -> peer.getPayloadChunkEncryptedOverPeerByGlobalTransitId(at.peer, at.driveId, at.globalTransitId, key, chunkStart, chunkLength)
+        is PayloadLocation.Peer -> peer.getPayloadChunkEncryptedOverPeerByGlobalTransitId(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, chunkStart, chunkLength)
     }
 
     /** The player's read of a whole payload into [outputPath]; false when it isn't there. */
@@ -77,11 +82,11 @@ class PayloadReader(
         is PayloadLocation.Own -> own.playPayloadToPath(at.driveId, at.fileId, key, keyHeader, outputPath, onProgress)
         is PayloadLocation.Peer -> {
             var wroteAnything = false
-            val found = peer.streamPayloadDecrypted(at.peer, at.driveId, at.globalTransitId, key, keyHeader, onProgress) { bytes ->
+            val found = peer.streamPayloadDecrypted(at.ref.odinId, at.driveId, at.ref.globalTransitId, key, keyHeader, onProgress) { bytes ->
                 fileOps.writeDownload(outputPath, bytes.onEach { if (it.isNotEmpty()) wroteAnything = true })
             }
             if (!found || !wroteAnything) {
-                Logger.w(tag = "VideoIO") { "peer stream produced no bytes for ${at.peer}/${at.globalTransitId}/$key" }
+                Logger.w(tag = "VideoIO") { "peer stream produced no bytes for ${at.ref.odinId}/${at.ref.globalTransitId}/$key" }
             }
             found && wroteAnything
         }

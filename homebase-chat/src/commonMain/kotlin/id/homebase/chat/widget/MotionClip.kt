@@ -56,8 +56,7 @@ internal fun FullScreenOverlay.ViewMessageData.motionPlayer(clip: PayloadDescrip
     keyHeader = clip.iv?.let { KeyHeader(iv = it.bytes, aesKey = keyHeader.aesKey) } ?: keyHeader,
     payload = clip,
     isEncrypted = isEncrypted,
-    remoteOdinId = remoteOdinId,
-    globalTransitId = globalTransitId,
+    peer = peer,
 )
 
 @Composable

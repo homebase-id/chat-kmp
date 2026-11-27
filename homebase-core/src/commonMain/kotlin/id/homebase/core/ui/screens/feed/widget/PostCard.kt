@@ -1,5 +1,6 @@
 package id.homebase.core.ui.screens.feed.widget
 
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.chat.services.builder.linkPreviews
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
@@ -52,6 +53,7 @@ import id.homebase.core.feed.services.FeedPostItem
 import id.homebase.core.feed.services.FeedProtocol
 import id.homebase.core.feed.services.PostType
 import id.homebase.core.feed.services.authorOdinId
+import id.homebase.core.feed.services.mediaSource
 import id.homebase.core.feed.services.toPostAudience
 import id.homebase.core.feed.services.previewBody
 import id.homebase.core.ui.screens.moments.widget.MaxFeedMediaAspect
@@ -236,8 +238,7 @@ private fun ArticleCardBody(
                 sharedTransitionScope = null,
                 animatedVisibilityScope = null,
                 messageId = post.id,
-                remoteOdinId = source.remoteOdinId,
-                globalTransitId = source.globalTransitId,
+                peer = source.peer,
             )
             Spacer(Modifier.height(8.dp))
         }
@@ -444,8 +445,7 @@ private fun QuotedPostMedia(
         messageId = fileId,
         downloadingFiles = emptySet(),
         minAspect = FeedMinMediaAspect,
-        remoteOdinId = author,
-        globalTransitId = globalTransitId,
+        peer = PeerFileRef(author, globalTransitId),
     )
 }
 
@@ -480,21 +480,6 @@ private fun PostLinkPreview(
         modifier = modifier,
         imageMaxHeight = feedMediaMaxHeight(),
     )
-}
-
-internal class PostMediaSource(val driveId: Uuid, val remoteOdinId: OdinId?, val globalTransitId: Uuid?)
-
-// A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
-// reads over peer by globalTransitId; our own posts stay on the local driveId.
-internal fun FeedPostItem.mediaSource(): PostMediaSource {
-    val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
-    val sender = senderOdinId
-    val gtid = globalTransitId
-    return if (sender != null && gtid != null && channelDriveAlias != null) {
-        PostMediaSource(channelDriveAlias, sender, gtid)
-    } else {
-        PostMediaSource(driveId, null, null)
-    }
 }
 
 @Composable
@@ -535,8 +520,7 @@ private fun PostMedia(
             messageId = post.id,
             downloadingFiles = emptySet(),
             minAspect = FeedMinMediaAspect,
-            remoteOdinId = source.remoteOdinId,
-            globalTransitId = source.globalTransitId,
+            peer = source.peer,
         )
         DoubleTapHeartBurst(tick = burstTick)
     }

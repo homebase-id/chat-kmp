@@ -365,6 +365,8 @@ private fun CommentMedia(comment: PostCommentItem) {
         payloads = mediaPayloads,
         fileId = comment.fileId,
         driveId = comment.driveId,
+        // A followed post's comment lives in the author's Comment file system, which the peer reads don't cover yet.
+        peer = null,
         previewThumbnail = comment.previewThumbnail,
         keyHeader = comment.keyHeader,
         isEncrypted = comment.isEncrypted,

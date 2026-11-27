@@ -30,6 +30,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runSkikoComposeUiTest
 import androidx.navigationevent.NavigationEventInput
+import id.homebase.chat.widget.video.toVideoData
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -536,10 +537,7 @@ class ViewOnceViewerTest {
         )
         val overlay = server.viewer(kind = ViewOnceDescriptor.KIND_VIDEO)
         val overlayData = overlay.copy(payload = overlay.payload.copy(descriptorContent = stub)).videoPlayerData()
-        val video = id.homebase.api.video.VideoPlayerData(
-            overlayData.fileId, overlayData.driveId, overlayData.payloadKey, overlayData.keyHeader,
-            overlayData.payload.descriptorContent, overlayData.remoteOdinId, overlayData.globalTransitId, overlayData.scratchSub,
-        )
+        val video = overlayData.toVideoData()
         val fileOps = object : id.homebase.api.file.FileOperationsProvider {
             override fun getCacheDirectory() = server.tempDir
             override fun openFileInput(path: String): io.ktor.client.request.forms.InputProvider = error("disk read")

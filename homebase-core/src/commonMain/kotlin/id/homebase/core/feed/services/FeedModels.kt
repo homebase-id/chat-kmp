@@ -10,6 +10,7 @@ import id.homebase.api.client.drives.files.PayloadDescriptor
 import id.homebase.api.client.drives.files.ReactionSummary
 import id.homebase.api.client.drives.files.reactions.ReactionContent
 import id.homebase.api.client.drives.upload.EmbeddedThumb
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.common.OdinId
 import id.homebase.api.serialization.OdinSystemSerializer
 import kotlin.uuid.Uuid
@@ -226,4 +227,19 @@ fun CommentPreview.previewBody(): String {
     return runCatching {
         OdinSystemSerializer.deserialize<PostCommentContent>(content).body
     }.getOrDefault("")
+}
+
+class PostMediaSource(val driveId: Uuid, val peer: PeerFileRef?)
+
+// A followed identity's media lives on the author's channel drive, so a received post (non-null senderOdinId)
+// reads over peer by globalTransitId; our own posts stay on the local driveId.
+fun FeedPostItem.mediaSource(): PostMediaSource {
+    val channelDriveAlias = runCatching { Uuid.parse(channelId) }.getOrNull()
+    val sender = senderOdinId
+    val gtid = globalTransitId
+    return if (sender != null && gtid != null && channelDriveAlias != null) {
+        PostMediaSource(channelDriveAlias, PeerFileRef(sender, gtid))
+    } else {
+        PostMediaSource(driveId, null)
+    }
 }

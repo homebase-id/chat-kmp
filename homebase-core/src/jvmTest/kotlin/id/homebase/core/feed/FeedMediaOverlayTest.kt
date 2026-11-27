@@ -2,6 +2,7 @@ package id.homebase.core.feed
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.drives.files.PayloadDescriptor
+import id.homebase.api.client.payload.PeerFileRef
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
 import id.homebase.chat.conversationlist.FullScreenOverlay
@@ -64,8 +65,7 @@ class FeedMediaOverlayTest {
 
         val overlay = assertIs<FullScreenOverlay.ViewMessageData>(feedMediaOverlay(item, 0, "Frodo"))
         assertEquals(false, overlay.isEncrypted)
-        assertNull(overlay.remoteOdinId, "our own post's bytes are local")
-        assertNull(overlay.globalTransitId)
+        assertNull(overlay.peer, "our own post's bytes are local")
         assertEquals(item.driveId, overlay.driveId)
     }
 
@@ -87,8 +87,7 @@ class FeedMediaOverlayTest {
         )
 
         val overlay = assertIs<FullScreenOverlay.ViewMessageData>(feedMediaOverlay(item, 1, "Frodo"))
-        assertEquals(author, overlay.remoteOdinId)
-        assertEquals(gtid, overlay.globalTransitId)
+        assertEquals(PeerFileRef(author, gtid), overlay.peer)
         // The peer read addresses the author's CHANNEL drive, not our feed drive.
         assertEquals(channelDrive, overlay.driveId)
         assertEquals(FeedProtocol.mediaPayloadKey(1), overlay.selectedPayloadKey)
@@ -105,8 +104,7 @@ class FeedMediaOverlayTest {
         )
 
         val overlay = assertIs<FullScreenOverlay.ViewMessageData>(feedMediaOverlay(item, 0, "Frodo"))
-        assertNull(overlay.remoteOdinId, "without a channel drive there is nothing to address over peer")
-        assertNull(overlay.globalTransitId)
+        assertNull(overlay.peer, "without a channel drive there is nothing to address over peer")
         assertEquals(item.driveId, overlay.driveId)
     }
 
