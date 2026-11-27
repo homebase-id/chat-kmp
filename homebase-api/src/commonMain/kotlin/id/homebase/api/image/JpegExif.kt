@@ -6,13 +6,14 @@ package id.homebase.api.image
  */
 fun readJpegExifOrientation(bytes: ByteArray): Int? = readJpegExifCamera(bytes)?.orientation
 
-/** A JPEG's camera EXIF and orientation, in pure Kotlin; null when the bytes aren't a JPEG with EXIF. */
+/** A JPEG's camera EXIF, capture time and orientation, in pure Kotlin; null when the bytes aren't a JPEG with EXIF. */
 fun readJpegExifCamera(bytes: ByteArray): ImageMetadata? {
     val (tiffStart, end) = jpegExifTiff(bytes) ?: return null
     val tiff = Tiff.at(bytes, tiffStart, end) ?: return null
     val ifd0 = tiff.ifd0() ?: return null
     val exif = ifd0.long(0x8769)?.let(tiff::directory)
     return ImageMetadata(
+        capturedAt = parseExifLocalDateTime(exif?.ascii(0x9003)),
         captureUtcOffset = parseExifUtcOffset(exif?.ascii(0x9011)),
         orientation = ifd0.long(0x0112)?.takeIf { it in 1..8 },
         cameraMake = ifd0.ascii(0x010F),

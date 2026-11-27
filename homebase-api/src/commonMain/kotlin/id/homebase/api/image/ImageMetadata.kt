@@ -54,8 +54,8 @@ data class ImageMetadata(
  * Returns null only when the bytes cannot be parsed at all. If the image has
  * no metadata, an [ImageMetadata] with all-null fields is returned.
  *
- * Web reads a JPEG's camera fields, capture offset and orientation only ([readJpegExifCamera]), and
- * null for anything else: browsers expose no EXIF reader.
+ * Web reads a JPEG's camera fields, capture time and offset and orientation only ([readJpegExifCamera]):
+ * no GPS or size, and null for anything else, since browsers expose no EXIF reader.
  */
 expect fun readImageMetadata(srcBytes: ByteArray): ImageMetadata?
 

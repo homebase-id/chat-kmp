@@ -37,6 +37,7 @@ class PhotoInfoFormatTest {
         assertEquals("1/3817", shutter(0.000262))
         assertEquals("2.5", shutter(2.5))
         assertEquals("1", shutter(1.0))
+        assertEquals("1", shutter(0.97), "not 1/1")
     }
 
     @Test
@@ -94,7 +95,8 @@ class PhotoInfoFormatTest {
 
     @Test
     fun theMapLinkSearchesForThePoint() {
-        assertEquals("https://www.google.com/maps/search/?api=1&query=37.7749,-122.4194", mapsUrl(MediaLocation(37.7749, -122.4194)))
+        assertEquals("https://www.google.com/maps/search/?api=1&query=37.77490,-122.41940", mapsUrl(MediaLocation(37.7749, -122.4194)))
+        assertEquals("https://www.google.com/maps/search/?api=1&query=51.47780,-0.00050", mapsUrl(MediaLocation(51.4778, -0.0005)), "never 5.0E-4")
     }
 
     @Test

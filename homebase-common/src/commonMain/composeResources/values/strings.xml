@@ -3632,6 +3632,8 @@
     <string name="photobase_info_iso">ISO %1$d</string>
     <string name="photobase_info_albums">In albums</string>
     <string name="photobase_info_backed_up">Backed up</string>
+    <string name="photobase_info_joined">%1$s · %2$s</string>
+    <string name="photobase_info_list">%1$s, %2$s</string>
     <string name="photobase_info_backed_up_body">Stored on your Homebase</string>
     <string name="photobase_archive_title">Archive</string>
     <string name="photobase_archive_empty_state">Photos you archive leave your library and wait here.</string>

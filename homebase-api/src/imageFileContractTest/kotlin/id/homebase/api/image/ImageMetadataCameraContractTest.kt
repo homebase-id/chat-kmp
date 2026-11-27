@@ -1,6 +1,7 @@
 package id.homebase.api.image
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.UtcOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,6 +25,7 @@ class ImageMetadataCameraContractTest {
         assertEquals(50.0, exif.focalLengthMm)
         assertEquals(400, exif.iso)
         assertEquals(UtcOffset(hours = 9), exif.captureUtcOffset)
+        assertEquals(LocalDateTime(2026, 1, 15, 15, 0, 0), exif.capturedAt)
 
         val twoIsos = assertNotNull(readImageMetadata(CameraExifFixture.inJpeg(CameraExifFixture.tiff(littleEndian = false, isoTwice = true), jpeg)))
         assertEquals(400, twoIsos.iso, "an ISO of two values reads as its first")

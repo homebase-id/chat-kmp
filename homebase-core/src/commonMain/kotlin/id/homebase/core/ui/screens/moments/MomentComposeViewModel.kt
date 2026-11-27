@@ -459,8 +459,7 @@ internal fun AttachmentPendingFile.toMediaInfo(): MediaInfo? {
     val md = metadata ?: return null
 
     val capturedAt = md.capturedAt?.toString()
-    // An offset means something only beside the local time it belongs to; web's reader gives it without one.
-    val offset = md.captureUtcOffset?.takeIf { capturedAt != null }?.totalSeconds
+    val offset = md.captureUtcOffset?.totalSeconds
     val lat = if (includeLocation) md.latitude else null
     val lon = if (includeLocation) md.longitude else null
     val alt = if (includeLocation) md.altitudeMeters else null

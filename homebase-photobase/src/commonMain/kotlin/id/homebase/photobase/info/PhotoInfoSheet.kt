@@ -65,6 +65,8 @@ import id.homebase.resources.photobase_info_date_time
 import id.homebase.resources.photobase_info_dimensions
 import id.homebase.resources.photobase_info_focal_length
 import id.homebase.resources.photobase_info_iso
+import id.homebase.resources.photobase_info_joined
+import id.homebase.resources.photobase_info_list
 import id.homebase.resources.photobase_info_location
 import id.homebase.resources.photobase_info_megapixels
 import id.homebase.resources.photobase_info_open
@@ -77,6 +79,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
 import kotlinx.datetime.asTimeZone
 import co.touchlab.kermit.Logger
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import kotlin.math.roundToInt
 import kotlin.time.Instant
@@ -114,7 +117,7 @@ fun PhotoInfoSheet(
             uiState?.location?.let { at -> WhereSection(at, uiState.place, reader) }
             FileRow(item)
             CameraRow(uiState?.camera ?: InfoPart.Loading)
-            if (albums.isNotEmpty()) InfoRow(Icons.Outlined.PhotoAlbum, stringResource(MR.string.photobase_info_albums), albums.joinToString(", "))
+            if (albums.isNotEmpty()) InfoRow(Icons.Outlined.PhotoAlbum, stringResource(MR.string.photobase_info_albums), joined(albums, MR.string.photobase_info_list))
             if (backedUp) InfoRow(Icons.Outlined.CloudDone, stringResource(MR.string.photobase_info_backed_up), stringResource(MR.string.photobase_info_backed_up_body))
             addedBy?.let { InfoRow(Icons.Outlined.Person, stringResource(MR.string.photobase_photo_added_by, it.domainName), null) }
         }
@@ -215,8 +218,13 @@ private fun CameraRow(camera: InfoPart<ImageMetadata>) {
 @Composable
 private fun InfoRow(icon: ImageVector, title: String?, details: List<String>) {
     val headline = title ?: details.firstOrNull() ?: return
-    InfoRow(icon, headline, details.drop(if (title == null) 1 else 0).joinToString(" · ").ifEmpty { null })
+    InfoRow(icon, headline, joined(details.drop(if (title == null) 1 else 0), MR.string.photobase_info_joined))
 }
+
+// Through a resource, so a language can join them its own way.
+@Composable
+private fun joined(parts: List<String>, pair: StringResource): String? =
+    parts.reduceOrNull { joined, next -> stringResource(pair, joined, next) }
 
 @Composable
 private fun InfoRow(icon: ImageVector, headline: String, supporting: String?) {

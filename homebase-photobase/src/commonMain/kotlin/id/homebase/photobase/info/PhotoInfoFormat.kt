@@ -20,7 +20,7 @@ internal fun megapixels(width: Int, height: Int): String? =
 internal fun shutter(seconds: Double): String {
     val denominator = 1.0 / seconds
     val whole = abs(denominator - denominator.roundToLong()) < 0.05
-    return if (seconds < 1.0 && (denominator >= 4 || whole)) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
+    return if (seconds < 1.0 && (denominator >= 4 || (whole && denominator.roundToLong() >= 2))) "1/${denominator.roundToLong()}" else formatDecimal(seconds, 1)
 }
 
 /**
@@ -34,7 +34,7 @@ internal fun cameraName(make: String?, model: String?): String? = when {
 }
 
 // An https link every platform opens, in the maps app where there is one; geo: opens nothing on desktop or web.
-internal fun mapsUrl(at: MediaLocation): String = "https://www.google.com/maps/search/?api=1&query=${at.latitude},${at.longitude}"
+internal fun mapsUrl(at: MediaLocation): String = "https://www.google.com/maps/search/?api=1&query=${fiveDecimals(at.latitude)},${fiveDecimals(at.longitude)}"
 
 internal fun coordinates(at: MediaLocation): String = "${fiveDecimals(at.latitude)}, ${fiveDecimals(at.longitude)}"
 
@@ -48,7 +48,8 @@ internal const val MAP_ZOOM = 15
 
 /**
  * [at] shifted so a formatter that shows the [system] zone reads the clock at [offset], the zone the photo was taken
- * in. Shifted again by the system's offset where it lands, so a change of offset in between doesn't put it an hour out.
+ * in. Shifted again by the system's offset where it lands, so a change of offset in between doesn't put it an hour out;
+ * a time the system's clock skips, in the hour it springs forward, can't be shown and reads an hour off.
  */
 internal fun shiftedTo(at: Instant, offset: UtcOffset, system: TimeZone): Instant {
     val first = at + (offset.totalSeconds - system.offsetAt(at).totalSeconds).seconds
