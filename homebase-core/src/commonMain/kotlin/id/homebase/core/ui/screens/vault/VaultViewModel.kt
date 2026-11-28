@@ -300,7 +300,7 @@ class VaultViewModel(
     }
 
     fun onSignInCallback(url: String) {
-        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
+        privateDriveOptIn.completeSignIn(url)
     }
 
     fun onAction(action: VaultUiAction) {

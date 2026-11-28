@@ -16,7 +16,10 @@ import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.settings.UserPreferences
 import io.ktor.http.formUrlEncode
+import id.homebase.api.coroutines.supervisedScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -95,7 +98,19 @@ class PrivateDriveOptIn(
     fun makePrivateUrl(drive: PrivateDrive, returnUrl: String): String? =
         signedInIdentity?.let { makePrivateUrl(it.domainName, drive, returnUrl) }
 
-    suspend fun handleSignInCallback(url: String) = youAuthFlowManager.handleCallback(url)
+    private val completion = SignInCompletion(signInScope) { youAuthFlowManager.handleCallback(it) }
+
+    /** Finishes a sign-in again from the browser's callback, whether or not the screen that asked is still there. */
+    fun completeSignIn(url: String) = completion.complete(url)
+}
+
+// On iOS, desktop and web the browser answers through the asking screen's callback, possibly after it's gone.
+private val signInScope = supervisedScope("private-drive-sign-in")
+
+internal class SignInCompletion(private val scope: CoroutineScope, private val handle: suspend (String) -> Unit) {
+    fun complete(url: String) {
+        scope.launch { handle(url) }
+    }
 }
 
 internal fun privateDriveState(drive: Uuid, locked: Set<Uuid>, zeroKnowledge: Set<Uuid>, developer: Boolean) =

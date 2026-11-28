@@ -203,7 +203,7 @@ class EmailViewModel(
     }
 
     fun onSignInCallback(url: String) {
-        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
+        privateDriveOptIn.completeSignIn(url)
     }
 
     /**

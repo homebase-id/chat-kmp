@@ -34,6 +34,6 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
     }
 
     fun onSignInCallback(url: String) {
-        viewModelScope.launch { optIn.handleSignInCallback(url) }
+        optIn.completeSignIn(url)
     }
 }
