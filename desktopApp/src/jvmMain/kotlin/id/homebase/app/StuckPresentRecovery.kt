@@ -25,7 +25,8 @@ internal object StuckPresentRecovery {
     private const val MAX_WAIT_MS = 8_000L
     private const val MAX_FRAME_DEPTH = 3
 
-    // XWayland only, the case this was proven on. Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
+    // XWayland only. Our X errors (BadWindow from a window closing mid-walk) reach XToolkit's process-wide handler, which never calls libX11's exiting one;
+    // AWT only reads that error state under AWT's lock, which the stuck UI thread holds for the whole walk.
     internal val onXWayland by lazy {
         hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty() && !System.getenv("WAYLAND_DISPLAY").isNullOrEmpty() &&
             java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
@@ -56,13 +57,14 @@ internal object StuckPresentRecovery {
         nudge: () -> Int,
     ): Int {
         var nudges = 0
+        var attempts = 0
         var waitMs = FIRST_WAIT_MS
         var failure: String? = null
         while (uiRan.count > 0) {
             try {
-                if (stuck() && nudge() > 0) {
-                    nudges++
-                    if (nudges > 1) waitMs = minOf(waitMs * 2, MAX_WAIT_MS)
+                if (stuck()) {
+                    if (++attempts > 1) waitMs = minOf(waitMs * 2, MAX_WAIT_MS)
+                    if (nudge() > 0) nudges++
                 }
             } catch (e: LinkageError) {
                 Logger.e(e, TAG) { "can't load JNA or libX11; no recovery" }

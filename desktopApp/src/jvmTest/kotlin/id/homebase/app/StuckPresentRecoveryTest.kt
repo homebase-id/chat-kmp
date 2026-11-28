@@ -95,7 +95,15 @@ class StuckPresentRecoveryTest {
     }
 
     @Test
-    fun roundsThatSentNothingDontGrowTheWait() {
+    fun stuckRoundsThatFindNoCanvasStillBackOff() {
+        val uiRan = CountDownLatch(1)
+        val waits = mutableListOf<Long>()
+        StuckPresentRecovery.nudgeWhileStuck(uiRan, stuck = { true }, wait = { waits += it; if (waits.size == 3) uiRan.countDown() }) { 0 }
+        assertEquals(listOf(1_000L, 2_000L, 4_000L), waits)
+    }
+
+    @Test
+    fun roundsWhereTheUiWasntInTheSwapDontGrowTheWait() {
         val uiRan = CountDownLatch(1)
         val waits = mutableListOf<Long>()
         var checks = 0
@@ -114,6 +122,7 @@ class StuckPresentRecoveryTest {
     fun theCanvasWindowsOfThisProcessAreResizedAndRestored() {
         assumeTrue("needs XWayland", StuckPresentRecovery.onXWayland && !GraphicsEnvironment.isHeadless())
         val pid = ProcessHandle.current().pid()
+        val others = StuckPresentRecovery.canvasSizes(pid).size
         lateinit var window: Frame
         EventQueue.invokeAndWait {
             window = Frame("StuckPresentRecoveryTest").apply {
@@ -127,14 +136,15 @@ class StuckPresentRecoveryTest {
             val deadline = System.nanoTime() + 5_000_000_000L
             var previous = emptyList<Pair<Int, Int>>()
             var before = StuckPresentRecovery.canvasSizes(pid)
-            while ((before.isEmpty() || before != previous) && System.nanoTime() < deadline) {
+            while ((before.size <= others || before != previous) && System.nanoTime() < deadline) {
                 Thread.sleep(100)
                 previous = before
                 before = StuckPresentRecovery.canvasSizes(pid)
             }
             var during = emptyList<Pair<Int, Int>>()
 
-            assertEquals(1, StuckPresentRecovery.nudgeCanvases(pid) { during = StuckPresentRecovery.canvasSizes(pid) })
+            assertEquals(others + 1, before.size)
+            assertEquals(before.size, StuckPresentRecovery.nudgeCanvases(pid) { during = StuckPresentRecovery.canvasSizes(pid) })
             assertEquals(before.map { (w, h) -> w to h - 1 }, during)
             assertEquals(before, StuckPresentRecovery.canvasSizes(pid))
         } finally {

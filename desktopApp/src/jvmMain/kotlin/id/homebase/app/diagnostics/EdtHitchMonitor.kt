@@ -38,7 +38,13 @@ class EdtHitchMonitor(
         if (acked.await(THRESHOLD_MS, TimeUnit.MILLISECONDS)) return
         // Snapshot while the EDT is still stuck; after the ack it shows idle frames.
         val stack = captureMainThreadStackTrace()
-        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) StuckPresentRecovery.recoverWhileStuck(acked)
+        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) {
+            try {
+                StuckPresentRecovery.recoverWhileStuck(acked)
+            } catch (e: Exception) {
+                Logger.e(e, "EdtHitchMonitor") { "stuck-swap recovery failed" }
+            }
+        }
         acked.await()
         report(postedAt, nowMs() - postedAt, stack)
     }
