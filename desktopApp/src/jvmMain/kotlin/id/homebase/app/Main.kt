@@ -158,7 +158,7 @@ fun main() {
 
     // Detect UI-thread (AWT EDT) stalls and log the EDT stack to homebase.log. Desktop has no
     // OS-level ANR, so without this a freeze leaves no evidence at all.
-    MainThreadWatchdog().start()
+    MainThreadWatchdog(onMainThreadBlocked = StuckPresentRecovery::onMainThreadBlocked).start()
     EdtHitchMonitor().start()
 
     AppStartup.startKoin()

@@ -10,6 +10,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -74,6 +75,7 @@ class MainThreadWatchdogJvmTest {
             main: CoroutineDispatcher = wedged,
             aliveLogIntervalMs: Long = 600_000,
             captureStack: () -> String? = { null },
+            onMainThreadBlocked: () -> Unit = {},
         ) = MainThreadWatchdog(
             thresholdMs = 50,
             tickIntervalMs = 20,
@@ -84,6 +86,7 @@ class MainThreadWatchdogJvmTest {
             lifecycleLog = { sev, msg, t -> lifecycle += Triple(sev, msg, t) },
             captureStack = captureStack,
             useLivenessProbe = false,
+            onMainThreadBlocked = onMainThreadBlocked,
         )
 
         fun awaitUntil(condition: () -> Boolean) {
@@ -113,6 +116,44 @@ class MainThreadWatchdogJvmTest {
         assertTrue(h.stalls.first().startsWith("Main/UI thread stalled"), h.stalls.first())
         val started = h.lifecycle.first { it.second.startsWith("Watchdog loop started") }.second
         assertTrue(started.contains("thread=MainThreadWatchdog"), started)
+    }
+
+    @Test
+    fun aMainBlockRunsTheRecoveryOnceWhileItLasts() {
+        val h = Harness()
+        h.wedgeMain()
+        val recoveries = CopyOnWriteArrayList<String>()
+        val watchdog = h.watchdog(onMainThreadBlocked = { recoveries += Thread.currentThread().name })
+        try {
+            watchdog.start()
+            h.awaitUntil { recoveries.isNotEmpty() }
+            Thread.sleep(300)
+        } finally {
+            watchdog.stop()
+            h.close()
+        }
+
+        assertEquals(1, recoveries.size, "recoveries=$recoveries")
+        assertTrue(recoveries.single().startsWith("MainThreadWatchdog"), recoveries.single())
+    }
+
+    @Test
+    fun aFailingRecoveryIsLoggedAndTheLoopKeepsWaiting() {
+        val h = Harness()
+        h.wedgeMain()
+        val watchdog = h.watchdog(onMainThreadBlocked = { error("no display") })
+        try {
+            watchdog.start()
+            h.awaitUntil { h.lifecycle.any { it.second == "Main-thread block recovery failed" } }
+        } finally {
+            watchdog.stop()
+            h.close()
+        }
+
+        val failure = h.lifecycle.single { it.second == "Main-thread block recovery failed" }
+        assertEquals(Severity.Error, failure.first)
+        assertEquals("no display", failure.third?.message)
+        assertTrue(h.lifecycle.none { it.second.startsWith("Watchdog loop died") })
     }
 
     @Test

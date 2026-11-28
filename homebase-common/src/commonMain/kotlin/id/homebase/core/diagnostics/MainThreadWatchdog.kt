@@ -72,6 +72,8 @@ class MainThreadWatchdog(
         { severity, message, throwable -> Logger.log(severity, TAG, throwable, message) },
     private val captureStack: () -> String? = { captureMainThreadStackTrace() },
     private val useLivenessProbe: Boolean = true,
+    /** Runs on the watchdog's thread once per main-thread block, while it lasts; must not wait on the UI thread. */
+    private val onMainThreadBlocked: () -> Unit = {},
 ) {
     // Own thread by default: on Dispatchers.Default the loop shares its pool with the work a
     // wedge would exhaust, so it could go silent exactly when it is needed.
@@ -188,6 +190,13 @@ class MainThreadWatchdog(
                     ),
                     stack = stack,
                 )
+            }
+            try {
+                onMainThreadBlocked()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lifecycleLog(Severity.Error, "Main-thread block recovery failed", e)
             }
             // Wait for the UI thread to recover before ticking again, so a long hang
             // leaves only one outstanding sentinel rather than one per tick.
