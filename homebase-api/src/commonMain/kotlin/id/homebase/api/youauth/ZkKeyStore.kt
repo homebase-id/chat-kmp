@@ -106,7 +106,7 @@ object ZkKeyStore {
             Logger.i(tag = TAG) { "Reading the drive keys from the server before locking a file on $alias" }
             readLocked()
         }
-        // A sign-out empties the store too, which mustn't read as "ordinary drive" and send the key to the server.
+        // A sign-out during this call empties the store, which mustn't read as "ordinary drive".
         return synchronized(saving) {
             if (signIn != generation) throw DriveKeysNotRead(SignedOutDuringRead())
             if (isZeroKnowledge(alias)) driveKey(alias) ?: throw FileDecryptionException.NoDriveKey(alias) else null
