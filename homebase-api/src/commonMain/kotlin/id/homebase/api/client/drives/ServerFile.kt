@@ -202,12 +202,10 @@ suspend fun sealKeyHeader(keyHeader: KeyHeader, point: ByteArray): EncryptedKeyH
 fun keepFileKeyHeader(iv: ByteArray): EncryptedKeyHeader =
     EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Share, iv = iv, encryptedAesKey = ByteArray(0))
 
-private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader {
-    val key = ZkKeyStore.lockingKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)
-    return EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, SecureByteArray(key)).apply { type = EncryptionType.ZkDrive }
-}
+private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader =
+    EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, SecureByteArray(ZkKeyStore.lockingKey(driveId))).apply { type = EncryptionType.ZkDrive }
 
-/** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
+/** The key that opens key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
 private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)
 
 internal const val DECRYPTION_FAILURE_APP_DATA =

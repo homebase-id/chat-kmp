@@ -152,18 +152,19 @@ class CollabFolderLiveTest {
         setActiveCredentials(ApiCredentials.create(identity, app.str("clientAuthToken"), SecureByteArray(Base64.decode(app.str("sharedSecret")))))
     }
 
-    // The process holds one identity's zero-knowledge keys at a time, as an app does.
-    private fun useKeys(drive: String? = null, writeOnly: String? = null) {
+    // The process holds one identity's zero-knowledge keys at a time, as an app does. A file is locked only with a key
+    // read from the grant, so with a drive key the grant carries it.
+    private suspend fun useKeys(drive: String? = null, writeOnly: String? = null) {
         val stored = mutableMapOf<String, String>()
-        drive?.let { stored["zk_drive_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
-        writeOnly?.let { stored["zk_drive_write_only_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
+        if (drive == null) writeOnly?.let { stored["zk_drive_write_only_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
         ZkKeyStore.storage = object : ZkKeyStore.Storage {
             override fun get(key: String) = stored[key]
             override fun put(key: String, value: String) { stored[key] = value }
             override fun remove(key: String) { stored.remove(key) }
         }
-        // A file is locked only with a key read from the grant in this run: the grant carries the fixture's.
-        ZkKeyStore.useServer(fetchGrant = { drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) } }, resync = {})
+        val grant = drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) }
+        grant?.let { ZkKeyStore.openDriveKeys(it) }
+        ZkKeyStore.useServer(fetchGrant = { grant }, resync = {})
     }
 
     private suspend fun grantOf(driveKey: ByteArray, writeOnly: ByteArray?): SecurityContext {

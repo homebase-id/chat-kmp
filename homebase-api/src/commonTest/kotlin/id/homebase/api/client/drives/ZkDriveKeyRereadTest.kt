@@ -38,12 +38,6 @@ import kotlin.uuid.Uuid
 // with the current key can open, and the server can't tell.
 class ZkDriveKeyRereadTest {
 
-    private class MemoryStorage(val values: MutableMap<String, String> = mutableMapOf()) : ZkKeyStore.Storage {
-        override fun get(key: String) = values[key]
-        override fun put(key: String, value: String) { values[key] = value }
-        override fun remove(key: String) { values.remove(key) }
-    }
-
     private val sharedSecret = ByteArrayUtil.getRndByteArray(16)
     private val appKey = ByteArrayUtil.getRndByteArray(16)
     private val oldKey = ByteArrayUtil.getRndByteArray(16)
@@ -58,7 +52,7 @@ class ZkDriveKeyRereadTest {
 
     @BeforeTest
     fun setUp() {
-        ZkKeyStore.storage = MemoryStorage()
+        ZkKeyStore.storage = MemoryZkStorage()
         ZkKeyStore.timeSource = clock
         ZkKeyStore.useServer(fetchGrant = { reads++; server }, resync = { resynced += it })
     }
@@ -79,13 +73,12 @@ class ZkDriveKeyRereadTest {
         ))))),
     )
 
-    // The keys a device saved in an earlier run, as a new process finds them.
     private suspend fun savedFromAnEarlierRun(key: ByteArray) {
-        val saved = MemoryStorage()
+        val saved = MemoryZkStorage()
         ZkKeyStore.storage = saved
         ZkKeyStore.saveAppKey(appKey)
         ZkKeyStore.openDriveKeys(grant(key))
-        ZkKeyStore.storage = MemoryStorage(saved.values.toMutableMap())
+        ZkKeyStore.storage = MemoryZkStorage(saved.values.toMutableMap())
         resynced.clear()
     }
 
@@ -134,6 +127,20 @@ class ZkDriveKeyRereadTest {
 
         assertTrue(locks.awaitAll().all { opensWith(it, newKey) })
         assertEquals(1, reads)
+    }
+
+    @Test
+    fun filesWaitingOnAReadThatFailsShareItsFailure() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        val answer = CompletableDeferred<SecurityContext?>()
+        ZkKeyStore.useServer(fetchGrant = { reads++; answer.await() }, resync = {})
+
+        val locks = List(3) { async { runCatching { lockNewFile() } } }
+        yield()
+        answer.complete(null)
+
+        assertTrue(locks.awaitAll().all { it.exceptionOrNull() is NetworkException })
+        assertEquals(1, reads, "one timeout, not one per file")
     }
 
     @Test
