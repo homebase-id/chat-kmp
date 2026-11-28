@@ -19,6 +19,16 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.ZkLock
+import id.homebase.api.youauth.CallerContext
+import id.homebase.api.youauth.DriveGrant
+import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.DriveReference
+import id.homebase.api.youauth.PermissionContext
+import id.homebase.api.youauth.PermissionGroup
+import id.homebase.api.youauth.PermissionedDrive
+import id.homebase.api.youauth.SecurityContext
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.plugins.api.createClientPlugin
@@ -152,6 +162,23 @@ class CollabFolderLiveTest {
             override fun put(key: String, value: String) { stored[key] = value }
             override fun remove(key: String) { stored.remove(key) }
         }
+        // A file is locked only with a key read from the grant in this run: the grant carries the fixture's.
+        ZkKeyStore.useServer(fetchGrant = { drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) } }, resync = {})
+    }
+
+    private suspend fun grantOf(driveKey: ByteArray, writeOnly: ByteArray?): SecurityContext {
+        val appKey = ByteArrayUtil.getRndByteArray(16)
+        ZkKeyStore.saveAppKey(appKey)
+        val grant = DriveGrant(
+            permissionedDrive = PermissionedDrive(
+                DriveReference(FilesyncProtocol.DriveAlias.toString(), Uuid.random().toString()),
+                listOf(DrivePermission.Read, DrivePermission.Write),
+            ),
+            isZeroKnowledge = true,
+            zkAppKeyEncryptedStorageKey = Base64.encode(ZkLock.lock(driveKey, appKey)),
+            zkStorageKeyEncryptedWriteOnlyPrivateKey = writeOnly?.let { Base64.encode(ZkLock.lock(it, driveKey)) },
+        )
+        return SecurityContext(CallerContext(securityLevel = "app"), PermissionContext(listOf(PermissionGroup(driveGrants = listOf(grant)))))
     }
 
     private suspend fun upload(
