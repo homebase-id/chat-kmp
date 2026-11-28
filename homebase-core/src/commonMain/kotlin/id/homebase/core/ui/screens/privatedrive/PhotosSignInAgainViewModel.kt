@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.privatedrive.PhotosPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
+import id.homebase.core.session.IdentityScoped
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,7 @@ import kotlinx.coroutines.launch
 data class PhotosSignInAgainUiState(val needsSignIn: Boolean = false, val failed: Boolean = false)
 
 /** The Photos status screen's sign-in again: the callback outlives a recomposition, as Vault's does. */
-class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewModel() {
+class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewModel(), IdentityScoped {
     private val _uiState = MutableStateFlow(PhotosSignInAgainUiState(needsSignIn = optIn.currentState(PhotosPrivateDrive).needsSignIn))
     val uiState: StateFlow<PhotosSignInAgainUiState> = _uiState.asStateFlow()
 
