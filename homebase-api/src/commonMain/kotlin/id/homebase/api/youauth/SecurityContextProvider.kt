@@ -38,6 +38,9 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
      */
     suspend fun getSecurityContext(): SecurityContext? = fetchContext("/auth/context")
 
+    /** As [getSecurityContext], with the failure thrown as it is: a server answer isn't a network failure. */
+    suspend fun readSecurityContext(): SecurityContext = readContext("/auth/context")
+
     /**
      * What [odinId] grants the signed-in identity. Null on any failure, including a 404 from a server
      * that predates the route.
@@ -45,17 +48,20 @@ class SecurityContextProvider(httpClient: HttpClient, credentialsManager: Creden
     suspend fun getPeerSecurityContext(odinId: OdinId): SecurityContext? =
         fetchContext("/peer/$odinId/auth/context")
 
+    private suspend fun readContext(path: String): SecurityContext {
+        val credentials = requireCreds()
+        val response: ApiResponse = encryptedGet(
+            url = apiUrl(credentials.domain, path),
+            token = credentials.accessToken,
+            secret = credentials.secret
+        )
+        throwForFailure(response)
+        return parseSecurityContext(response.body)
+    }
+
     private suspend fun fetchContext(path: String): SecurityContext? {
         return try {
-            val credentials = requireCreds()
-            val response: ApiResponse = encryptedGet(
-                url = apiUrl(credentials.domain, path),
-                token = credentials.accessToken,
-                secret = credentials.secret
-            )
-
-            throwForFailure(response)
-            parseSecurityContext(response.body)
+            readContext(path)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

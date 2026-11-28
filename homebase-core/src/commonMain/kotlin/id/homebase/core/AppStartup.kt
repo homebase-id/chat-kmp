@@ -39,8 +39,8 @@ object AppStartup {
         val koin = KoinPlatformTools.defaultContext().get()
         // Every process, background wakes included; resolved per call, so Koin start builds nothing.
         ZkKeyStore.useServer(
-            fetchGrant = { koin.get<SecurityContextProvider>().getSecurityContext() },
-            resync = { koin.get<DriveSyncManager>().resyncDrive(it) },
+            fetchGrant = { koin.get<SecurityContextProvider>().readSecurityContext() },
+            resync = { koin.get<DriveSyncManager>().resyncDriveLater(it) },
         )
         val info = koin.get<PlatformInfo>()
         StartupLogger.logAppStartupInfo(info.versionName, info.versionCode, BuildConfig.APP_BUILD_TIME)

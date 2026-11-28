@@ -43,6 +43,7 @@ import okio.FileSystem
 import java.io.File
 import java.nio.file.Files
 import kotlin.io.encoding.Base64
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -145,7 +146,12 @@ class CollabFolderLiveTest {
         println("sealed edit landed")
 
         dir.deleteRecursively()
+    }
+
+    @AfterTest
+    fun forgetKeys() {
         ZkKeyStore.clear()
+        ZkKeyStore.useServer(fetchGrant = { error("no server in this test") }, resync = {})
     }
 
     private suspend fun credentials(identity: OdinId, app: JsonObject) = CredentialsManager().apply {
@@ -164,7 +170,7 @@ class CollabFolderLiveTest {
         }
         val grant = drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) }
         grant?.let { ZkKeyStore.openDriveKeys(it) }
-        ZkKeyStore.useServer(fetchGrant = { grant }, resync = {})
+        ZkKeyStore.useServer(fetchGrant = { grant ?: error("no drive key in this step") }, resync = {})
     }
 
     private suspend fun grantOf(driveKey: ByteArray, writeOnly: ByteArray?): SecurityContext {

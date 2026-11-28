@@ -419,6 +419,11 @@ class DriveSyncManager(
     }
 
     /** Reads [driveId] again from the start: files it couldn't read before may be readable now. */
+    /** [resyncDrive] without waiting for the drive's round in progress. */
+    fun resyncDriveLater(driveId: Uuid) {
+        scope.launch { resyncDrive(driveId) }
+    }
+
     suspend fun resyncDrive(driveId: Uuid) {
         val sync = driveSyncsMutex.withLock { driveSyncs[driveId] } ?: return
         sync.forgetCursor()

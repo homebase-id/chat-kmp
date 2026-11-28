@@ -2,10 +2,12 @@ package id.homebase.api.client.drives
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NetworkException
+import id.homebase.api.client.ServerException
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ByteArrayUtil
 import id.homebase.api.crypto.EncryptedKeyHeader
+import id.homebase.api.crypto.EncryptionType
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.youauth.CallerContext
 import id.homebase.api.youauth.DriveGrant
@@ -21,6 +23,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
+import kotlinx.io.IOException
 import kotlin.io.encoding.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -45,30 +48,32 @@ class ZkDriveKeyRereadTest {
     private val photos = Uuid.random()
     private val clock = TestTimeSource()
 
-    // What the server's grant says now; null when it can't be read.
+    // What the server's grant says now; null when it can't be reached.
     private var server: SecurityContext? = null
     private var reads = 0
     private val resynced = mutableListOf<Uuid>()
+
+    private fun unreachable() = NetworkException(IOException("unreachable"))
 
     @BeforeTest
     fun setUp() {
         ZkKeyStore.storage = MemoryZkStorage()
         ZkKeyStore.timeSource = clock
-        ZkKeyStore.useServer(fetchGrant = { reads++; server }, resync = { resynced += it })
+        ZkKeyStore.useServer(fetchGrant = { reads++; server ?: throw unreachable() }, resync = { resynced += it })
     }
 
     @AfterTest
     fun reset() {
         ZkKeyStore.clear()
         ZkKeyStore.timeSource = TimeSource.Monotonic
-        ZkKeyStore.useServer(fetchGrant = { null }, resync = {})
+        ZkKeyStore.useServer(fetchGrant = { throw unreachable() }, resync = {})
     }
 
-    private suspend fun grant(key: ByteArray?) = SecurityContext(
+    private suspend fun grant(key: ByteArray?, zeroKnowledge: Boolean = true) = SecurityContext(
         CallerContext(securityLevel = "app"),
         PermissionContext(listOf(PermissionGroup(driveGrants = listOf(DriveGrant(
             permissionedDrive = PermissionedDrive(DriveReference(photos.toString(), Uuid.random().toString()), listOf(DrivePermission.Read, DrivePermission.Write)),
-            isZeroKnowledge = true,
+            isZeroKnowledge = zeroKnowledge,
             zkAppKeyEncryptedStorageKey = key?.let { Base64.encode(ZkLock.lock(it, appKey)) },
         ))))),
     )
@@ -97,6 +102,7 @@ class ZkDriveKeyRereadTest {
         val locked = lockNewFile()
 
         assertTrue(opensWith(locked, newKey), "locked with the drive's current key")
+        assertEquals(EncryptionType.ZkDrive, locked.second.type)
         assertEquals(1, reads)
     }
 
@@ -132,25 +138,47 @@ class ZkDriveKeyRereadTest {
     @Test
     fun filesWaitingOnAReadThatFailsShareItsFailure() = runTest {
         savedFromAnEarlierRun(oldKey)
-        val answer = CompletableDeferred<SecurityContext?>()
+        val answer = CompletableDeferred<SecurityContext>()
         ZkKeyStore.useServer(fetchGrant = { reads++; answer.await() }, resync = {})
 
         val locks = List(3) { async { runCatching { lockNewFile() } } }
         yield()
-        answer.complete(null)
+        answer.completeExceptionally(unreachable())
 
         assertTrue(locks.awaitAll().all { it.exceptionOrNull() is NetworkException })
         assertEquals(1, reads, "one timeout, not one per file")
     }
 
     @Test
+    fun filesLockedOneAfterAnotherShareAFailureForTenSeconds() = runTest {
+        savedFromAnEarlierRun(oldKey)
+
+        repeat(3) { assertFailsWith<NetworkException> { lockNewFile() } }
+        assertEquals(1, reads)
+
+        clock += 11.seconds
+        server = grant(newKey)
+        assertTrue(opensWith(lockNewFile(), newKey))
+        assertEquals(2, reads)
+    }
+
+    @Test
     fun whenTheServerCantBeReachedTheSavedKeyIsNotUsed() = runTest {
         savedFromAnEarlierRun(oldKey)
-        server = null
 
         val failure = assertFailsWith<NetworkException> { lockNewFile() }
 
         assertTrue(failure.isTransientNetworkFailure(), "the upload stays queued and is retried")
+    }
+
+    @Test
+    fun aServerErrorIsThrownAsItIsNotAsANetworkFailure() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        ZkKeyStore.useServer(fetchGrant = { throw ServerException(500, null, null) }, resync = {})
+
+        val failure = assertFailsWith<ServerException> { lockNewFile() }
+
+        assertEquals(false, failure.isTransientNetworkFailure(), "the outbox charges it rather than stall every upload")
     }
 
     @Test
@@ -160,6 +188,47 @@ class ZkDriveKeyRereadTest {
 
         assertFailsWith<FileDecryptionException.NoDriveKey> { lockNewFile() }
         assertEquals(setOf(photos), ZkKeyStore.lockedDrives.value, "it asks to sign in again")
+    }
+
+    @Test
+    fun aDriveMadeAgainAsAnOrdinaryOneIsLockedWithTheSharedSecret() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        server = grant(null, zeroKnowledge = false)
+
+        val (fileKey, locked) = lockNewFile()
+
+        assertEquals(EncryptionType.Aes, locked.type)
+        assertEquals(fileKey, locked.open(photos, SecureByteArray(sharedSecret)))
+    }
+
+    @Test
+    fun aReadThatEndsAfterSignOutDoesNotBringTheKeysBack() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        val answer = CompletableDeferred<SecurityContext>()
+        ZkKeyStore.useServer(fetchGrant = { answer.await() }, resync = {})
+
+        val lock = async { runCatching { lockNewFile() } }
+        yield()
+        ZkKeyStore.clear()
+        answer.complete(grant(newKey))
+
+        assertTrue(lock.await().isFailure)
+        assertEquals(null, ZkKeyStore.driveKey(photos))
+        assertEquals(false, ZkKeyStore.isZeroKnowledge(photos))
+    }
+
+    @Test
+    fun aFileBeingReadIsNeverMadeToWaitOnTheServer() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        server = grant(newKey)
+        val fileKey = KeyHeader.newRandom16()
+        val sealed = EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = fileKey.iv, encryptedAesKey = ByteArray(0))
+
+        assertFailsWith<IllegalStateException> { sealed.zkDriveFormOf(fileKey, photos) }
+        assertEquals(0, reads, "a key not read within the minute leaves the transform to a later read")
+
+        ZkKeyStore.reread()
+        assertEquals(fileKey, sealed.zkDriveFormOf(fileKey, photos).decryptAesToKeyHeader(SecureByteArray(newKey)))
     }
 
     @Test

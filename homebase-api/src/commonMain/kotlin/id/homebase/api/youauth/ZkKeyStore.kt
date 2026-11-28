@@ -1,7 +1,6 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.NetworkException
 import id.homebase.api.client.drives.FileDecryptionException
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.storage.SecureStorage
@@ -9,11 +8,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 import kotlin.io.encoding.Base64
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlin.uuid.Uuid
@@ -27,6 +27,9 @@ object ZkKeyStore {
 
     // A drive made again has a new key, and the server can't tell a file locked with the old one.
     private val LOCKING_KEY_FRESH = 1.minutes
+
+    // Files locked one after another while the server fails share one failure, not a timeout each.
+    private val FAILED_READ_HOLD = 10.seconds
 
     interface Storage {
         fun get(key: String): String?
@@ -50,17 +53,17 @@ object ZkKeyStore {
 
     internal var timeSource: TimeSource = TimeSource.Monotonic
 
-    @Volatile private var fetchGrant: suspend () -> SecurityContext? = { null }
-    @Volatile private var resync: suspend (Uuid) -> Unit = {}
+    @Volatile private var fetchGrant: suspend () -> SecurityContext = { error("ZkKeyStore.useServer wasn't called") }
+    @Volatile private var resync: (Uuid) -> Unit = {}
     @Volatile private var rereadAt: TimeMark? = null
+    @Volatile private var failedRead: Pair<TimeMark, Exception>? = null
     private val rereading = Mutex()
 
-    // Files waiting on a read share its outcome: a failing server costs one timeout, not one per file. Counts reads done.
-    @Volatile private var reads = 0
-    @Volatile private var lastReadFailed = false
+    // A read still in flight at sign-out must not bring the old identity's keys back.
+    @Volatile private var generation = 0
 
-    /** Set once per process at startup. */
-    fun useServer(fetchGrant: suspend () -> SecurityContext?, resync: suspend (Uuid) -> Unit) {
+    /** Set once per process at startup: [fetchGrant] throws its failure as it is; [resync] doesn't wait. */
+    fun useServer(fetchGrant: suspend () -> SecurityContext, resync: (Uuid) -> Unit) {
         this.fetchGrant = fetchGrant
         this.resync = resync
     }
@@ -83,43 +86,59 @@ object ZkKeyStore {
     /** The key of the zero-knowledge drive [alias], or null when it isn't one or this device can't open it. */
     fun driveKey(alias: Uuid): ByteArray? = loadedDrives()[alias]
 
-    /** Read from the server within the last minute: a saved key may be out of date, so it fails rather than use one. */
-    suspend fun lockingKey(alias: Uuid): ByteArray {
-        if (!fresh()) {
-            val seen = reads
-            val changed = rereading.withLock {
-                if (fresh()) return@withLock emptySet()
-                if (reads != seen && lastReadFailed) throw unread()
-                Logger.i(tag = TAG) { "Reading the drive keys from the server before locking a file on $alias" }
-                readLocked()?.second ?: throw unread()
-            }
-            resyncAll(changed)
+    /**
+     * The key to lock a new file with on [alias], read from the server within the last minute: a saved key may be out
+     * of date, so it throws the read's failure rather than use one. Null when the read shows it isn't zero knowledge.
+     */
+    suspend fun lockingKey(alias: Uuid): ByteArray? {
+        if (!fresh()) rereading.withLock {
+            if (fresh()) return@withLock
+            failedRead?.let { (at, e) -> if (at.elapsedNow() < FAILED_READ_HOLD) throw e }
+            Logger.i(tag = TAG) { "Reading the drive keys from the server before locking a file on $alias" }
+            readLocked()
         }
+        if (!isZeroKnowledge(alias)) return null
         return driveKey(alias) ?: throw FileDecryptionException.NoDriveKey(alias)
     }
 
+    /** The key of [alias] if it was read from the server within the last minute, without reading it: for a file being read. */
+    fun freshDriveKey(alias: Uuid): ByteArray? = if (fresh()) driveKey(alias) else null
+
     /** Null when the server's grant can't be read. */
-    suspend fun reread(): SecurityContext? {
-        val (context, changed) = rereading.withLock { readLocked() } ?: return null
-        resyncAll(changed)
-        return context
+    suspend fun reread(): SecurityContext? = try {
+        rereading.withLock { readLocked() }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Logger.w(tag = TAG) { "The drive keys couldn't be read from the server: ${e.message}" }
+        null
     }
 
     private fun fresh() = rereadAt?.let { it.elapsedNow() < LOCKING_KEY_FRESH } == true
 
-    private fun unread() = NetworkException(IOException("The zero-knowledge drive keys couldn't be read from the server"))
-
-    private suspend fun readLocked(): Pair<SecurityContext, Set<Uuid>>? {
-        val context = fetchGrant()
-        lastReadFailed = context == null
-        reads++
-        return context?.let { it to openDriveKeys(it) }
-    }
-
-    // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
-    private suspend fun resyncAll(changed: Set<Uuid>) = changed.forEach {
-        Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }
-        resync(it)
+    private suspend fun readLocked(): SecurityContext {
+        val read = generation
+        val context = try {
+            fetchGrant()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            failedRead = timeSource.markNow() to e
+            throw e
+        }
+        check(read == generation) { "Signed out while the drive keys were read" }
+        failedRead = null
+        val changed = openDriveKeys(context)
+        if (read != generation) {
+            clear()
+            error("Signed out while the drive keys were opened")
+        }
+        // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
+        changed.forEach {
+            Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }
+            resync(it)
+        }
+        return context
     }
 
     private val locked = MutableStateFlow<Set<Uuid>>(emptySet())
@@ -167,6 +186,8 @@ object ZkKeyStore {
         publish(emptyMap())
         writeOnlyKeys = emptyMap()
         rereadAt = null
+        failedRead = null
+        generation++
     }
 
     private suspend fun openLocked(alias: Uuid, locked: String, key: ByteArray, keyName: String): ByteArray? =
