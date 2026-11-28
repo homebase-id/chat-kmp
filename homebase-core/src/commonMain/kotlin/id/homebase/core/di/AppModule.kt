@@ -255,6 +255,9 @@ import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import id.homebase.core.ui.screens.privatedrive.PhotosSignInAgainViewModel
 import id.homebase.photobase.backup.BackupDrive
 import id.homebase.photobase.backup.BackupPauseReason
 import id.homebase.api.client.drives.FileDecryptionException
@@ -765,6 +768,7 @@ val appModule = module {
         // reads it on construction. See MomentDraftSurvivesLogoutTest.
         scoped { MomentCreateFlowState() }
         viewModelOf(::MomentComposeViewModel)
+        viewModelOf(::PhotosSignInAgainViewModel)
         viewModelOf(::MomentAudienceViewModel)
     }
 
@@ -1834,7 +1838,12 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     // A sign-in again brings the key in a later grant read, after the foreground run already paused for it.
     scope.launch {
         ZkKeyStore.lockedDrives.map { PhotobaseProtocol.DriveAlias in it }.distinctUntilChanged().drop(1)
-            .collect { locked -> if (!locked) controller.onDriveKeyArrived() }
+            // A sign-out empties the store too: only a key that's there now counts.
+            .collect { locked ->
+                if (!locked && ZkKeyStore.driveKey(PhotobaseProtocol.DriveAlias) != null) {
+                    withContext(Dispatchers.Main) { controller.onDriveKeyArrived() }
+                }
+            }
     }
     return controller
 }

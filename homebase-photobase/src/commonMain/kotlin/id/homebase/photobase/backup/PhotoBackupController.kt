@@ -57,9 +57,11 @@ class PhotoBackupController(
         }
     }
 
-    /** The Photos drive key arrived with a sign-in again: a run paused for it goes on. */
+    /** The Photos drive key arrived with a sign-in again: a run paused for it goes on. Main thread, as the others. */
     fun onDriveKeyArrived() {
-        if (inForeground) onAppForeground() else triggers?.continueSoon(settingsStore.settings.value)
+        val settings = settingsStore.settings.value
+        if (!settings.enabled) return
+        if (inForeground) onAppForeground() else triggers?.continueSoon(settings)
     }
 
     suspend fun freshStatus(): BackupStatus? {

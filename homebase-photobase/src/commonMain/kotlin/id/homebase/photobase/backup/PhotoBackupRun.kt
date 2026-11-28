@@ -339,7 +339,7 @@ class PhotoBackupRun(
         }
         if (interactive) ledger.requeueFailed()
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
-        if (drive.notReady == null) ledger.requeueMissingKey()
+        ledger.requeueMissingKey()
         val before = ledger.counts()
 
         // A background run is often stopped within minutes, and a stopped transcode starts over: one video, and only first.
@@ -357,7 +357,9 @@ class PhotoBackupRun(
             return@coroutineScope paused(BackupPauseReason.SignedOut)
         }
         // What was saved can be out of date; asked only when there is something to send.
-        if (before.unsent > 0) drive.notReadyNow()?.let { return@coroutineScope notReady(hashing, it) }
+        if (before.unsent > 0) {
+            withTimeoutOrNull(request.budget.remaining) { drive.notReadyNow() }?.let { return@coroutineScope notReady(hashing, it) }
+        }
         scheduler.rearm(current)
         if (isStorageFull(interactive)) {
             hashing.cancelAndJoin()
