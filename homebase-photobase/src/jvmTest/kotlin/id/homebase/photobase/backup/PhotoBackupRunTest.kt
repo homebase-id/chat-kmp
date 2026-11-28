@@ -380,6 +380,22 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun anOutageWhileHandingAPhotoOffCostsNoAttempt() = runTest {
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        // A photo on a zero-knowledge drive is locked only after its key is read from the server.
+        uploader.result = { throw NetworkException(IOException("no route to host")) }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        val row = ledger.row("a")!!
+        assertEquals(0L, row.attempts)
+        assertTrue(row.nextAttemptAt > now)
+    }
+
+    @Test
     fun aPermanentlyUnavailableAssetIsSkippedWithItsReason() = runTest {
         source.next = fullListing(asset("a"), asset("b"))
         val uploader = uploader()

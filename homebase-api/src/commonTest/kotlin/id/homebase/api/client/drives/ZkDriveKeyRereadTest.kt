@@ -66,7 +66,7 @@ class ZkDriveKeyRereadTest {
     @AfterTest
     fun reset() {
         ZkKeyStore.clear()
-        SealedKeyHeaders.dropped = null
+        SealedKeyHeaders.keyChanged = null
         ZkKeyStore.timeSource = TimeSource.Monotonic
         ZkKeyStore.useServer(fetchGrant = { throw unreachable() }, resync = {})
     }
@@ -263,12 +263,12 @@ class ZkDriveKeyRereadTest {
         val withOld = transform(oldKey)
         val withNew = transform(newKey)
 
-        val offeredAgain = mutableListOf<KeyHeaderTransform>()
-        SealedKeyHeaders.dropped = { offeredAgain += it }
+        val queueForgot = mutableListOf<Uuid>()
+        SealedKeyHeaders.keyChanged = { queueForgot += it }
 
         assertEquals(listOf(withNew), transformsLockedWithCurrentKey(photos, listOf(withOld, withNew)))
         assertEquals(1, reads, "the current key is read before sending")
-        assertEquals(listOf(withOld), offeredAgain, "the resync's read of the file queues it again")
+        assertEquals(listOf(photos), queueForgot, "the resync's read of the file queues it again with the new key")
 
         server = grant(null)
         clock += 61.seconds

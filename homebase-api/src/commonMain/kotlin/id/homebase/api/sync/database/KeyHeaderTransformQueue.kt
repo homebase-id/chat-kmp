@@ -33,12 +33,13 @@ class KeyHeaderTransformQueue(
     private val arrived = Channel<SealedKeyHeader>(Channel.UNLIMITED)
 
     // A file listed again before the server answers would queue the same transform each time.
-    private val queued = mutableSetOf<Pair<Uuid, Uuid>>()
+    private val queued = mutableSetOf<Triple<Uuid, Uuid, Uuid>>()
     private val queuing = Mutex()
 
     init {
         SealedKeyHeaders.sink = { arrived.trySend(it) }
-        SealedKeyHeaders.dropped = { gone -> scope.launch { queuing.withLock { gone.forEach { queued -= it.fileId to it.versionTag } } } }
+        // The ones queued with the old key are dropped when sent; the resync's reads bring them with the new one.
+        SealedKeyHeaders.keyChanged = { driveId -> scope.launch { queuing.withLock { queued.removeAll { it.first == driveId } } } }
         scope.launch {
             for (first in arrived) {
                 // A listing hands its files over one by one; a moment's wait fills the rows.
@@ -60,17 +61,17 @@ class KeyHeaderTransformQueue(
     }
 
     private suspend fun queue(batch: List<SealedKeyHeader>) {
-        batch.filter { (it.transform.fileId to it.transform.versionTag) !in queued }
+        batch.filter { Triple(it.driveId, it.transform.fileId, it.transform.versionTag) !in queued }
             .groupBy({ it.driveId }, { it.transform })
             .forEach { (driveId, transforms) ->
                 try {
-                    transforms.forEach { queued += it.fileId to it.versionTag }
+                    transforms.forEach { queued += Triple(driveId, it.fileId, it.versionTag) }
                     // Lost ones are offered again by the file's next read.
-                    enqueue(driveId, transforms).forEach { queued -= it.fileId to it.versionTag }
+                    enqueue(driveId, transforms).forEach { queued -= Triple(driveId, it.fileId, it.versionTag) }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    transforms.forEach { queued -= it.fileId to it.versionTag }
+                    transforms.forEach { queued -= Triple(driveId, it.fileId, it.versionTag) }
                     Logger.w(e) { "KeyHeaderTransformQueue: transforms for $driveId not queued" }
                 }
             }

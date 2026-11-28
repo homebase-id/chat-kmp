@@ -148,9 +148,12 @@ class CollabFolderLiveTest {
         dir.deleteRecursively()
     }
 
+    // Only the store useKeys swapped in: a skipped run would otherwise clear the desktop app's own keys.
+    private var keysSwapped = false
+
     @AfterTest
     fun forgetKeys() {
-        ZkKeyStore.clear()
+        if (keysSwapped) ZkKeyStore.clear()
         ZkKeyStore.useServer(fetchGrant = { error("no server in this test") }, resync = {})
     }
 
@@ -168,6 +171,7 @@ class CollabFolderLiveTest {
             override fun put(key: String, value: String) { stored[key] = value }
             override fun remove(key: String) { stored.remove(key) }
         }
+        keysSwapped = true
         val grant = drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) }
         grant?.let { ZkKeyStore.openDriveKeys(it) }
         ZkKeyStore.useServer(fetchGrant = { grant ?: error("no drive key in this step") }, resync = {})

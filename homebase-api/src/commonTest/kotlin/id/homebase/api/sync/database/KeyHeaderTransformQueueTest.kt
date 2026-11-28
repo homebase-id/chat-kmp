@@ -17,6 +17,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.uuid.Uuid
 
 class KeyHeaderTransformQueueTest {
@@ -27,6 +28,7 @@ class KeyHeaderTransformQueueTest {
     @AfterTest
     fun noSink() {
         SealedKeyHeaders.sink = null
+        SealedKeyHeaders.keyChanged = null
     }
 
     private val drive = Uuid.random()
@@ -68,6 +70,23 @@ class KeyHeaderTransformQueueTest {
         advanceTimeBy(5.seconds)
 
         assertEquals(listOf(listOf(a.fileId)), db.waiting().map { r -> r.files.map { it.fileId } })
+    }
+
+    @Test
+    fun afterTheDrivesKeyChangesTheSameFileIsQueuedAgainWithTheNewKey() = run { db, _ ->
+        val old = transform()
+        val new = old.copy(keyHeader = EncryptedKeyHeader(type = EncryptionType.ZkDrive, iv = ByteArray(16), encryptedAesKey = ByteArray(48) { 1 }))
+        val sink = assertNotNull(SealedKeyHeaders.sink)
+        sink(SealedKeyHeader(drive, old))
+        advanceTimeBy(5.seconds)
+        assertNotNull(SealedKeyHeaders.keyChanged)(drive)
+        advanceTimeBy(1.seconds)
+        sink(SealedKeyHeader(drive, new))
+        advanceTimeBy(5.seconds)
+
+        val queued = db.waiting().single().files.single()
+        assertEquals(old.fileId, queued.fileId)
+        assertTrue(queued.keyHeader.encryptedAesKey.contentEquals(new.keyHeader.encryptedAesKey), "the new key's transform, not the old one")
     }
 
     @Test

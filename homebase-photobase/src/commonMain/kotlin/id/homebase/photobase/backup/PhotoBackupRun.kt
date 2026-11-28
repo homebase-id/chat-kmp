@@ -611,8 +611,11 @@ class PhotoBackupRun(
             ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
+            val reason = e.message ?: e::class.simpleName.orEmpty()
+            // An unreachable server (the drive key is read before a photo is locked) says nothing about the photo.
+            if (e.isOutage()) ledger.deferForOutage(listOf(row), reason)
             // A full phone fails the write, not the photo; the watcher pauses the run.
-            if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, e.message ?: e::class.simpleName.orEmpty())
+            else if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, reason)
         }
     }
 

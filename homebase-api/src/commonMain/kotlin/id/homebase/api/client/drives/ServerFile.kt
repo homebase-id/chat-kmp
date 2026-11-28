@@ -202,8 +202,6 @@ internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: L
 
 private fun dropped(driveId: Uuid, transforms: List<KeyHeaderTransform>, why: String): List<KeyHeaderTransform> {
     Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size}: $why" }
-    // The resync after a key change reads these files again: they must be queued again then.
-    SealedKeyHeaders.dropped?.invoke(transforms)
     return emptyList()
 }
 

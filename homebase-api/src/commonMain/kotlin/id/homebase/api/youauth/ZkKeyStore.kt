@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.ClientException
 import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.client.drives.SealedKeyHeaders
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.storage.SecureStorage
@@ -54,6 +55,7 @@ object ZkKeyStore {
             drives = null
             writeOnlyKeys = null
             rereadAt = null
+            failedRead = null
         }
 
     internal var timeSource: TimeSource = TimeSource.Monotonic
@@ -133,7 +135,7 @@ object ZkKeyStore {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (e.isTransientNetworkFailure()) failedRead = timeSource.markNow() to e
+            if (e.isTransientNetworkFailure() && read == generation) failedRead = timeSource.markNow() to e
             // What the outbox reads as an upload's own permanent answer (a 404, a 400) wasn't the upload's.
             throw if (e is NotFoundException || e is ClientException) DriveKeysNotRead(e) else e
         }
@@ -142,6 +144,7 @@ object ZkKeyStore {
         // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
         changed.forEach {
             Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }
+            SealedKeyHeaders.keyChanged?.invoke(it)
             try {
                 resync(it)
             } catch (e: Exception) {
