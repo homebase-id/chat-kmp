@@ -24,9 +24,12 @@ internal object StuckPresentRecovery {
     private const val RETRY_MS = 2_000L
     private const val MAX_FRAME_DEPTH = 3
 
-    internal val onX11 = hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty()
+    // Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
+    internal val onX11 by lazy {
+        hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty() && java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
+    }
 
-    /** Until [uiRan]: every [RETRY_MS], nudges the canvases if the UI thread is in Skiko's swap; the window only lets go once it's shown again. */
+    // The window only lets go once it's shown again (not while the screen is locked), hence the retry.
     fun recoverWhileStuck(uiRan: CountDownLatch) {
         if (!onX11) return
         val pid = ProcessHandle.current().pid()
@@ -35,24 +38,21 @@ internal object StuckPresentRecovery {
         val nudges = nudgeWhileStuck(uiRan, RETRY_MS, stuck = { awtEventThread()?.let { isStuckInSwap(it.stackTrace) } == true }) {
             if (!announced) Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows every $RETRY_MS ms until it runs again" }
             announced = true
-            if (nudgeCanvases(pid) == 0 && !missingLogged) {
-                Logger.e(tag = TAG) { "no canvas window of this process found" }
-                missingLogged = true
+            nudgeCanvases(pid).also { resized ->
+                if (resized == 0 && !missingLogged) Logger.e(tag = TAG) { "no canvas window of this process found" }
+                if (resized == 0) missingLogged = true
             }
         }
         if (announced && uiRan.count == 0L) Logger.e(tag = TAG) { "UI thread running again after $nudges nudge(s)" }
     }
 
-    /** The nudges sent; a failure is logged once and retried, unless JNA or libX11 can't load. */
-    internal fun nudgeWhileStuck(uiRan: CountDownLatch, retryMs: Long, stuck: () -> Boolean, nudge: () -> Unit): Int {
+    // A LinkageError (JNA or libX11 missing) is permanent, so it ends the rounds; anything else is retried.
+    internal fun nudgeWhileStuck(uiRan: CountDownLatch, retryMs: Long, stuck: () -> Boolean, nudge: () -> Int): Int {
         var nudges = 0
         var failure: String? = null
         while (uiRan.count > 0) {
             try {
-                if (stuck()) {
-                    nudges++
-                    nudge()
-                }
+                if (stuck() && nudge() > 0) nudges++
             } catch (e: LinkageError) {
                 Logger.e(e, TAG) { "can't load JNA or libX11; no recovery" }
                 return nudges
@@ -79,14 +79,17 @@ internal object StuckPresentRecovery {
         return threads.take(count).firstOrNull { it != null && it.isAlive && it.name.startsWith("AWT-EventQueue") }
     }
 
-    /** How many of [pid]'s AWT canvas windows it nudged by a pixel and restored; [whileNudged] runs between the two. */
     internal fun nudgeCanvases(pid: Long, whileNudged: () -> Unit = {}): Int = withCanvases(pid) { x, display, canvases ->
-        val nudged = canvases.mapNotNull { canvas -> x.size(display, canvas)?.let { canvas to it } }
-        nudged.forEach { (canvas, size) -> x.XResizeWindow(display, canvas, size.first, if (size.second > 1) size.second - 1 else size.second + 1) }
-        x.XSync(display, 0)
-        whileNudged()
-        nudged.forEach { (canvas, size) -> x.XResizeWindow(display, canvas, size.first, size.second) }
-        x.XSync(display, 0)
+        val nudged = canvases.mapNotNull { canvas -> x.size(display, canvas)?.let { (w, h) -> Triple(canvas, w to h, w to if (h > 1) h - 1 else h + 1) } }
+        try {
+            nudged.forEach { (canvas, _, small) -> x.XResizeWindow(display, canvas, small.first, small.second) }
+            x.XSync(display, 0)
+            whileNudged()
+        } finally {
+            // Once the swap returns AWT may lay the canvas out anew; only a canvas still at the nudged size is put back.
+            nudged.forEach { (canvas, size, small) -> if (x.size(display, canvas) == small) x.XResizeWindow(display, canvas, size.first, size.second) }
+            x.XSync(display, 0)
+        }
         nudged.size
     }
 
