@@ -60,7 +60,7 @@ class CollabFolderLiveTest {
     private val fixturePath: String? = System.getenv("COLLAB_FOLDER_FIXTURE")
 
     @Test
-    fun aMemberAddsAndReplacesFilesInAFolderSharedWithTwoOfHisCircles() = runBlocking {
+    fun aMemberAddsAndReplacesFilesInAFolderSharedWithTwoOfHisCircles() = runBlocking<Unit> {
         val path = fixturePath ?: return@runBlocking println("COLLAB_FOLDER_FIXTURE not set: skipped")
         val fixture = Json.parseToJsonElement(File(path).readText()).jsonObject
         val pippinJson = fixture.obj("pippin")

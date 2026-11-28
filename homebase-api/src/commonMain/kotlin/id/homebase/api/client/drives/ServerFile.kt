@@ -182,9 +182,13 @@ internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: L
         ZkKeyStore.lockingKey(driveId)
     } catch (e: FileDecryptionException.NoDriveKey) {
         null
-    } ?: return emptyList()
+    }
+    if (key == null) {
+        Logger.w { "transformKeyHeaders: drive=$driveId is no longer one this device can open: dropped ${transforms.size}" }
+        return emptyList()
+    }
     // The file key is locked with its own IV in front: another key can't open to it.
-    return transforms.filter { transform ->
+    val current = transforms.filter { transform ->
         try {
             transform.keyHeader.decryptAesToKeyHeader(SecureByteArray(key)).iv.contentEquals(transform.keyHeader.iv)
         } catch (e: CancellationException) {
@@ -193,6 +197,10 @@ internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: L
             false
         }
     }
+    if (current.size < transforms.size) {
+        Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size - current.size} made with an old key" }
+    }
+    return current
 }
 
 /**

@@ -4,6 +4,8 @@ import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.FileDecryptionException
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.storage.SecureStorage
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
@@ -61,6 +63,9 @@ object ZkKeyStore {
 
     // A read still in flight at sign-out must not bring the old identity's keys back.
     @Volatile private var generation = 0
+    private val saving = SynchronizedObject()
+
+    private class SignedOutDuringRead : IllegalStateException("Signed out while the drive keys were read")
 
     /** Set once per process at startup: [fetchGrant] throws its failure as it is; [resync] doesn't wait. */
     fun useServer(fetchGrant: suspend () -> SecurityContext, resync: (Uuid) -> Unit) {
@@ -106,6 +111,9 @@ object ZkKeyStore {
         rereading.withLock { readLocked() }
     } catch (e: CancellationException) {
         throw e
+    } catch (e: SignedOutDuringRead) {
+        Logger.i(tag = TAG) { e.message!! }
+        null
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = TAG) { "The drive keys couldn't be read from the server: ${e.message}" }
         null
@@ -169,15 +177,21 @@ object ZkKeyStore {
             val driveKey = opened[alias] ?: return@mapNotNull null
             openLocked(alias, locked, driveKey, "its drive key")?.let { alias to it }
         }.toMap()
-        // Nothing is saved until every key is open: a sign-out meanwhile must not get the old identity's keys back.
-        check(keep()) { "Signed out while the drive keys were read" }
-        save(opened)
-        saveWriteOnly(writeOnly)
-        rereadAt = timeSource.markNow()
+        // Nothing is saved until every key is open, and not at all after a sign-out: clear() takes the same lock.
+        synchronized(saving) {
+            if (!keep()) throw SignedOutDuringRead()
+            save(opened)
+            saveWriteOnly(writeOnly)
+            rereadAt = timeSource.markNow()
+        }
         return opened.filter { (alias, key) -> key != null && !(key contentEquals before[alias]) }.keys
     }
 
     fun clear() {
+        synchronized(saving) { forget() }
+    }
+
+    private fun forget() {
         storage.remove(APP_KEY)
         storage.remove(DRIVE_KEYS)
         storage.remove(WRITE_ONLY_KEYS)

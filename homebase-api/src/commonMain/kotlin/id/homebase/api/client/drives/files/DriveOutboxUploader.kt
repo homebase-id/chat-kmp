@@ -500,12 +500,10 @@ class DriveOutboxUploader(
 
     private suspend fun transformKeyHeaders(outboxRecord: Outbox) {
         val request = OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(outboxRecord)
-        val files = transformsLockedWithCurrentKey(request.driveId, request.files)
-        if (files.size < request.files.size) {
-            Logger.w(tag = TAG) { "transformKeyHeaders: drive=${request.driveId} dropped ${request.files.size - files.size} not locked with its current key" }
-        }
-        if (files.isEmpty()) return
+        var files = request.files
         val result = try {
+            files = transformsLockedWithCurrentKey(request.driveId, request.files)
+            if (files.isEmpty()) return
             operationsProvider.transformKeyHeaders(request.driveId, files)
         } catch (e: Exception) {
             throw keyHeaderTransformFailure(e)
