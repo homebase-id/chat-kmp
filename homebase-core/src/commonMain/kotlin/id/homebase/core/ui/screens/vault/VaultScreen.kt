@@ -169,7 +169,7 @@ fun VaultScreen(
 
     var pendingError by remember { mutableStateOf<VaultError?>(null) }
 
-    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    val signIn = rememberSignInAgainLauncher()
 
     pendingError?.let { error ->
         val message = resolveVaultError(error)

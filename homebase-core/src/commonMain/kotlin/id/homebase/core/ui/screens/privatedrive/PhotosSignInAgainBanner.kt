@@ -20,7 +20,7 @@ import org.koin.compose.viewmodel.koinViewModel
 @Composable
 fun PhotosSignInAgainBanner(viewModel: PhotosSignInAgainViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    val signIn = rememberSignInAgainLauncher()
     LaunchedEffect(viewModel, signIn) { viewModel.openSignIn.collect(signIn::open) }
     if (!uiState.needsSignIn) return
     SignInAgainBanner(

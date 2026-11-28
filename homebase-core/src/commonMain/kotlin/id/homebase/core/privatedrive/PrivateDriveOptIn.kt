@@ -16,13 +16,16 @@ import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.settings.UserPreferences
 import io.ktor.http.formUrlEncode
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
+import kotlinx.coroutines.launch
 
 private const val TAG = "PrivateDriveOptIn"
 
@@ -51,6 +54,7 @@ data class PrivateDriveState(val needsSignIn: Boolean = false, val offerMakePriv
 class PrivateDriveOptIn(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val userPreferences: UserPreferences,
+    private val appScope: CoroutineScope,
 ) {
     fun state(drive: PrivateDrive): Flow<PrivateDriveState> = combine(
         ZkKeyStore.lockedDrives,
@@ -95,7 +99,10 @@ class PrivateDriveOptIn(
     fun makePrivateUrl(drive: PrivateDrive, returnUrl: String): String? =
         signedInIdentity?.let { makePrivateUrl(it.domainName, drive, returnUrl) }
 
-    suspend fun handleSignInCallback(url: String) = youAuthFlowManager.handleCallback(url)
+    fun completeSignIn(url: String) {
+        // Main, as every other caller: the flow's pending sign-ins aren't guarded against two threads.
+        appScope.launch(Dispatchers.Main) { youAuthFlowManager.handleCallback(url) }
+    }
 }
 
 internal fun privateDriveState(drive: Uuid, locked: Set<Uuid>, zeroKnowledge: Set<Uuid>, developer: Boolean) =

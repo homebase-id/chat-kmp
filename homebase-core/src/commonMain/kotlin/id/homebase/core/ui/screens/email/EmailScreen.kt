@@ -84,7 +84,7 @@ fun EmailScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val copyToClipboard = rememberCopyToClipboard(snackbarHostState)
     val uriHandler = getUriHandler()
-    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    val signIn = rememberSignInAgainLauncher()
     val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->

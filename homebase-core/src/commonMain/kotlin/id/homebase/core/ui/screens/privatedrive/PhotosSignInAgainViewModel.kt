@@ -16,7 +16,7 @@ import kotlinx.coroutines.launch
 
 data class PhotosSignInAgainUiState(val needsSignIn: Boolean = false, val failed: Boolean = false)
 
-/** The Photos status screen's sign-in again: the callback outlives a recomposition, as Vault's does. */
+/** The Photos status screen's sign-in again: whether it is due, and starting it. */
 class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewModel(), IdentityScoped {
     private val _uiState = MutableStateFlow(PhotosSignInAgainUiState(needsSignIn = optIn.currentState(PhotosPrivateDrive).needsSignIn))
     val uiState: StateFlow<PhotosSignInAgainUiState> = _uiState.asStateFlow()
@@ -32,9 +32,5 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
     fun signInAgain() {
         _uiState.update { it.copy(failed = false) }
         viewModelScope.launch { optIn.signInAgain(open = { _openSignIn.send(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
-    }
-
-    fun onSignInCallback(url: String) {
-        viewModelScope.launch { optIn.handleSignInCallback(url) }
     }
 }

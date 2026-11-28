@@ -202,10 +202,6 @@ class EmailViewModel(
         }
     }
 
-    fun onSignInCallback(url: String) {
-        viewModelScope.launch { privateDriveOptIn.handleSignInCallback(url) }
-    }
-
     /**
      * Ask the server whether email actually works.
      *

@@ -193,7 +193,7 @@ fun FilesyncScreen(viewModel: FilesyncViewModel, places: FilesyncPlaces, onOpenW
     val uploads by viewModel.uploads.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    val signIn = rememberSignInAgainLauncher()
     FilesyncEventsEffect(
         viewModel.events,
         snackbarHostState,
