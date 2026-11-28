@@ -25,57 +25,91 @@ internal object StuckPresentRecovery {
 
     internal val onX11 = hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty()
 
-    /** Returns at once unless [ui] is stuck in Skiko's swap; otherwise nudges until [uiRan], which the window only allows once it's shown again. */
-    fun releaseIfStuck(ui: Thread?, uiRan: CountDownLatch) {
-        if (!onX11 || ui == null || !isStuckInSwap(ui.stackTrace)) return
-        Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows every $RETRY_MS ms until it runs again" }
+    /** Until [uiRan]: every [RETRY_MS], nudges the canvases if the UI thread is in Skiko's swap; the window only lets go once it's shown again. */
+    fun recoverWhileStuck(uiRan: CountDownLatch) {
+        if (!onX11) return
         val pid = ProcessHandle.current().pid()
-        val rounds = nudgeUntil(uiRan, RETRY_MS) { nudgeCanvases(pid) }
-        Logger.e(tag = TAG) { "UI thread running again after $rounds nudge round(s)" }
+        var announced = false
+        val nudges = nudgeWhileStuck(uiRan, RETRY_MS, stuck = { awtEventThread()?.let { isStuckInSwap(it.stackTrace) } == true }) {
+            if (!announced) Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows every $RETRY_MS ms until it runs again" }
+            announced = true
+            val found = nudgeCanvases(pid)
+            if (found == 0) Logger.e(tag = TAG) { "no canvas window of this process found" }
+        }
+        if (announced) Logger.e(tag = TAG) { "UI thread running again after $nudges nudge(s)" }
     }
 
-    internal fun nudgeUntil(uiRan: CountDownLatch, retryMs: Long, nudge: () -> Unit): Int {
-        var rounds = 0
+    /** The nudges sent; a failing one is logged once and retried, unless JNA or libX11 can't load. */
+    internal fun nudgeWhileStuck(uiRan: CountDownLatch, retryMs: Long, stuck: () -> Boolean, nudge: () -> Unit): Int {
+        var nudges = 0
         var failure: String? = null
         while (uiRan.count > 0) {
-            try {
-                nudge()
-            } catch (e: Exception) {
-                if (e.message != failure) Logger.e(e, TAG) { "couldn't reach the canvas windows" }
-                failure = e.message
+            if (stuck()) {
+                nudges++
+                try {
+                    nudge()
+                } catch (e: LinkageError) {
+                    Logger.e(e, TAG) { "can't load JNA or libX11; no recovery" }
+                    return nudges
+                } catch (e: VirtualMachineError) {
+                    throw e
+                } catch (e: Throwable) {
+                    if (e.message != failure) Logger.e(e, TAG) { "couldn't reach the canvas windows" }
+                    failure = e.message
+                }
             }
-            rounds++
             uiRan.await(retryMs, TimeUnit.MILLISECONDS)
         }
-        return rounds
+        return nudges
     }
 
     internal fun isStuckInSwap(uiStack: Array<StackTraceElement>): Boolean =
         uiStack.firstOrNull()?.let { it.className == SWAP_CLASS && it.methodName == SWAP_METHOD } == true
 
-    /** How many of [pid]'s AWT canvas windows it shrank by a pixel and restored. */
-    internal fun nudgeCanvases(pid: Long): Int {
+    // Enumerates threads without stacks; AWT starts a new one after an event throws.
+    private fun awtEventThread(): Thread? {
+        var group = Thread.currentThread().threadGroup
+        while (group.parent != null) group = group.parent
+        val threads = arrayOfNulls<Thread>(group.activeCount() + 16)
+        val count = group.enumerate(threads, true)
+        return threads.take(count).firstOrNull { it != null && it.isAlive && it.name.startsWith("AWT-EventQueue") }
+    }
+
+    /** How many of [pid]'s AWT canvas windows it nudged by a pixel and restored. */
+    internal fun nudgeCanvases(pid: Long): Int = withCanvases(pid) { x, display, canvases ->
+        canvases.forEach { canvas ->
+            val (width, height) = x.size(display, canvas) ?: return@forEach
+            x.XResizeWindow(display, canvas, width, if (height > 1) height - 1 else height + 1)
+            x.XSync(display, 0)
+            x.XResizeWindow(display, canvas, width, height)
+        }
+        x.XSync(display, 0)
+        canvases.size
+    }
+
+    internal fun canvasSizes(pid: Long): List<Pair<Int, Int>> = withCanvases(pid) { x, display, canvases -> canvases.mapNotNull { x.size(display, it) } }
+
+    private fun <T> withCanvases(pid: Long, block: (Xlib, Pointer, List<NativeLong>) -> T): T {
         val x = Xlib.INSTANCE
         val display = x.XOpenDisplay(null) ?: error("can't open the X display")
         try {
             val pidAtom = x.XInternAtom(display, "_NET_WM_PID", 1)
-            if (pidAtom.toLong() == 0L) return 0
-            val canvases = x.children(display, x.XDefaultRootWindow(display))
-                .filter { x.windowPid(display, it, pidAtom) == pid }
-                .flatMap { x.canvasesUnder(display, it) }
-            canvases.forEach { canvas ->
-                val width = IntByReference()
-                val height = IntByReference()
-                if (x.XGetGeometry(display, canvas, NativeLongByReference(), IntByReference(), IntByReference(), width, height, IntByReference(), IntByReference()) == 0) return@forEach
-                x.XResizeWindow(display, canvas, width.value, maxOf(1, height.value - 1))
-                x.XSync(display, 0)
-                x.XResizeWindow(display, canvas, width.value, height.value)
+            if (pidAtom.toLong() == 0L) return block(x, display, emptyList())
+            // A reparenting window manager puts the client, which carries the pid, one level down in its frame.
+            val clients = x.children(display, x.XDefaultRootWindow(display)).flatMap { top ->
+                if (x.windowPid(display, top, pidAtom) == pid) listOf(top) else x.children(display, top).filter { x.windowPid(display, it, pidAtom) == pid }
             }
-            x.XSync(display, 0)
-            return canvases.size
+            return block(x, display, clients.flatMap { x.canvasesUnder(display, it) })
         } finally {
             x.XCloseDisplay(display)
         }
+    }
+
+    private fun Xlib.size(display: Pointer, window: NativeLong): Pair<Int, Int>? {
+        val width = IntByReference()
+        val height = IntByReference()
+        if (XGetGeometry(display, window, NativeLongByReference(), IntByReference(), IntByReference(), width, height, IntByReference(), IntByReference()) == 0) return null
+        return width.value to height.value
     }
 
     private fun Xlib.children(display: Pointer, window: NativeLong): List<NativeLong> {
@@ -84,7 +118,7 @@ internal object StuckPresentRecovery {
         if (XQueryTree(display, window, NativeLongByReference(), NativeLongByReference(), list, count) == 0) return emptyList()
         val pointer = list.value ?: return emptyList()
         return try {
-            pointer.getLongArray(0, count.value).map(::NativeLong)
+            (0 until count.value).map { pointer.getNativeLong(it.toLong() * NativeLong.SIZE) }
         } finally {
             XFree(pointer)
         }

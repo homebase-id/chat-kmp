@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.Assume.assumeTrue
 
 class StuckPresentRecoveryTest {
 
@@ -37,51 +38,66 @@ class StuckPresentRecoveryTest {
     }
 
     @Test
-    fun itNudgesUntilTheUiThreadRunsAgain() {
+    fun itNudgesWhileStuckUntilTheUiThreadRunsAgain() {
         val uiRan = CountDownLatch(1)
         var nudges = 0
-        val rounds = StuckPresentRecovery.nudgeUntil(uiRan, retryMs = 0) { if (++nudges == 3) uiRan.countDown() }
-        assertEquals(3, rounds)
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { true }) { if (++nudges == 3) uiRan.countDown() }
+        assertEquals(3, sent)
+    }
+
+    @Test
+    fun aUiThreadBusyElsewhereIsNotNudgedUntilItReachesTheSwap() {
+        val uiRan = CountDownLatch(1)
+        var checks = 0
+        var nudges = 0
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { ++checks > 2 }) { nudges++; uiRan.countDown() }
+        assertEquals(1, sent)
+        assertEquals(3, checks)
     }
 
     @Test
     fun aFailingNudgeIsRetried() {
         val uiRan = CountDownLatch(1)
         var attempts = 0
-        val rounds = StuckPresentRecovery.nudgeUntil(uiRan, retryMs = 0) { if (++attempts == 2) uiRan.countDown() else error("no display") }
-        assertEquals(2, rounds)
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { true }) { if (++attempts == 2) uiRan.countDown() else error("no display") }
+        assertEquals(2, sent)
+    }
+
+    @Test
+    fun aMissingNativeLibraryStopsTheRounds() {
+        val sent = StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(1), retryMs = 0, stuck = { true }) { throw UnsatisfiedLinkError("libX11") }
+        assertEquals(1, sent)
     }
 
     @Test
     fun aUiThreadThatAlreadyRanIsNotNudged() {
         var nudges = 0
-        assertEquals(0, StuckPresentRecovery.nudgeUntil(CountDownLatch(0), retryMs = 0) { nudges++ })
+        assertEquals(0, StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(0), retryMs = 0, stuck = { true }) { nudges++ })
         assertEquals(0, nudges)
     }
 
-    // Needs a real X server: runs on a Linux desktop, skipped on CI's headless runners.
     @Test
     fun theCanvasWindowsOfThisProcessAreResizedAndRestored() {
-        if (!StuckPresentRecovery.onX11 || GraphicsEnvironment.isHeadless()) return
+        assumeTrue("needs a real X server", StuckPresentRecovery.onX11 && !GraphicsEnvironment.isHeadless())
+        val pid = ProcessHandle.current().pid()
         lateinit var window: Frame
-        val canvas = Canvas().apply { preferredSize = Dimension(320, 240) }
         EventQueue.invokeAndWait {
             window = Frame("StuckPresentRecoveryTest").apply {
-                add(canvas)
+                add(Canvas().apply { preferredSize = Dimension(320, 240) })
                 pack()
                 isVisible = true
             }
         }
         try {
             val deadline = System.nanoTime() + 5_000_000_000L
-            var nudged = 0
-            while (nudged == 0 && System.nanoTime() < deadline) {
-                nudged = StuckPresentRecovery.nudgeCanvases(ProcessHandle.current().pid())
-                if (nudged == 0) Thread.sleep(100)
+            var before = StuckPresentRecovery.canvasSizes(pid)
+            while (before.isEmpty() && System.nanoTime() < deadline) {
+                Thread.sleep(100)
+                before = StuckPresentRecovery.canvasSizes(pid)
             }
 
-            assertEquals(1, nudged)
-            assertEquals(Dimension(320, 240), canvas.size)
+            assertEquals(1, StuckPresentRecovery.nudgeCanvases(pid))
+            assertEquals(before, StuckPresentRecovery.canvasSizes(pid))
         } finally {
             EventQueue.invokeAndWait { window.dispose() }
         }

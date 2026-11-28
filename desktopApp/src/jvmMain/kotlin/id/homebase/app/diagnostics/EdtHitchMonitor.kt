@@ -8,14 +8,13 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-/** Logs sub-second EDT stalls, which MainThreadWatchdog (4 s threshold, 30 s throttle) never reports. */
+/** Logs sub-second EDT stalls, which MainThreadWatchdog (4 s threshold, 30 s throttle) never reports, and hands one past 4 s to [StuckPresentRecovery]. */
 class EdtHitchMonitor(
     private val log: (String) -> Unit = { Logger.w(tag = "EdtHitchMonitor") { it } },
 ) {
     @Volatile private var lastFocusGainMs: Long? = null
     @Volatile private var unreportedFocusGain = false
     private var lastLogMs: Long? = null
-    @Volatile private var uiThread: Thread? = null
 
     fun start() {
         current = this
@@ -35,14 +34,11 @@ class EdtHitchMonitor(
     private fun probeOnce() {
         val acked = CountDownLatch(1)
         val postedAt = nowMs()
-        EventQueue.invokeLater {
-            uiThread = Thread.currentThread()
-            acked.countDown()
-        }
+        EventQueue.invokeLater { acked.countDown() }
         if (acked.await(THRESHOLD_MS, TimeUnit.MILLISECONDS)) return
         // Snapshot while the EDT is still stuck; after the ack it shows idle frames.
         val stack = captureMainThreadStackTrace()
-        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) StuckPresentRecovery.releaseIfStuck(uiThread, acked)
+        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) StuckPresentRecovery.recoverWhileStuck(acked)
         acked.await()
         report(postedAt, nowMs() - postedAt, stack)
     }
