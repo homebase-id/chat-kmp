@@ -16,16 +16,15 @@ import id.homebase.core.filesync.FilesyncProtocol
 import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.settings.UserPreferences
 import io.ktor.http.formUrlEncode
-import id.homebase.api.coroutines.supervisedScope
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import kotlin.uuid.ExperimentalUuidApi
-import kotlin.uuid.Uuid
+import kotlinx.coroutines.launch
 
 private const val TAG = "PrivateDriveOptIn"
 
@@ -54,6 +53,7 @@ data class PrivateDriveState(val needsSignIn: Boolean = false, val offerMakePriv
 class PrivateDriveOptIn(
     private val youAuthFlowManager: YouAuthFlowManager,
     private val userPreferences: UserPreferences,
+    private val appScope: CoroutineScope,
 ) {
     fun state(drive: PrivateDrive): Flow<PrivateDriveState> = combine(
         ZkKeyStore.lockedDrives,
@@ -98,18 +98,9 @@ class PrivateDriveOptIn(
     fun makePrivateUrl(drive: PrivateDrive, returnUrl: String): String? =
         signedInIdentity?.let { makePrivateUrl(it.domainName, drive, returnUrl) }
 
-    private val completion = SignInCompletion(signInScope) { youAuthFlowManager.handleCallback(it) }
-
-    /** Finishes a sign-in again from the browser's callback, whether or not the screen that asked is still there. */
-    fun completeSignIn(url: String) = completion.complete(url)
-}
-
-// On iOS, desktop and web the browser answers through the asking screen's callback, possibly after it's gone.
-private val signInScope = supervisedScope("private-drive-sign-in")
-
-internal class SignInCompletion(private val scope: CoroutineScope, private val handle: suspend (String) -> Unit) {
-    fun complete(url: String) {
-        scope.launch { handle(url) }
+    // On iOS, desktop and web the browser can answer after the screen that asked is gone.
+    fun completeSignIn(url: String) {
+        appScope.launch { youAuthFlowManager.handleCallback(url) }
     }
 }
 

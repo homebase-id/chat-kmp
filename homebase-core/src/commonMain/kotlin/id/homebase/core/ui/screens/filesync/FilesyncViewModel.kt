@@ -384,9 +384,6 @@ class FilesyncViewModel(
         }
     }
 
-    fun onSignInCallback(url: String) {
-        privateDriveOptIn.completeSignIn(url)
-    }
 
     private fun zipName(nodes: List<FilesyncNode>) = FilesyncArchive.name(nodes, _uiState.value.path.last().name, ARCHIVE_FALLBACK_NAME)
 

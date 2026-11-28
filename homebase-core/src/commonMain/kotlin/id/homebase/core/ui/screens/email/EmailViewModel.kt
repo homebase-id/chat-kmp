@@ -202,9 +202,6 @@ class EmailViewModel(
         }
     }
 
-    fun onSignInCallback(url: String) {
-        privateDriveOptIn.completeSignIn(url)
-    }
 
     /**
      * Ask the server whether email actually works.

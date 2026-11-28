@@ -17,12 +17,12 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import id.homebase.core.auth.BrowserLauncher
+import id.homebase.core.privatedrive.PrivateDriveOptIn
 import id.homebase.core.privatedrive.PrivateDriveState
 import id.homebase.core.ui.auth.rememberAuthBrowserLauncher
 import id.homebase.resources.MR
@@ -30,6 +30,7 @@ import id.homebase.resources.sign_in_again_button
 import id.homebase.resources.sign_in_again_continue
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
 
 /** Opens the sign-in browser; [blockedUrl] is set when the browser blocked the window, so a fresh click can open it. */
 @Stable
@@ -51,10 +52,10 @@ class SignInAgainLauncher internal constructor(
 }
 
 @Composable
-fun rememberSignInAgainLauncher(onCallback: (String) -> Unit): SignInAgainLauncher {
+fun rememberSignInAgainLauncher(optIn: PrivateDriveOptIn = koinInject()): SignInAgainLauncher {
     val launch = rememberAuthBrowserLauncher()
-    val callback by rememberUpdatedState(onCallback)
-    return remember(launch) { SignInAgainLauncher(launch) { callback(it) } }
+    // The answer is finished off the screen, which may be gone by then.
+    return remember(launch, optIn) { SignInAgainLauncher(launch, optIn::completeSignIn) }
 }
 
 /** Both banners a mini-app on a private-capable drive shows above its content, as [state] asks. */

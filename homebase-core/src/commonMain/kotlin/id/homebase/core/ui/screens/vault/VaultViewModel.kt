@@ -299,9 +299,6 @@ class VaultViewModel(
             ?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
     }
 
-    fun onSignInCallback(url: String) {
-        privateDriveOptIn.completeSignIn(url)
-    }
 
     fun onAction(action: VaultUiAction) {
         when (action) {
