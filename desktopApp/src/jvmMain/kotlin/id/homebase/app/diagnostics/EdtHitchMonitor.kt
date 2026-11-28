@@ -1,13 +1,14 @@
 package id.homebase.app.diagnostics
 
 import co.touchlab.kermit.Logger
+import id.homebase.app.StuckPresentRecovery
 import id.homebase.core.diagnostics.captureMainThreadStackTrace
 import java.awt.EventQueue
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
-/** Logs sub-second EDT stalls, which MainThreadWatchdog (4 s threshold, 30 s throttle) never reports. */
+/** Logs sub-second EDT stalls, which MainThreadWatchdog (4 s threshold, 30 s throttle) never reports, and hands one past 4 s to [StuckPresentRecovery]. */
 class EdtHitchMonitor(
     private val log: (String) -> Unit = { Logger.w(tag = "EdtHitchMonitor") { it } },
 ) {
@@ -37,6 +38,13 @@ class EdtHitchMonitor(
         if (acked.await(THRESHOLD_MS, TimeUnit.MILLISECONDS)) return
         // Snapshot while the EDT is still stuck; after the ack it shows idle frames.
         val stack = captureMainThreadStackTrace()
+        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) {
+            try {
+                StuckPresentRecovery.recoverWhileStuck(acked)
+            } catch (e: Exception) {
+                Logger.e(e, "EdtHitchMonitor") { "stuck-swap recovery failed" }
+            }
+        }
         acked.await()
         report(postedAt, nowMs() - postedAt, stack)
     }
