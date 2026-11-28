@@ -12,6 +12,7 @@ import id.homebase.api.client.drives.query.DriveQueryProvider
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.common.OdinId
+import id.homebase.api.sync.database.CursorStorage
 import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -418,10 +419,21 @@ class DriveSyncManager(
         d.sync()
     }
 
+    /** [resyncDrive] without waiting for the drive's round in progress. */
+    fun resyncDriveLater(driveId: Uuid) {
+        scope.launch { resyncDrive(driveId) }
+    }
+
     /** Reads [driveId] again from the start: files it couldn't read before may be readable now. */
     suspend fun resyncDrive(driveId: Uuid) {
-        val sync = driveSyncsMutex.withLock { driveSyncs[driveId] } ?: return
+        // Not mounted in this process: the next mount still has to start from the beginning.
+        val sync = driveSyncsMutex.withLock { driveSyncs[driveId] } ?: run {
+            CursorStorage(databaseManager, driveId).deleteCursor()
+            return
+        }
         sync.forgetCursor()
+        // Remounted while the round held the cursor: the new one may have loaded the old cursor.
+        if (driveSyncsMutex.withLock { driveSyncs[driveId] } !== sync) return resyncDrive(driveId)
         if (_isRunning) sync.sync()
     }
 

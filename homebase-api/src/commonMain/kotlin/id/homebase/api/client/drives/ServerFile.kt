@@ -188,10 +188,10 @@ suspend fun lockKeyHeader(
         EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.FileKey, iv = keyHeader.iv, encryptedAesKey = ByteArray(0))
     } else if (keyHeader != null && sealedTo != null) {
         sealKeyHeader(keyHeader, sealedTo)
-    } else if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) {
-        keyHeader.lockedWithDriveKey(driveId)
     } else {
-        EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
+        val zkKey = if (keyHeader != null) ZkKeyStore.lockingKey(driveId) else null
+        if (keyHeader != null && zkKey != null) keyHeader.lockedWith(SecureByteArray(zkKey))
+        else EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
     }
 
 /** [keyHeader] sealed to a drive's write-only public point, `0x04 ‖ x ‖ y`: only that drive's owner opens it. */
@@ -202,8 +202,10 @@ suspend fun sealKeyHeader(keyHeader: KeyHeader, point: ByteArray): EncryptedKeyH
 fun keepFileKeyHeader(iv: ByteArray): EncryptedKeyHeader =
     EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Share, iv = iv, encryptedAesKey = ByteArray(0))
 
-private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader =
-    EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, SecureByteArray(zkDriveKey(driveId))).apply { type = EncryptionType.ZkDrive }
+private suspend fun KeyHeader.lockedWith(driveKey: SecureByteArray): EncryptedKeyHeader =
+    EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, driveKey).apply { type = EncryptionType.ZkDrive }
+
+private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader = lockedWith(SecureByteArray(zkDriveKey(driveId)))
 
 /** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
 private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)

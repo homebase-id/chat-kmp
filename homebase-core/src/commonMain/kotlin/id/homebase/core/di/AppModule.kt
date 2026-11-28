@@ -779,7 +779,6 @@ val appModule = module {
             eventBus = get(),
             databaseManager = get(),
             driveRegistry = get(),
-            securityContextProvider = get(),
             peerWebSocketManager = get(),
             identitySession = get(),
             // Start headless only where the OS can cold-wake us in the background

@@ -3,6 +3,9 @@ package id.homebase.core
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DatabaseDriverFactory
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.sync.DriveSyncManager
+import id.homebase.api.youauth.SecurityContextProvider
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.auth.AuthConnectionCoordinator
 import id.homebase.core.crash.CrashReporting
 import id.homebase.core.location.tracking.LocationTrackingCoordinator
@@ -33,7 +36,13 @@ object AppStartup {
             platform()
             modules(allModules)
         }
-        val info = KoinPlatformTools.defaultContext().get().get<PlatformInfo>()
+        val koin = KoinPlatformTools.defaultContext().get()
+        // Every process, background wakes included; resolved per call, so Koin start builds nothing.
+        ZkKeyStore.useServer(
+            fetchGrant = { koin.get<SecurityContextProvider>().readSecurityContext() },
+            resync = { koin.get<DriveSyncManager>().resyncDriveLater(it) },
+        )
+        val info = koin.get<PlatformInfo>()
         StartupLogger.logAppStartupInfo(info.versionName, info.versionCode, BuildConfig.APP_BUILD_TIME)
     }
 

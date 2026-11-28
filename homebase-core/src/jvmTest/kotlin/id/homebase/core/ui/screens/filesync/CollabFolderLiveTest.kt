@@ -19,6 +19,16 @@ import id.homebase.api.common.SecureByteArray
 import id.homebase.api.crypto.ShareKeys
 import id.homebase.api.file.OkioFileOperationsProvider
 import id.homebase.api.serialization.OdinSystemSerializer
+import id.homebase.api.crypto.ByteArrayUtil
+import id.homebase.api.crypto.ZkLock
+import id.homebase.api.youauth.CallerContext
+import id.homebase.api.youauth.DriveGrant
+import id.homebase.api.youauth.DrivePermission
+import id.homebase.api.youauth.DriveReference
+import id.homebase.api.youauth.PermissionContext
+import id.homebase.api.youauth.PermissionGroup
+import id.homebase.api.youauth.PermissionedDrive
+import id.homebase.api.youauth.SecurityContext
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.filesync.FilesyncProtocol
 import io.ktor.client.plugins.api.createClientPlugin
@@ -33,6 +43,7 @@ import okio.FileSystem
 import java.io.File
 import java.nio.file.Files
 import kotlin.io.encoding.Base64
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -49,7 +60,7 @@ class CollabFolderLiveTest {
     private val fixturePath: String? = System.getenv("COLLAB_FOLDER_FIXTURE")
 
     @Test
-    fun aMemberAddsAndReplacesFilesInAFolderSharedWithTwoOfHisCircles() = runBlocking {
+    fun aMemberAddsAndReplacesFilesInAFolderSharedWithTwoOfHisCircles() = runBlocking<Unit> {
         val path = fixturePath ?: return@runBlocking println("COLLAB_FOLDER_FIXTURE not set: skipped")
         val fixture = Json.parseToJsonElement(File(path).readText()).jsonObject
         val pippinJson = fixture.obj("pippin")
@@ -135,23 +146,50 @@ class CollabFolderLiveTest {
         println("sealed edit landed")
 
         dir.deleteRecursively()
-        ZkKeyStore.clear()
+    }
+
+    // Only the store useKeys swapped in: a skipped run would otherwise clear the desktop app's own keys.
+    private var keysSwapped = false
+
+    @AfterTest
+    fun forgetKeys() {
+        if (keysSwapped) ZkKeyStore.clear()
+        ZkKeyStore.useServer(fetchGrant = { error("no server in this test") }, resync = {})
     }
 
     private suspend fun credentials(identity: OdinId, app: JsonObject) = CredentialsManager().apply {
         setActiveCredentials(ApiCredentials.create(identity, app.str("clientAuthToken"), SecureByteArray(Base64.decode(app.str("sharedSecret")))))
     }
 
-    // The process holds one identity's zero-knowledge keys at a time, as an app does.
-    private fun useKeys(drive: String? = null, writeOnly: String? = null) {
+    // The process holds one identity's zero-knowledge keys at a time, as an app does. A file is locked only with a key
+    // read from the grant, so with a drive key the grant carries it.
+    private suspend fun useKeys(drive: String? = null, writeOnly: String? = null) {
         val stored = mutableMapOf<String, String>()
-        drive?.let { stored["zk_drive_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
-        writeOnly?.let { stored["zk_drive_write_only_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
+        if (drive == null) writeOnly?.let { stored["zk_drive_write_only_keys"] = """{"${FilesyncProtocol.DriveAlias}":"$it"}""" }
         ZkKeyStore.storage = object : ZkKeyStore.Storage {
             override fun get(key: String) = stored[key]
             override fun put(key: String, value: String) { stored[key] = value }
             override fun remove(key: String) { stored.remove(key) }
         }
+        keysSwapped = true
+        val grant = drive?.let { grantOf(Base64.decode(it), writeOnly?.let(Base64::decode)) }
+        grant?.let { ZkKeyStore.openDriveKeys(it) }
+        ZkKeyStore.useServer(fetchGrant = { grant ?: error("no drive key in this step") }, resync = {})
+    }
+
+    private suspend fun grantOf(driveKey: ByteArray, writeOnly: ByteArray?): SecurityContext {
+        val appKey = ByteArrayUtil.getRndByteArray(16)
+        ZkKeyStore.saveAppKey(appKey)
+        val grant = DriveGrant(
+            permissionedDrive = PermissionedDrive(
+                DriveReference(FilesyncProtocol.DriveAlias.toString(), Uuid.random().toString()),
+                listOf(DrivePermission.Read, DrivePermission.Write),
+            ),
+            isZeroKnowledge = true,
+            zkAppKeyEncryptedStorageKey = Base64.encode(ZkLock.lock(driveKey, appKey)),
+            zkStorageKeyEncryptedWriteOnlyPrivateKey = writeOnly?.let { Base64.encode(ZkLock.lock(it, driveKey)) },
+        )
+        return SecurityContext(CallerContext(securityLevel = "app"), PermissionContext(listOf(PermissionGroup(driveGrants = listOf(grant)))))
     }
 
     private suspend fun upload(

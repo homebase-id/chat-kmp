@@ -17,7 +17,6 @@ import id.homebase.api.sync.DriveSyncManager
 import id.homebase.api.sync.database.DatabaseManager
 import id.homebase.api.sync.database.OutboxSync
 import id.homebase.api.youauth.DrivePermission
-import id.homebase.api.youauth.SecurityContextProvider
 import id.homebase.api.youauth.YouAuthFlowManager
 import id.homebase.api.youauth.YouAuthState
 import id.homebase.api.youauth.ZkKeyStore
@@ -53,7 +52,6 @@ class AuthConnectionCoordinator(
     private val eventBus: EventBus,
     private val databaseManager: DatabaseManager,
     private val driveRegistry: DriveRegistry,
-    private val securityContextProvider: SecurityContextProvider,
     private val peerWebSocketManager: PeerWebSocketManager,
     // Lifetime of every per-identity object in the graph. Opened on the authenticated
     // transition below, closed on logout — so signing out destroys that state rather than
@@ -891,7 +889,7 @@ class AuthConnectionCoordinator(
      * (#1079). On failure it leaves the set null (prune nothing — degrade to the local registry).
      */
     private suspend fun refreshGrantedDriveIds() {
-        val ctx = securityContextProvider.getSecurityContext()
+        val ctx = ZkKeyStore.reread()
         if (ctx == null) {
             Logger.w(tag = "AuthLifecycle") {
                 "AuthCC: security context unavailable — drive-grant filter disabled this cycle"
@@ -899,12 +897,6 @@ class AuthConnectionCoordinator(
             grantedDriveIds = null
             return
         }
-        val readableBefore = ZkKeyStore.zeroKnowledgeDrives.value - ZkKeyStore.lockedDrives.value
-        ZkKeyStore.openDriveKeys(ctx)
-        // A key that just arrived opens files the server hid from this token or the sync couldn't
-        // read, and the cursor is already past them.
-        (ZkKeyStore.zeroKnowledgeDrives.value - ZkKeyStore.lockedDrives.value - readableBefore)
-            .forEach { driveSyncManager.resyncDrive(it) }
         val readable = ctx.permissionContext.permissionGroups
             .flatMap { it.driveGrants ?: emptyList() }
             .filter { (it.permissionedDrive.permission.sumOf { p -> p.value } and DrivePermission.Read.value) != 0 }

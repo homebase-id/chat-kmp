@@ -44,13 +44,6 @@ import id.homebase.api.client.auth.ApiCredentials
 
 class ZkDriveFilesTest {
 
-    private class MemoryStorage : ZkKeyStore.Storage {
-        val values = mutableMapOf<String, String>()
-        override fun get(key: String) = values[key]
-        override fun put(key: String, value: String) { values[key] = value }
-        override fun remove(key: String) { values.remove(key) }
-    }
-
     private val sharedSecret = ByteArrayUtil.getRndByteArray(16)
     private val appKey = ByteArrayUtil.getRndByteArray(16)
     private val driveKey = ByteArrayUtil.getRndByteArray(16)
@@ -59,7 +52,7 @@ class ZkDriveFilesTest {
 
     @BeforeTest
     fun inMemory() {
-        ZkKeyStore.storage = MemoryStorage()
+        ZkKeyStore.storage = MemoryZkStorage()
     }
 
     @AfterTest
