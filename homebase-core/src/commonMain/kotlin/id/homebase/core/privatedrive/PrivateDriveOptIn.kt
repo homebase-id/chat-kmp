@@ -99,7 +99,6 @@ class PrivateDriveOptIn(
     fun makePrivateUrl(drive: PrivateDrive, returnUrl: String): String? =
         signedInIdentity?.let { makePrivateUrl(it.domainName, drive, returnUrl) }
 
-    // On iOS, desktop and web the browser can answer after the screen that asked is gone.
     fun completeSignIn(url: String) {
         // Main, as every other caller: the flow's pending sign-ins aren't guarded against two threads.
         appScope.launch(Dispatchers.Main) { youAuthFlowManager.handleCallback(url) }

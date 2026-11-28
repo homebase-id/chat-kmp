@@ -18,9 +18,8 @@ expect object BrowserLauncher {
      * callback handlers.
      *
      * @param url The authorization URL being opened
-     * @param onCallbackUrl Callback for url handling. On iOS, desktop and web it can come on any thread and after the
-     *   screen that opened the browser is gone, so it is finished in an app-lifetime scope; Android returns through
-     *   MainActivity's deep link instead and never calls it.
+     * @param onCallbackUrl Callback for url handling. On iOS, desktop and web it can come on any thread, after the
+     *   screen that opened the browser is gone; Android returns through MainActivity's deep link and never calls it.
      */
     fun onAuthBrowserOpened(url: String, onCallbackUrl: (String) -> Unit)
 }

@@ -353,6 +353,11 @@ class YouAuthFlowManager(
             val salt = decodeUrl(queryParams["salt"] ?: "")
             if (salt.isEmpty()) throw Exception("Missing query param: salt")
 
+            if (authCodeFlowState.again && !signInAgainStillWanted(authCodeFlowState.identity, credentialsManager.getActiveCredentials())) {
+                Logger.i(tag = TAG) { "Dropping a sign-in again: ${authCodeFlowState.identity} is no longer signed in" }
+                return
+            }
+
             // Create unauthenticated client for token exchange
             val provider = YouAuthProvider(httpClient, authCodeFlowState.identity)
 
@@ -372,7 +377,7 @@ class YouAuthFlowManager(
             }
 
             val replaced = if (authCodeFlowState.again) credentialsManager.getActiveCredentials() else null
-            // Finished off any screen, so a logout (or another sign-in) can come first; it mustn't be undone.
+            // Finished off any screen: a logout or another sign-in can also land during the exchange.
             if (authCodeFlowState.again && !signInAgainStillWanted(authCodeFlowState.identity, replaced)) {
                 Logger.i(tag = TAG) { "Dropping a sign-in again: ${authCodeFlowState.identity} is no longer signed in" }
                 return
