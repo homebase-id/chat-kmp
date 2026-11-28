@@ -56,18 +56,18 @@ fun interface BackupAuth {
     suspend fun awaitSignedIn(): Boolean
 }
 
-/** Whether this device holds the key of the Photos drive, which every photo is locked with when it is private. */
-interface BackupDriveKey {
+/** What keeps the Photos drive from taking new photos, or null when it is ready: today, a missing key. */
+interface BackupDrive {
     /** From what this device saved, without asking the server. */
-    val isMissing: Boolean
+    val notReady: BackupPauseReason?
 
-    /** Read from the server when what was saved is over a minute old; null when that read failed. */
-    suspend fun isMissingNow(): Boolean?
+    /** Asking the server when what was saved is over a minute old; null when ready, or when it couldn't say. */
+    suspend fun notReadyNow(): BackupPauseReason?
 
     companion object {
-        val Held = object : BackupDriveKey {
-            override val isMissing = false
-            override suspend fun isMissingNow() = false
+        val Ready = object : BackupDrive {
+            override val notReady: BackupPauseReason? = null
+            override suspend fun notReadyNow(): BackupPauseReason? = null
         }
     }
 }

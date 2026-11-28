@@ -255,7 +255,8 @@ import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import kotlinx.coroutines.flow.map
-import id.homebase.photobase.backup.BackupDriveKey
+import id.homebase.photobase.backup.BackupDrive
+import id.homebase.photobase.backup.BackupPauseReason
 import id.homebase.api.client.drives.FileDecryptionException
 import id.homebase.api.youauth.ZkKeyStore
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -1825,7 +1826,7 @@ private fun Scope.photoBackupController(): PhotoBackupController {
                 if (refresh) storageQuota.refresh()
                 storageQuota.state.value.isFull
             },
-            driveKey = PhotosDriveKey,
+            drive = PhotosDrive,
         )
     }
     val configFile = PhotobaseConfigFile(get())
@@ -1838,17 +1839,18 @@ private fun Scope.photoBackupController(): PhotoBackupController {
     return controller
 }
 
-private object PhotosDriveKey : BackupDriveKey {
-    override val isMissing get() = PhotobaseProtocol.DriveAlias in ZkKeyStore.lockedDrives.value
+private object PhotosDrive : BackupDrive {
+    override val notReady get() = BackupPauseReason.NeedsSignIn.takeIf { PhotobaseProtocol.DriveAlias in ZkKeyStore.lockedDrives.value }
 
-    override suspend fun isMissingNow(): Boolean? = try {
+    override suspend fun notReadyNow(): BackupPauseReason? = try {
         ZkKeyStore.lockingKey(PhotobaseProtocol.DriveAlias)
-        false
+        null
     } catch (e: FileDecryptionException.NoDriveKey) {
-        true
+        BackupPauseReason.NeedsSignIn
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        // The server couldn't say: the hand-off waits for it.
         null
     }
 }

@@ -41,10 +41,8 @@ val EmailPrivateDrive = PrivateDrive(
     listOf("redeal" to "drive-private", "drive" to emailLabeledDrive.drive.alias.toString(), "model" to "private"),
 )
 
-val PhotosPrivateDrive = PrivateDrive(
-    PhotobaseProtocol.DriveAlias,
-    listOf("redeal" to "drive-private", "drive" to PhotobaseProtocol.DriveAlias.toString(), "model" to "private"),
-)
+// Only its sign-in state is used: Photos offers no "make private".
+val PhotosPrivateDrive = PrivateDrive(PhotobaseProtocol.DriveAlias, redeal = emptyList())
 
 /** [needsSignIn]: the drive is private and this device signed in before it could get the key. [offerMakePrivate]: developer menu only, while it isn't private. */
 data class PrivateDriveState(val needsSignIn: Boolean = false, val offerMakePrivate: Boolean = false)

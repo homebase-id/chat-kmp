@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.drives.FileDecryptionException
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.DeviceBackupWrapper
@@ -327,10 +328,12 @@ class BackupLedger(
         changed()
     }
 
-    /** Photos that failed before a run stopped for a missing drive key go back to pending, their count reset. */
+    /** Photos that failed for a missing drive key, before a run paused for it instead, go back to pending. */
     suspend fun requeueMissingKey() {
-        store.requeueByErrorPrefix(MISSING_KEY_ERROR, BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code)
-        changed()
+        val requeued = store.requeueFailedByErrorPrefix(
+            BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code, FileDecryptionException.NoDriveKey.MESSAGE_PREFIX,
+        )
+        if (requeued > 0) changed()
     }
 
     /** [alsoCrashed]: the user asked, so what ended the app gets another go too, with its count reset. */
@@ -377,8 +380,6 @@ class BackupLedger(
         private const val SINGLE_READ_LIMIT = 500
         const val MAX_ATTEMPTS = 10
         private const val NOT_ON_DEVICE = "not on this device"
-        // FileDecryptionException.NoDriveKey's message, as phones before the NeedsSignIn pause recorded it.
-        private const val MISSING_KEY_ERROR = "This device holds no key for the zero-knowledge drive"
         const val CRASHED_PREPARING = "the app stopped while preparing it"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes

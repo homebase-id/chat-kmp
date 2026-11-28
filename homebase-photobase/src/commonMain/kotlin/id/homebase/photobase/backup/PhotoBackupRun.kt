@@ -4,7 +4,7 @@ import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.NetworkException
-import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.client.drives.isMissingDriveKey
 import id.homebase.api.client.ServerException
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.isTransientNetworkFailure
@@ -74,7 +74,7 @@ class PhotoBackupRun(
     private val auth: BackupAuth,
     private val scheduler: BackupScheduler,
     private val isStorageFull: suspend (interactive: Boolean) -> Boolean,
-    private val driveKey: BackupDriveKey = BackupDriveKey.Held,
+    private val drive: BackupDrive = BackupDrive.Ready,
 ) {
     private val mutex = Mutex()
     private val videoPrepare = Mutex()
@@ -322,8 +322,8 @@ class PhotoBackupRun(
             else -> backupPauseReason(current, deviceState, interactive)
                 ?: BackupPauseReason.StorageFull.takeIf { isStorageFull(false) }
         }
-        // Without the key every photo would be exported, hashed and encrypted only to fail. A sign-in again wakes the run.
-        val pause = localPause ?: BackupPauseReason.NeedsSignIn.takeIf { driveKey.isMissing }
+        // Without a ready drive (its key) every photo would be exported, hashed and encrypted only to fail.
+        val pause = localPause ?: drive.notReady
         if (pause != null) {
             if (!signedIn.await()) return@coroutineScope paused(BackupPauseReason.SignedOut)
             scheduler.rearm(current)
@@ -339,6 +339,7 @@ class PhotoBackupRun(
         }
         if (interactive) ledger.requeueFailed()
         if (request.mayDownloadFromCloud) ledger.clearNotOnDeviceDeferrals()
+        if (drive.notReady == null) ledger.requeueMissingKey()
         val before = ledger.counts()
 
         // A background run is often stopped within minutes, and a stopped transcode starts over: one video, and only first.
@@ -355,16 +356,8 @@ class PhotoBackupRun(
             hashing.cancelAndJoin()
             return@coroutineScope paused(BackupPauseReason.SignedOut)
         }
-        // A saved key can be out of date; null: the server couldn't say, and the hand-off waits for it.
-        when (driveKey.isMissingNow()) {
-            true -> {
-                hashing.cancelAndJoin()
-                scheduler.rearm(current)
-                return@coroutineScope paused(BackupPauseReason.NeedsSignIn)
-            }
-            false -> ledger.requeueMissingKey()
-            null -> Unit
-        }
+        // What was saved can be out of date; asked only when there is something to send.
+        if (before.unsent > 0) drive.notReadyNow()?.let { return@coroutineScope notReady(hashing, it) }
         scheduler.rearm(current)
         if (isStorageFull(interactive)) {
             hashing.cancelAndJoin()
@@ -382,9 +375,7 @@ class PhotoBackupRun(
                 true
             } ?: false
         } catch (e: DriveKeyLost) {
-            hashing.cancelAndJoin()
-            scheduler.rearm(settings())
-            return@coroutineScope paused(BackupPauseReason.NeedsSignIn)
+            return@coroutineScope notReady(hashing, BackupPauseReason.NeedsSignIn)
         }
         uploader.kick()
         val settled = timed(BackupStage.Settle) { awaitUploadsSettled(request) }
@@ -410,6 +401,12 @@ class PhotoBackupRun(
             scheduler.continueSoon(settings())
         }
         outcome
+    }
+
+    private suspend fun notReady(hashing: Job, reason: BackupPauseReason): BackupRunOutcome {
+        hashing.cancelAndJoin()
+        scheduler.rearm(settings())
+        return paused(reason)
     }
 
     private suspend fun paused(reason: BackupPauseReason): BackupRunOutcome {
@@ -633,7 +630,7 @@ class PhotoBackupRun(
             ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
             // Every other photo would fail the same way: the run stops, and the photo isn't charged.
-            if (e.isMissingDriveKey()) throw DriveKeyLost(e)
+            if (e.isMissingDriveKey()) throw DriveKeyLost()
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             val reason = e.message ?: e::class.simpleName.orEmpty()
             // The drive key is read from the server before a photo is locked: its failure says nothing about the photo.
@@ -693,9 +690,7 @@ class PhotoBackupRun(
     }
 }
 
-private class DriveKeyLost(cause: Exception) : Exception("the Photos drive key is missing", cause)
-
-private fun Throwable.isMissingDriveKey(): Boolean = generateSequence(this) { it.cause }.take(8).any { it is FileDecryptionException.NoDriveKey }
+private class DriveKeyLost : Exception("the Photos drive key is missing")
 
 private fun Exception.isOutage(): Boolean =
     isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))

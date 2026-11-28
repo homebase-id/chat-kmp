@@ -11,6 +11,7 @@ import id.homebase.resources.MR
 import id.homebase.resources.photobase_sign_in_again_body
 import id.homebase.resources.photobase_sign_in_again_title
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
 
 /** The Photos status screen's "sign in again" banner, shown while this device has no key for the private Photos drive. */
@@ -19,14 +20,11 @@ fun PhotosSignInAgainBanner(optIn: PrivateDriveOptIn = koinInject()) {
     val scope = rememberCoroutineScope()
     val state by remember(optIn) { optIn.state(PhotosPrivateDrive) }.collectAsStateWithLifecycle(optIn.currentState(PhotosPrivateDrive))
     val signIn = rememberSignInAgainLauncher { url -> scope.launch { optIn.handleSignInCallback(url) } }
-    PrivateDriveBanners(
-        // Photos offers no "make private": only the sign-in banner shows.
-        state = state.copy(offerMakePrivate = false),
-        makePrivateText = MR.string.photobase_sign_in_again_title,
-        signInTitle = MR.string.photobase_sign_in_again_title,
-        signInBody = MR.string.photobase_sign_in_again_body,
-        signIn = signIn,
-        onMakePrivate = {},
-        onSignInAgain = { scope.launch { optIn.signInAgain(open = signIn::open, failed = {}) } },
+    if (!state.needsSignIn) return
+    SignInAgainBanner(
+        title = stringResource(MR.string.photobase_sign_in_again_title),
+        body = stringResource(MR.string.photobase_sign_in_again_body),
+        blocked = signIn.blockedUrl != null,
+        onSignIn = { signIn.blockedUrl?.let(signIn::open) ?: scope.launch { optIn.signInAgain(open = signIn::open, failed = {}) } },
     )
 }

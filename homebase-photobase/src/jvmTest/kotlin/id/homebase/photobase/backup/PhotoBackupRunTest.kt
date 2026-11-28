@@ -52,7 +52,7 @@ class PhotoBackupRunTest {
     private var dedupeFailure: Exception? = null
     private var storageFull = false
     private var keyMissing = false
-    private var keyMissingNow: Boolean? = false
+    private var keyMissingNow = false
     private var rearms = 0
     private var signedIn = CompletableDeferred(true)
     private val ranWithWorkLeft = mutableListOf<Boolean>()
@@ -100,9 +100,9 @@ class PhotoBackupRunTest {
                 override suspend fun alertBackupStuck() { stuckAlerts++ }
             },
             isStorageFull = { storageFull },
-            driveKey = object : BackupDriveKey {
-                override val isMissing get() = keyMissing
-                override suspend fun isMissingNow() = keyMissingNow
+            drive = object : BackupDrive {
+                override val notReady get() = BackupPauseReason.NeedsSignIn.takeIf { keyMissing }
+                override suspend fun notReadyNow() = BackupPauseReason.NeedsSignIn.takeIf { keyMissingNow }
             },
         )
         return run to results
