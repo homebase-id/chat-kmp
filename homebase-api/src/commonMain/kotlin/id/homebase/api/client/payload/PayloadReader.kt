@@ -151,7 +151,7 @@ class PayloadReader(
         outputPath: String,
         cache: Boolean,
     ): Boolean {
-        // Only a kept read is versioned: the player, preloader and seeds keep payloads under the plain key, which a save reuses.
+        // An unkept save takes whatever copy is kept, so it works offline.
         val version = payload.version.takeIf { cache }
         return if (payload.isHlsVideo) {
             downloadHlsAsMp4(at, payload.key, keyHeader, outputPath, cache, version)

@@ -522,18 +522,19 @@ class DriveFileProviderCached(
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
         while (true) {
-            if (notFoundKey(cacheKey, version) in notFoundCache) return ByteApiResponse.EMPTY_404
+            if (versionedKey(cacheKey, version) in notFoundCache) return ByteApiResponse.EMPTY_404
             readCachedOrLog(cache, cacheKey, logTag, version)?.let { return it }
 
+            val flightKey = versionedKey(cacheKey, version)
             val startedGeneration: Int
             val entry = inFlightMutex.withLock {
                 startedGeneration = generation
-                val entry = inFlight[cacheKey] ?: InFlight(
+                val entry = inFlight[flightKey] ?: InFlight(
                     fetchScope.async(start = CoroutineStart.LAZY) {
                         fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, version, fetch)
                     },
                     cancelWhenUnwatched,
-                ).also { inFlight[cacheKey] = it }
+                ).also { inFlight[flightKey] = it }
                 entry.waiters++
                 entry
             }
@@ -543,19 +544,25 @@ class DriveFileProviderCached(
             } catch (e: CancellationException) {
                 if (!currentCoroutineContext().isActive || generation == startedGeneration) throw e
             } finally {
-                withContext(NonCancellable) { leave(cacheKey, entry) }
+                withContext(NonCancellable) { leave(flightKey, entry) }
             }
         }
     }
 
-    // A 404 for one version of a payload says nothing about another under the same key.
-    private fun notFoundKey(cacheKey: String, version: Long?) = version?.let { "$cacheKey@$it" } ?: cacheKey
+    // A fetch or a 404 for one version of a payload says nothing about another under the same key.
+    private fun versionedKey(cacheKey: String, version: Long?) = version?.let { "$cacheKey@$it" } ?: cacheKey
 
-    private suspend fun leave(cacheKey: String, entry: InFlight) = inFlightMutex.withLock {
+    private suspend fun forgetNotFound(cacheKey: String) {
+        fun marks(it: String) = it == cacheKey || it.startsWith("$cacheKey@")
+        if (notFoundCache.none(::marks)) return
+        notFoundCacheMutex.withLock { notFoundCache = notFoundCache.filterNot(::marks).toSet() }
+    }
+
+    private suspend fun leave(flightKey: String, entry: InFlight) = inFlightMutex.withLock {
         entry.waiters--
         if (entry.waiters == 0 && entry.cancelWhenUnwatched && !entry.fetch.isCompleted) {
             entry.fetch.cancel()
-            if (inFlight[cacheKey] === entry) inFlight.remove(cacheKey)
+            if (inFlight[flightKey] === entry) inFlight.remove(flightKey)
         }
     }
 
@@ -569,9 +576,9 @@ class DriveFileProviderCached(
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
         val self = currentCoroutineContext()[Job]
-        val notFoundKey = notFoundKey(cacheKey, version)
+        val flightKey = versionedKey(cacheKey, version)
         try {
-            if (notFoundKey in notFoundCache) return ByteApiResponse.EMPTY_404
+            if (flightKey in notFoundCache) return ByteApiResponse.EMPTY_404
             readCachedOrLog(cache, cacheKey, logTag, version)?.let { return it }
 
             return semaphore.withPermit {
@@ -582,15 +589,19 @@ class DriveFileProviderCached(
                     }
                     if (generation == startedGeneration) {
                         beforeCacheWrite?.invoke()
-                        writeToDiskCache(cache, cacheKey, logTag, result, version)
+                        // A newer version fetched alongside this one may already be kept.
+                        if (version == null || !cache.holdsAtLeast(cacheKey, version)) {
+                            writeToDiskCache(cache, cacheKey, logTag, result, version)
+                        }
                         removeIfCleared(cache, cacheKey, startedGeneration)
+                        forgetNotFound(cacheKey)
                     }
                     result
                 } catch (e: NotFoundException) {
                     if (generation == startedGeneration) {
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + notFoundKey }
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + flightKey }
                         if (generation != startedGeneration) {
-                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - notFoundKey }
+                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - flightKey }
                         }
                     }
                     throw e
@@ -605,7 +616,7 @@ class DriveFileProviderCached(
             }
         } finally {
             withContext(NonCancellable) {
-                inFlightMutex.withLock { if (inFlight[cacheKey]?.fetch === self) inFlight.remove(cacheKey) }
+                inFlightMutex.withLock { if (inFlight[flightKey]?.fetch === self) inFlight.remove(flightKey) }
             }
         }
     }
@@ -858,7 +869,7 @@ class DriveFileProviderCached(
                         contentType = contentType
                 )
         )
-        notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+        forgetNotFound(cacheKey)
     }
 
     /**
@@ -947,7 +958,7 @@ class DriveFileProviderCached(
             }
             // A racing read between the DB fileId swap and this copy may have
             // 404-cached the new key — clear it so the moved entry is visible.
-            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - newKey }
+            forgetNotFound(newKey)
             // The old key can never be read again (the local record now carries
             // the new fileId) — free its LRU budget instead of waiting for eviction.
             cache.remove(oldKey.toDiskKey())
@@ -972,12 +983,22 @@ class DriveFileProviderCached(
 
     private fun DiskCache.Editor.stamp(version: Long?) = fileSystem.write(metadata) { writeUtf8(version?.toString().orEmpty()) }
 
-    // Closes a snapshot it rejects, so the caller's miss path can open an editor on the same entry.
+    // Uids only grow, so an older reader takes the newer copy, the bytes the server would send it anyway.
+    // A blank stamp is unknown and misses. Closes a snapshot it rejects, so the miss path can open an editor.
     private fun DiskCache.Snapshot.takeIfHolds(version: Long?): DiskCache.Snapshot? {
-        if (version == null || fileSystem.read(metadata) { readUtf8() }.toLongOrNull() == version) return this
+        if (version == null) return this
+        val held = try {
+            fileSystem.read(metadata) { readUtf8() }.toLongOrNull()
+        } catch (e: Exception) {
+            null
+        }
+        if (held != null && held >= version) return this
         close()
         return null
     }
+
+    private fun DiskCache.holdsAtLeast(cacheKey: String, version: Long) =
+        openSnapshot(cacheKey.toDiskKey())?.takeIfHolds(version)?.use { true } ?: false
 
     private fun buildThumbCacheKey(
             driveId: Uuid,

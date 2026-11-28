@@ -91,6 +91,28 @@ class DriveFileProviderCachedInFlightTest {
     }
 
     @Test
+    fun `a read of a newer version does not take the bytes of a fetch for the older one`() = runBlocking {
+        withTimeout(10_000) {
+            val started = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            val old = async(Dispatchers.Default) {
+                provider.readPayloadThrough("k", 900) {
+                    started.complete(Unit)
+                    gate.await()
+                    response(ByteArray(8) { 1 })
+                }
+            }
+            started.await()
+            val new = async(Dispatchers.Default) { provider.readPayloadThrough("k", 901) { response(ByteArray(8) { 2 }) } }
+            gate.complete(Unit)
+
+            assertContentEquals(ByteArray(8) { 2 }, new.await().bytes)
+            old.await()
+            assertContentEquals(ByteArray(8) { 2 }, provider.readPayloadThrough("k", 901) { error("the newer copy is kept") }.bytes)
+        }
+    }
+
+    @Test
     fun `cancelling the first caller does not cancel the fetch and the result is cached`() = runBlocking {
         withTimeout(10_000) {
             val fetches = AtomicInteger()
