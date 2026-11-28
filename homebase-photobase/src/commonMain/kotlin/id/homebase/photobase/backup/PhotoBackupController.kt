@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.photobase.PhotobaseConfigFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
@@ -61,7 +62,13 @@ class PhotoBackupController(
     fun onDriveKeyArrived() {
         val settings = settingsStore.settings.value
         if (!settings.enabled) return
-        if (inForeground) onAppForeground() else triggers?.continueSoon(settings)
+        if (!inForeground) {
+            triggers?.continueSoon(settings)
+            return
+        }
+        // A run under way may have checked the key before it came: one more run once that one ends.
+        val running = foregroundJob?.takeIf { it.isActive }
+        if (running == null) onAppForeground() else scope.launch(Dispatchers.Main) { running.join(); onAppForeground() }
     }
 
     suspend fun freshStatus(): BackupStatus? {

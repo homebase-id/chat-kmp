@@ -260,7 +260,7 @@ import kotlinx.coroutines.withContext
 import id.homebase.core.ui.screens.privatedrive.PhotosSignInAgainViewModel
 import id.homebase.photobase.backup.BackupDrive
 import id.homebase.photobase.backup.BackupPauseReason
-import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.client.drives.isMissingDriveKey
 import id.homebase.api.youauth.ZkKeyStore
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
@@ -1840,8 +1840,15 @@ private fun Scope.photoBackupController(): PhotoBackupController {
         ZkKeyStore.lockedDrives.map { PhotobaseProtocol.DriveAlias in it }.distinctUntilChanged().drop(1)
             // A sign-out empties the store too: only a key that's there now counts.
             .collect { locked ->
-                if (!locked && ZkKeyStore.driveKey(PhotobaseProtocol.DriveAlias) != null) {
-                    withContext(Dispatchers.Main) { controller.onDriveKeyArrived() }
+                try {
+                    if (!locked && ZkKeyStore.driveKey(PhotobaseProtocol.DriveAlias) != null) {
+                        withContext(Dispatchers.Main) { controller.onDriveKeyArrived() }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // One failure mustn't end the wake-ups for the rest of the process.
+                    Logger.e(e, "PhotoBackup") { "couldn't resume backup after the drive key arrived" }
                 }
             }
     }
@@ -1854,13 +1861,11 @@ private object PhotosDrive : BackupDrive {
     override suspend fun notReadyNow(): BackupPauseReason? = try {
         ZkKeyStore.lockingKey(PhotobaseProtocol.DriveAlias)
         null
-    } catch (e: FileDecryptionException.NoDriveKey) {
-        BackupPauseReason.NeedsSignIn
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        // The server couldn't say: the hand-off waits for it.
-        null
+        // Otherwise the server couldn't say: the hand-off waits for it.
+        BackupPauseReason.NeedsSignIn.takeIf { e.isMissingDriveKey() }
     }
 }
 

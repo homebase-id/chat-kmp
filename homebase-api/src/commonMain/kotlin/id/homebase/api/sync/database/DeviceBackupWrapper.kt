@@ -99,7 +99,6 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState, keep) }
     }
 
-    /** Returns how many rows went back. */
     suspend fun requeueFailedByErrorPrefix(failedState: Long, newState: Long, hashedState: Long, prefix: String): Long =
         databaseManager.withWriteValue { assets.requeueFailedByErrorPrefix(newState, hashedState, failedState, prefix).value }
 
