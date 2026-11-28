@@ -503,7 +503,7 @@ class DriveOutboxUploader(
         var files = request.files
         val result = try {
             files = transformsLockedWithCurrentKey(request.driveId, request.files)
-            if (files.isEmpty()) return
+            if (files.isEmpty()) throw KeyHeaderTransformRefused(IllegalStateException("none locked with the drive's current key"))
             operationsProvider.transformKeyHeaders(request.driveId, files)
         } catch (e: Exception) {
             throw keyHeaderTransformFailure(e)

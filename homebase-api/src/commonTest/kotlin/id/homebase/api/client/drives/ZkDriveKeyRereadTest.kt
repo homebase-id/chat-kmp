@@ -2,6 +2,7 @@ package id.homebase.api.client.drives
 
 import id.homebase.api.client.KeyHeader
 import id.homebase.api.client.NetworkException
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.ServerException
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.common.SecureByteArray
@@ -65,6 +66,7 @@ class ZkDriveKeyRereadTest {
     @AfterTest
     fun reset() {
         ZkKeyStore.clear()
+        SealedKeyHeaders.dropped = null
         ZkKeyStore.timeSource = TimeSource.Monotonic
         ZkKeyStore.useServer(fetchGrant = { throw unreachable() }, resync = {})
     }
@@ -182,6 +184,27 @@ class ZkDriveKeyRereadTest {
     }
 
     @Test
+    fun aServerAnswerIsNotHeldLikeANetworkFailure() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        ZkKeyStore.useServer(fetchGrant = { reads++; throw ServerException(500, null, null) }, resync = {})
+        assertFailsWith<ServerException> { lockNewFile() }
+
+        ZkKeyStore.useServer(fetchGrant = { reads++; grant(newKey) }, resync = {})
+        assertTrue(opensWith(lockNewFile(), newKey), "the server answered: the next file reads again")
+        assertEquals(2, reads)
+    }
+
+    @Test
+    fun aNotFoundFromTheKeyReadIsNotTakenForTheUploadsOwnAnswer() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        ZkKeyStore.useServer(fetchGrant = { throw NotFoundException() }, resync = {})
+
+        val failure = assertFailsWith<ZkKeyStore.DriveKeysNotRead> { lockNewFile() }
+
+        assertTrue(failure.cause is NotFoundException, "the outbox would drop an upload for its own 404")
+    }
+
+    @Test
     fun aDriveWhoseKeyTheGrantNoLongerCarriesFailsWithNoDriveKey() = runTest {
         savedFromAnEarlierRun(oldKey)
         server = grant(null)
@@ -240,8 +263,12 @@ class ZkDriveKeyRereadTest {
         val withOld = transform(oldKey)
         val withNew = transform(newKey)
 
+        val offeredAgain = mutableListOf<KeyHeaderTransform>()
+        SealedKeyHeaders.dropped = { offeredAgain += it }
+
         assertEquals(listOf(withNew), transformsLockedWithCurrentKey(photos, listOf(withOld, withNew)))
         assertEquals(1, reads, "the current key is read before sending")
+        assertEquals(listOf(withOld), offeredAgain, "the resync's read of the file queues it again")
 
         server = grant(null)
         clock += 61.seconds

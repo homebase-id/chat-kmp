@@ -179,28 +179,32 @@ internal suspend fun EncryptedKeyHeader.zkDriveFormOf(opened: KeyHeader, driveId
  */
 internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: List<KeyHeaderTransform>): List<KeyHeaderTransform> {
     val key = try {
-        ZkKeyStore.lockingKey(driveId)
+        ZkKeyStore.lockingKey(driveId) ?: return dropped(driveId, transforms, "the drive is no longer zero knowledge")
     } catch (e: FileDecryptionException.NoDriveKey) {
-        null
-    }
-    if (key == null) {
-        Logger.w { "transformKeyHeaders: drive=$driveId is no longer one this device can open: dropped ${transforms.size}" }
-        return emptyList()
+        return dropped(driveId, transforms, "this device holds no key for it")
     }
     // The file key is locked with its own IV in front: another key can't open to it.
-    val current = transforms.filter { transform ->
+    val (current, old) = transforms.partition { transform ->
         try {
             transform.keyHeader.decryptAesToKeyHeader(SecureByteArray(key)).iv.contentEquals(transform.keyHeader.iv)
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Error) {
+            throw e
+        } catch (e: Throwable) {
+            // Throwable: on the web a rejected decrypt arrives as a bare Throwable.
             false
         }
     }
-    if (current.size < transforms.size) {
-        Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size - current.size} made with an old key" }
-    }
+    if (old.isNotEmpty()) dropped(driveId, old, "made with an old key")
     return current
+}
+
+private fun dropped(driveId: Uuid, transforms: List<KeyHeaderTransform>, why: String): List<KeyHeaderTransform> {
+    Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size}: $why" }
+    // The resync after a key change reads these files again: they must be queued again then.
+    SealedKeyHeaders.dropped?.invoke(transforms)
+    return emptyList()
 }
 
 /**

@@ -38,6 +38,7 @@ class KeyHeaderTransformQueue(
 
     init {
         SealedKeyHeaders.sink = { arrived.trySend(it) }
+        SealedKeyHeaders.dropped = { gone -> scope.launch { queuing.withLock { gone.forEach { queued -= it.fileId to it.versionTag } } } }
         scope.launch {
             for (first in arrived) {
                 // A listing hands its files over one by one; a moment's wait fills the rows.

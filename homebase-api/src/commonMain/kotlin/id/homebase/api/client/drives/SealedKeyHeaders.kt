@@ -27,6 +27,10 @@ object SealedKeyHeaders {
     @Volatile
     var sink: ((SealedKeyHeader) -> Unit)? = null
 
+    /** Set by the outbox's queue: transforms dropped before sending, so the next read of their files queues them again. */
+    @Volatile
+    var dropped: ((List<KeyHeaderTransform>) -> Unit)? = null
+
     /** Never fails the read: a transform that can't be made is left to another device. */
     internal suspend fun opened(driveId: Uuid, fileId: Uuid, versionTag: Uuid?, sealed: EncryptedKeyHeader, opened: KeyHeader) {
         val sink = sink ?: return

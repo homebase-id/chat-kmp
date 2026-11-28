@@ -16,6 +16,7 @@ import id.homebase.api.sync.database.DatabaseManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -418,9 +419,12 @@ class DriveSyncManager(
         d.sync()
     }
 
+    // Ended by stop(): a resync waiting on a drive's round mustn't reach the next sign-in's drive.
+    @kotlin.concurrent.Volatile private var resyncs = SupervisorJob(scope.coroutineContext[Job])
+
     /** [resyncDrive] without waiting for the drive's round in progress. */
     fun resyncDriveLater(driveId: Uuid) {
-        scope.launch { resyncDrive(driveId) }
+        scope.launch(resyncs) { resyncDrive(driveId) }
     }
 
     /** Reads [driveId] again from the start: files it couldn't read before may be readable now. */
@@ -450,6 +454,8 @@ class DriveSyncManager(
             "stop() (isRunning before=$_isRunning, driveSyncs.size=${driveSyncs.size})"
         }
         _isRunning = false
+        resyncs.cancel()
+        resyncs = SupervisorJob(scope.coroutineContext[Job])
         val old = driveSyncsMutex.withLock {
             val snapshot = driveSyncs
             driveSyncs = emptyMap()

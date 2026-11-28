@@ -1,7 +1,10 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.ClientException
+import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.storage.SecureStorage
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -30,7 +33,7 @@ object ZkKeyStore {
     // A drive made again has a new key, and the server can't tell a file locked with the old one.
     private val LOCKING_KEY_FRESH = 1.minutes
 
-    // Files locked one after another while the server fails share one failure, not a timeout each.
+    // Files locked one after another while the network fails share one failure, not a timeout each.
     private val FAILED_READ_HOLD = 10.seconds
 
     interface Storage {
@@ -66,6 +69,8 @@ object ZkKeyStore {
     private val saving = SynchronizedObject()
 
     private class SignedOutDuringRead : IllegalStateException("Signed out while the drive keys were read")
+
+    class DriveKeysNotRead(cause: Exception) : Exception("The drive keys couldn't be read from the server: ${cause.message}", cause)
 
     /** Set once per process at startup: [fetchGrant] throws its failure as it is; [resync] doesn't wait. */
     fun useServer(fetchGrant: suspend () -> SecurityContext, resync: (Uuid) -> Unit) {
@@ -128,8 +133,9 @@ object ZkKeyStore {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            failedRead = timeSource.markNow() to e
-            throw e
+            if (e.isTransientNetworkFailure()) failedRead = timeSource.markNow() to e
+            // What the outbox reads as an upload's own permanent answer (a 404, a 400) wasn't the upload's.
+            throw if (e is NotFoundException || e is ClientException) DriveKeysNotRead(e) else e
         }
         failedRead = null
         val changed = openDriveKeys(context, keep = { read == generation })
