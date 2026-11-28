@@ -615,7 +615,7 @@ class PhotoBackupRun(
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             val reason = e.message ?: e::class.simpleName.orEmpty()
             // The drive key is read from the server before a photo is locked: its failure says nothing about the photo.
-            if (e is NetworkException || e is ZkKeyStore.DriveKeysNotRead) ledger.deferForOutage(listOf(row), reason)
+            if (e is NetworkException || (e is ZkKeyStore.DriveKeysNotRead && (e.cause as? Exception)?.isOutage() == true)) ledger.deferForOutage(listOf(row), reason)
             // A full phone fails the write, not the photo; the watcher pauses the run.
             else if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, reason)
         }

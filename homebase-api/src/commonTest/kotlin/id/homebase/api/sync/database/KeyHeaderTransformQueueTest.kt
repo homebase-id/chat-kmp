@@ -28,6 +28,7 @@ class KeyHeaderTransformQueueTest {
     @AfterTest
     fun noSink() {
         SealedKeyHeaders.sink = null
+        SealedKeyHeaders.dropped = null
     }
 
     private val drive = Uuid.random()
@@ -84,6 +85,21 @@ class KeyHeaderTransformQueueTest {
         val queued = db.waiting().single().files.single()
         assertEquals(old.fileId, queued.fileId)
         assertTrue(queued.keyHeader.encryptedAesKey.contentEquals(new.keyHeader.encryptedAesKey), "the new key's transform, not the old one")
+    }
+
+    @Test
+    fun aTransformDroppedBeforeSendingIsQueuedAgainByTheFilesNextRead() = run { db, _ ->
+        val a = transform()
+        val sink = assertNotNull(SealedKeyHeaders.sink)
+        sink(SealedKeyHeader(drive, a))
+        advanceTimeBy(5.seconds)
+        db.outbox.deleteAll()
+        assertNotNull(SealedKeyHeaders.dropped)(drive, listOf(a))
+        advanceTimeBy(1.seconds)
+        sink(SealedKeyHeader(drive, a))
+        advanceTimeBy(5.seconds)
+
+        assertEquals(listOf(listOf(a.fileId)), db.waiting().map { r -> r.files.map { it.fileId } })
     }
 
     @Test

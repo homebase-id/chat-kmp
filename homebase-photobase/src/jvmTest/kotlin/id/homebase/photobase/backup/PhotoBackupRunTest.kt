@@ -8,6 +8,7 @@ import id.homebase.api.crypto.Blake3Hasher
 import id.homebase.api.crypto.PhotoUniqueId
 import id.homebase.api.file.FileOperationsProvider
 import id.homebase.api.sync.database.DatabaseManager
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.core.photobase.PhotobaseProtocol
 import io.ktor.client.request.forms.InputProvider
 import kotlinx.coroutines.CancellationException
@@ -393,6 +394,23 @@ class PhotoBackupRunTest {
         val row = ledger.row("a")!!
         assertEquals(0L, row.attempts)
         assertTrue(row.nextAttemptAt > now)
+    }
+
+    @Test
+    fun aKeyReadTheServerRefusesCountsAnAttemptAndAServerErrorDoesNot() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        uploader.result = {
+            val answer = if (it.deviceAssetId == "a") ServerException(403, null, null) else ServerException(503, null, null)
+            throw ZkKeyStore.DriveKeysNotRead(answer)
+        }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(1L, ledger.row("a")!!.attempts, "a refusal won't clear by waiting")
+        assertEquals(0L, ledger.row("b")!!.attempts)
     }
 
     @Test

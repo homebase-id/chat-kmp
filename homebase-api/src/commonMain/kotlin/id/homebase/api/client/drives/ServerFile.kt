@@ -202,6 +202,8 @@ internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: L
 
 private fun dropped(driveId: Uuid, transforms: List<KeyHeaderTransform>, why: String): List<KeyHeaderTransform> {
     Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size}: $why" }
+    // A key that comes back makes the same bytes again, which the queue would take for ones already queued.
+    SealedKeyHeaders.dropped?.invoke(driveId, transforms)
     return emptyList()
 }
 

@@ -116,8 +116,9 @@ object ZkKeyStore {
         rereading.withLock { readLocked() }
     } catch (e: CancellationException) {
         throw e
-    } catch (e: SignedOutDuringRead) {
-        Logger.i(tag = TAG) { e.message!! }
+    } catch (e: DriveKeysNotRead) {
+        if (e.cause is SignedOutDuringRead) Logger.i(tag = TAG) { e.cause!!.message!! }
+        else Logger.e(throwable = e, tag = TAG) { e.message!! }
         null
     } catch (e: Exception) {
         Logger.e(throwable = e, tag = TAG) { "The drive keys couldn't be read from the server: ${e.message}" }
@@ -138,7 +139,11 @@ object ZkKeyStore {
             throw e
         }
         failedRead = null
-        val changed = openDriveKeys(context, keep = { read == generation })
+        val changed = try {
+            openDriveKeys(context, keep = { read == generation })
+        } catch (e: SignedOutDuringRead) {
+            throw DriveKeysNotRead(e)
+        }
         // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
         changed.forEach {
             Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }

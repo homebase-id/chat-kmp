@@ -23,6 +23,9 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import id.homebase.api.common.time.UnixTimeUtc
+import id.homebase.api.client.drives.query.QueryBatchCursor
+import id.homebase.api.sync.database.CursorStorage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -150,6 +153,22 @@ class DriveSyncManagerTest {
             )
         )
         return credentialsManager
+    }
+
+    @Test
+    fun aDriveNotMountedHereStillStartsFromTheBeginningAfterAResync() {
+        val db = DatabaseManager({ createInMemoryDatabase() })
+        runTest {
+            val driveId = Uuid.random()
+            CursorStorage(db, driveId).saveCursor(QueryBatchCursor.fromStartPoint(UnixTimeUtc(111_222L)))
+            val manager = buildManager(db, buildCredentials(), EventBus(), backgroundScope)
+
+            manager.resyncDrive(driveId)
+
+            // Its key changed: files read without it were skipped, and the next mount must read them.
+            assertEquals(null, CursorStorage(db, driveId).loadCursor())
+        }
+        db.close()
     }
 
     @Test
