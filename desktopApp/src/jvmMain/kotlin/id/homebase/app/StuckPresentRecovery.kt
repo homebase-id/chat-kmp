@@ -25,14 +25,15 @@ internal object StuckPresentRecovery {
     internal const val MAX_WAIT_MS = 8_000L
     private const val MAX_FRAME_DEPTH = 3
 
-    // Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
-    internal val onX11 by lazy {
-        hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty() && java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
+    // XWayland only, the case this was proven on. Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
+    internal val onXWayland by lazy {
+        hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty() && !System.getenv("WAYLAND_DISPLAY").isNullOrEmpty() &&
+            java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
     }
 
     // The window only lets go once it's shown again (not while the screen is locked), hence the retry; backing off keeps a long lock from piling up resize events.
     fun recoverWhileStuck(uiRan: CountDownLatch) {
-        if (!onX11) return
+        if (!onXWayland) return
         val pid = ProcessHandle.current().pid()
         var announced = false
         var missingLogged = false
@@ -66,7 +67,7 @@ internal object StuckPresentRecovery {
             } catch (e: VirtualMachineError) {
                 throw e
             } catch (e: Throwable) {
-                if (e.toString() != failure) Logger.e(e, TAG) { "couldn't reach the canvas windows" }
+                if (e.toString() != failure) Logger.e(e, TAG) { "recovery round failed (stuck check or canvas nudge)" }
                 failure = e.toString()
             }
             wait(waitMs)

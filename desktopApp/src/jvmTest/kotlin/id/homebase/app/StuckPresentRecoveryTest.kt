@@ -103,7 +103,7 @@ class StuckPresentRecoveryTest {
 
     @Test
     fun theCanvasWindowsOfThisProcessAreResizedAndRestored() {
-        assumeTrue("needs a real X server", StuckPresentRecovery.onX11 && !GraphicsEnvironment.isHeadless())
+        assumeTrue("needs XWayland", StuckPresentRecovery.onXWayland && !GraphicsEnvironment.isHeadless())
         val pid = ProcessHandle.current().pid()
         lateinit var window: Frame
         EventQueue.invokeAndWait {
