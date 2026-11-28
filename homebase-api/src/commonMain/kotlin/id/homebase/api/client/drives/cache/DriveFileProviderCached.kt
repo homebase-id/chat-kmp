@@ -96,10 +96,10 @@ data class DedicatedThumbCache(
  *
  * Unlike [id.homebase.api.client.profile.PublicProfileProviderCached], this
  * cache has no TTL or `Cache-Control` handling: drive file bytes are
- * immutable at a given `(driveId, fileId, key, chunkStart, chunkLength,
- * version)` tuple (the payload's uid, else lastModified), so the cacheKey itself is version-addressed.
- * A new version lands under a new key, which gets fetched fresh; the old
- * key ages out through LRU eviction.
+ * keyed by `(driveId, fileId, key, chunkStart, chunkLength)`, and each entry's metadata file
+ * holds the [PayloadDescriptor.version] it was fetched for (blank when the writer didn't know
+ * it). A read that knows the version takes any other entry as a miss and replaces it, so the
+ * readers of one payload share one entry and a payload overwritten under its key is re-read.
  *
  * Both DiskCache instances are constructed eagerly. Coil's DiskCache
  * (a Kotlin port of OkHttp's DiskLruCache) is thread-safe by contract,
@@ -263,15 +263,14 @@ class DriveFileProviderCached(
         if (fileId in ephemeralFiles) {
             return delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
         }
-        val cacheKey = buildPayloadCacheKey(
-                driveId, fileId, key, options.chunkStart, options.chunkLength, options.lastModified)
+        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, options.chunkStart, options.chunkLength)
         // The ONE routing decision (#845): range-shaped requests live in the
         // dedicated chunk cache, full-payload reads in the payload LRU. Keeping
         // it here (not per-caller) guarantees prefetch and playback share a
         // cache — split caches would make every seg-0 prefetch a guaranteed
         // playback miss AND pollute the payload LRU.
         val cache = if (options.chunkStart != null) hlsChunkDiskCache else payloadDiskCache
-        return readThrough(cache, cacheKey, payloadSemaphore, "PayloadIO") {
+        return readThrough(cache, cacheKey, payloadSemaphore, "PayloadIO", version = options.lastModified) {
             delegate.getPayloadBytesRawNetwork(driveId, fileId, key, options, onDownloadProgress)
         }
     }
@@ -367,8 +366,8 @@ class DriveFileProviderCached(
         if (fileId in ephemeralFiles) {
             return delegate.streamPayloadDecrypted(driveId, fileId, key, keyHeader, onProgress, lastModified, consume)
         }
-        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null, lastModified)
-        val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())
+        val cacheKey = buildPayloadCacheKey(driveId, fileId, key, null, null)
+        val snapshot = payloadDiskCache.openSnapshot(cacheKey.toDiskKey())?.takeIfHolds(lastModified)
                 ?: return if (cache) {
                     streamIntoCache(driveId, fileId, key, cacheKey, keyHeader, onProgress, lastModified, consume)
                 } else {
@@ -430,7 +429,7 @@ class DriveFileProviderCached(
             }
             val sink = editor?.let { e ->
                 runCatching { fileSystem.sink(e.data).buffer() }.getOrNull()?.takeIf { out ->
-                    runCatching { out.writeEntryHeader(200, body.contentType, body.encrypted) }
+                    runCatching { e.stamp(lastModified); out.writeEntryHeader(200, body.contentType, body.encrypted) }
                             .onFailure { runCatching { out.close() } }
                             .isSuccess
                 } ?: run {
@@ -491,10 +490,11 @@ class DriveFileProviderCached(
     private fun readCachedOrLog(
             cache: DiskCache,
             cacheKey: String,
-            logTag: String
+            logTag: String,
+            version: Long? = null,
     ): ByteApiResponse? {
         return try {
-            cache.openSnapshot(cacheKey.toDiskKey())?.use { snap ->
+            cache.openSnapshot(cacheKey.toDiskKey())?.takeIfHolds(version)?.use { snap ->
                 readBytesResponse(snap.data.toString())
             }
         } catch (e: CancellationException) {
@@ -518,18 +518,19 @@ class DriveFileProviderCached(
             semaphore: Semaphore,
             logTag: String,
             cancelWhenUnwatched: Boolean = false,
+            version: Long? = null,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
         while (true) {
-            if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
-            readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
+            if (notFoundKey(cacheKey, version) in notFoundCache) return ByteApiResponse.EMPTY_404
+            readCachedOrLog(cache, cacheKey, logTag, version)?.let { return it }
 
             val startedGeneration: Int
             val entry = inFlightMutex.withLock {
                 startedGeneration = generation
                 val entry = inFlight[cacheKey] ?: InFlight(
                     fetchScope.async(start = CoroutineStart.LAZY) {
-                        fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, fetch)
+                        fetchAndStore(cache, cacheKey, semaphore, logTag, startedGeneration, version, fetch)
                     },
                     cancelWhenUnwatched,
                 ).also { inFlight[cacheKey] = it }
@@ -547,6 +548,9 @@ class DriveFileProviderCached(
         }
     }
 
+    // A 404 for one version of a payload says nothing about another under the same key.
+    private fun notFoundKey(cacheKey: String, version: Long?) = version?.let { "$cacheKey@$it" } ?: cacheKey
+
     private suspend fun leave(cacheKey: String, entry: InFlight) = inFlightMutex.withLock {
         entry.waiters--
         if (entry.waiters == 0 && entry.cancelWhenUnwatched && !entry.fetch.isCompleted) {
@@ -561,12 +565,14 @@ class DriveFileProviderCached(
             semaphore: Semaphore,
             logTag: String,
             startedGeneration: Int,
+            version: Long?,
             fetch: suspend () -> ByteApiResponse
     ): ByteApiResponse {
         val self = currentCoroutineContext()[Job]
+        val notFoundKey = notFoundKey(cacheKey, version)
         try {
-            if (cacheKey in notFoundCache) return ByteApiResponse.EMPTY_404
-            readCachedOrLog(cache, cacheKey, logTag)?.let { return it }
+            if (notFoundKey in notFoundCache) return ByteApiResponse.EMPTY_404
+            readCachedOrLog(cache, cacheKey, logTag, version)?.let { return it }
 
             return semaphore.withPermit {
                 try {
@@ -576,15 +582,15 @@ class DriveFileProviderCached(
                     }
                     if (generation == startedGeneration) {
                         beforeCacheWrite?.invoke()
-                        writeToDiskCache(cache, cacheKey, logTag, result)
+                        writeToDiskCache(cache, cacheKey, logTag, result, version)
                         removeIfCleared(cache, cacheKey, startedGeneration)
                     }
                     result
                 } catch (e: NotFoundException) {
                     if (generation == startedGeneration) {
-                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + cacheKey }
+                        notFoundCacheMutex.withLock { notFoundCache = notFoundCache + notFoundKey }
                         if (generation != startedGeneration) {
-                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - cacheKey }
+                            notFoundCacheMutex.withLock { notFoundCache = notFoundCache - notFoundKey }
                         }
                     }
                     throw e
@@ -610,8 +616,9 @@ class DriveFileProviderCached(
     // with the KeyHeader from the file header, since no response headers survive a hit.
     internal suspend fun readPayloadThrough(
             cacheKey: String,
+            version: Long? = null,
             fetch: suspend () -> ByteApiResponse
-    ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", fetch = fetch)
+    ): ByteApiResponse = readThrough(payloadDiskCache, cacheKey, payloadSemaphore, "PayloadIO", version = version, fetch = fetch)
 
     internal suspend fun readThumbThrough(
             cacheKey: String,
@@ -679,7 +686,8 @@ class DriveFileProviderCached(
             cache: DiskCache,
             cacheKey: String,
             logTag: String,
-            value: ByteApiResponse
+            value: ByteApiResponse,
+            version: Long? = null,
     ) {
         // Admission fence (#845): an entry above the render limit has no second
         // read in-app, and committing it would make Coil's trimToSize evict every
@@ -694,6 +702,7 @@ class DriveFileProviderCached(
         }
         val editor = cache.openEditor(cacheKey.toDiskKey()) ?: return
         try {
+            editor.stamp(version)
             writeBytesResponse(editor.data.toString(), value)
             editor.commit()
         } catch (e: CancellationException) {
@@ -884,6 +893,7 @@ class DriveFileProviderCached(
                     oldKey = buildPayloadCacheKey(driveId, oldFileId, descriptor.key, null, null),
                     newKey = buildPayloadCacheKey(driveId, newFileId, descriptor.key, null, null),
                     logTag = "PayloadIO",
+                    version = descriptor.version,
             )
             for (thumb in descriptor.thumbnails.orEmpty()) {
                 val w = thumb.pixelWidth ?: continue
@@ -911,11 +921,13 @@ class DriveFileProviderCached(
             oldKey: String,
             newKey: String,
             logTag: String,
+            version: Long? = null,
     ) {
         try {
             val copied = cache.openSnapshot(oldKey.toDiskKey())?.use { snapshot ->
                 val editor = cache.openEditor(newKey.toDiskKey()) ?: return@use false
                 try {
+                    editor.stamp(version)
                     fileSystem.source(snapshot.data).use { source ->
                         fileSystem.sink(editor.data).buffer().use { sink ->
                             sink.writeAll(source)
@@ -956,11 +968,16 @@ class DriveFileProviderCached(
             key: String,
             chunkStart: Long?,
             chunkLength: Long?,
-            // Omitted when null so existing entries keep their keys.
-            lastModified: Long? = null,
-    ): String =
-            listOfNotNull("payload", driveId, fileId, key, chunkStart ?: "full", chunkLength ?: "full", lastModified)
-                    .joinToString(":")
+    ): String = listOf("payload", driveId, fileId, key, chunkStart ?: "full", chunkLength ?: "full").joinToString(":")
+
+    private fun DiskCache.Editor.stamp(version: Long?) = fileSystem.write(metadata) { writeUtf8(version?.toString().orEmpty()) }
+
+    // Closes a snapshot it rejects, so the caller's miss path can open an editor on the same entry.
+    private fun DiskCache.Snapshot.takeIfHolds(version: Long?): DiskCache.Snapshot? {
+        if (version == null || fileSystem.read(metadata) { readUtf8() }.toLongOrNull() == version) return this
+        close()
+        return null
+    }
 
     private fun buildThumbCacheKey(
             driveId: Uuid,

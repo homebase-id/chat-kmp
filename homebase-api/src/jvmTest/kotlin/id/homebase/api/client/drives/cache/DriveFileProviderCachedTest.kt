@@ -739,6 +739,56 @@ class DriveFileProviderCachedTest {
         )
     }
 
+    // A versioned read (the full-size viewer) shares one entry with every other reader of the payload.
+    private fun versioned(version: Long) = PayloadOperationOptions(lastModified = version)
+
+    @Test
+    fun `a sent image is shown full size from its seed, which the rekey stamps with the synced version`() = runTest {
+        nextException = IOException("network must not be reached for a sent image")
+        val optimisticId = Uuid.parse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        val bytes = ByteArray(64) { it.toByte() }
+        provider.cachePayloadBytes(driveId, optimisticId, key, bytes, "image/gif")
+
+        provider.rekeyCachedFile(driveId, optimisticId, fileId, listOf(PayloadDescriptor(key = key, lastModified = 5, uid = 900)))
+
+        assertContentEquals(bytes, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900)).bytes)
+        assertEquals(0, requestCount)
+    }
+
+    @Test
+    fun `copying or saving an image opened full size reuses its copy, offline too`() = runTest {
+        nextBody = ByteArray(48) { 3 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+        nextException = IOException("offline")
+
+        assertContentEquals(ByteArray(48) { 3 }, provider.getPayloadBytesRaw(driveId, fileId, key).bytes)
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `a payload overwritten under its key is fetched again and replaces the one copy`() = runTest {
+        nextBody = ByteArray(48) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+        nextBody = ByteArray(48) { 2 }
+
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(901)).bytes)
+        nextException = IOException("offline")
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key).bytes)
+        assertEquals(2, requestCount)
+    }
+
+    @Test
+    fun `evicting a file drops the copy a versioned read kept`() = runTest {
+        nextBody = ByteArray(48) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+
+        provider.evictFile(driveId, fileId, key)
+        nextBody = ByteArray(48) { 2 }
+
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900)).bytes)
+        assertEquals(2, requestCount)
+    }
+
     @Test
     fun `seeded thumb bytes are served from cache without touching the network`() = runTest {
         nextException = IOException("network must not be reached for a seeded thumb")

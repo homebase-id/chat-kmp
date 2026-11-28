@@ -68,9 +68,9 @@ class PeerFileByGlobalTransitProvider(
         val version = versionQuery(lastModified)
         val remotePath = "/drives/$driveId/files/by-gtid/$globalTransitId/payload/$payloadKey$version"
         val peerUrl = apiUrl(creds.domain, "/peer/$peer$remotePath")
-        val cacheKey = peerCacheKey("payload", peer, driveId, globalTransitId, payloadKey, lastModified)
+        val cacheKey = peerCacheKey("payload", peer, driveId, globalTransitId, payloadKey)
         val response = try {
-            driveCache.readPayloadThrough(cacheKey) {
+            driveCache.readPayloadThrough(cacheKey, lastModified) {
                 fetchViaCdnOrPeer(
                     peer, remotePath, peerUrl, creds.accessToken,
                     PayloadSizePolicy.RENDER_LIMIT_BYTES, onDownloadProgress,

@@ -102,14 +102,14 @@ class DriveFileProviderCachedInFlightTest {
                 gate.await()
                 response()
             }
-            val first = launch(Dispatchers.Default) { provider.readPayloadThrough("k", fetch) }
+            val first = launch(Dispatchers.Default) { provider.readPayloadThrough("k", fetch = fetch) }
             started.await()
             first.cancelAndJoin()
-            val second = async(Dispatchers.Default) { provider.readPayloadThrough("k", fetch) }
+            val second = async(Dispatchers.Default) { provider.readPayloadThrough("k", fetch = fetch) }
             gate.complete(Unit)
 
             assertContentEquals(bytes, second.await().bytes)
-            assertContentEquals(bytes, provider.readPayloadThrough("k", fetch).bytes)
+            assertContentEquals(bytes, provider.readPayloadThrough("k", fetch = fetch).bytes)
             assertEquals(1, fetches.get())
         }
     }
