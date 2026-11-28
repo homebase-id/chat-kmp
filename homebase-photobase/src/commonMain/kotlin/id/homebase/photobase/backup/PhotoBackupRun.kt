@@ -3,7 +3,9 @@ package id.homebase.photobase.backup
 import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
+import id.homebase.api.client.NetworkException
 import id.homebase.api.client.ServerException
+import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.sync.database.DeviceBackupAsset
 import kotlinx.coroutines.CancellationException
@@ -612,8 +614,8 @@ class PhotoBackupRun(
         } catch (e: Exception) {
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             val reason = e.message ?: e::class.simpleName.orEmpty()
-            // An unreachable server (the drive key is read before a photo is locked) says nothing about the photo.
-            if (e.isOutage()) ledger.deferForOutage(listOf(row), reason)
+            // The drive key is read from the server before a photo is locked: its failure says nothing about the photo.
+            if (e is NetworkException || e is ZkKeyStore.DriveKeysNotRead) ledger.deferForOutage(listOf(row), reason)
             // A full phone fails the write, not the photo; the watcher pauses the run.
             else if (!probe.state().isPhoneStorageLow) ledger.recordFailure(row, reason)
         }

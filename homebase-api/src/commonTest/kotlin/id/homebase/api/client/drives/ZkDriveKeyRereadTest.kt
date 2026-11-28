@@ -66,7 +66,6 @@ class ZkDriveKeyRereadTest {
     @AfterTest
     fun reset() {
         ZkKeyStore.clear()
-        SealedKeyHeaders.keyChanged = null
         ZkKeyStore.timeSource = TimeSource.Monotonic
         ZkKeyStore.useServer(fetchGrant = { throw unreachable() }, resync = {})
     }
@@ -178,8 +177,9 @@ class ZkDriveKeyRereadTest {
         savedFromAnEarlierRun(oldKey)
         ZkKeyStore.useServer(fetchGrant = { throw ServerException(500, null, null) }, resync = {})
 
-        val failure = assertFailsWith<ServerException> { lockNewFile() }
+        val failure = assertFailsWith<ZkKeyStore.DriveKeysNotRead> { lockNewFile() }
 
+        assertTrue(failure.cause is ServerException)
         assertEquals(false, failure.isTransientNetworkFailure(), "the outbox charges it rather than stall every upload")
     }
 
@@ -187,7 +187,7 @@ class ZkDriveKeyRereadTest {
     fun aServerAnswerIsNotHeldLikeANetworkFailure() = runTest {
         savedFromAnEarlierRun(oldKey)
         ZkKeyStore.useServer(fetchGrant = { reads++; throw ServerException(500, null, null) }, resync = {})
-        assertFailsWith<ServerException> { lockNewFile() }
+        assertFailsWith<ZkKeyStore.DriveKeysNotRead> { lockNewFile() }
 
         ZkKeyStore.useServer(fetchGrant = { reads++; grant(newKey) }, resync = {})
         assertTrue(opensWith(lockNewFile(), newKey), "the server answered: the next file reads again")
@@ -263,12 +263,8 @@ class ZkDriveKeyRereadTest {
         val withOld = transform(oldKey)
         val withNew = transform(newKey)
 
-        val queueForgot = mutableListOf<Uuid>()
-        SealedKeyHeaders.keyChanged = { queueForgot += it }
-
         assertEquals(listOf(withNew), transformsLockedWithCurrentKey(photos, listOf(withOld, withNew)))
         assertEquals(1, reads, "the current key is read before sending")
-        assertEquals(listOf(photos), queueForgot, "the resync's read of the file queues it again with the new key")
 
         server = grant(null)
         clock += 61.seconds

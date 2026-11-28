@@ -1,10 +1,7 @@
 package id.homebase.api.youauth
 
 import co.touchlab.kermit.Logger
-import id.homebase.api.client.ClientException
-import id.homebase.api.client.NotFoundException
 import id.homebase.api.client.drives.FileDecryptionException
-import id.homebase.api.client.drives.SealedKeyHeaders
 import id.homebase.api.client.isTransientNetworkFailure
 import id.homebase.api.crypto.ZkLock
 import id.homebase.api.storage.SecureStorage
@@ -72,6 +69,7 @@ object ZkKeyStore {
 
     private class SignedOutDuringRead : IllegalStateException("Signed out while the drive keys were read")
 
+    /** Any failed key read but a network one, which passes as it is: the server's answer to it isn't the upload's own. */
     class DriveKeysNotRead(cause: Exception) : Exception("The drive keys couldn't be read from the server: ${cause.message}", cause)
 
     /** Set once per process at startup: [fetchGrant] throws its failure as it is; [resync] doesn't wait. */
@@ -135,16 +133,15 @@ object ZkKeyStore {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (e.isTransientNetworkFailure() && read == generation) failedRead = timeSource.markNow() to e
-            // What the outbox reads as an upload's own permanent answer (a 404, a 400) wasn't the upload's.
-            throw if (e is NotFoundException || e is ClientException) DriveKeysNotRead(e) else e
+            if (!e.isTransientNetworkFailure()) throw DriveKeysNotRead(e)
+            synchronized(saving) { if (read == generation) failedRead = timeSource.markNow() to e }
+            throw e
         }
         failedRead = null
         val changed = openDriveKeys(context, keep = { read == generation })
         // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
         changed.forEach {
             Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }
-            SealedKeyHeaders.keyChanged?.invoke(it)
             try {
                 resync(it)
             } catch (e: Exception) {

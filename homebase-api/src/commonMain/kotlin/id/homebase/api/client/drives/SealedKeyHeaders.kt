@@ -27,10 +27,6 @@ object SealedKeyHeaders {
     @Volatile
     var sink: ((SealedKeyHeader) -> Unit)? = null
 
-    /** Set by the outbox's queue: a drive's key changed, so its files' next reads must queue them again with it. */
-    @Volatile
-    var keyChanged: ((driveId: Uuid) -> Unit)? = null
-
     /** Never fails the read: a transform that can't be made is left to another device. */
     internal suspend fun opened(driveId: Uuid, fileId: Uuid, versionTag: Uuid?, sealed: EncryptedKeyHeader, opened: KeyHeader) {
         val sink = sink ?: return

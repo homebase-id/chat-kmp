@@ -28,7 +28,6 @@ class KeyHeaderTransformQueueTest {
     @AfterTest
     fun noSink() {
         SealedKeyHeaders.sink = null
-        SealedKeyHeaders.keyChanged = null
     }
 
     private val drive = Uuid.random()
@@ -79,8 +78,6 @@ class KeyHeaderTransformQueueTest {
         val sink = assertNotNull(SealedKeyHeaders.sink)
         sink(SealedKeyHeader(drive, old))
         advanceTimeBy(5.seconds)
-        assertNotNull(SealedKeyHeaders.keyChanged)(drive)
-        advanceTimeBy(1.seconds)
         sink(SealedKeyHeader(drive, new))
         advanceTimeBy(5.seconds)
 

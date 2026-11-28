@@ -396,6 +396,19 @@ class PhotoBackupRunTest {
     }
 
     @Test
+    fun aLocalReadErrorWhileHandingAPhotoOffStillCountsAnAttempt() = runTest {
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        uploader.result = { throw IOException("the asset's file is gone") }
+        val (run, _) = newRun(uploader)
+
+        run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(1L, ledger.row("a")!!.attempts, "only the server's failures say nothing about the photo")
+    }
+
+    @Test
     fun aPermanentlyUnavailableAssetIsSkippedWithItsReason() = runTest {
         source.next = fullListing(asset("a"), asset("b"))
         val uploader = uploader()
