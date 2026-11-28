@@ -1,6 +1,7 @@
 package id.homebase.app.diagnostics
 
 import co.touchlab.kermit.Logger
+import id.homebase.app.StuckPresentRecovery
 import id.homebase.core.diagnostics.captureMainThreadStackTrace
 import java.awt.EventQueue
 import java.util.concurrent.CountDownLatch
@@ -14,6 +15,7 @@ class EdtHitchMonitor(
     @Volatile private var lastFocusGainMs: Long? = null
     @Volatile private var unreportedFocusGain = false
     private var lastLogMs: Long? = null
+    @Volatile private var uiThread: Thread? = null
 
     fun start() {
         current = this
@@ -33,10 +35,14 @@ class EdtHitchMonitor(
     private fun probeOnce() {
         val acked = CountDownLatch(1)
         val postedAt = nowMs()
-        EventQueue.invokeLater { acked.countDown() }
+        EventQueue.invokeLater {
+            uiThread = Thread.currentThread()
+            acked.countDown()
+        }
         if (acked.await(THRESHOLD_MS, TimeUnit.MILLISECONDS)) return
         // Snapshot while the EDT is still stuck; after the ack it shows idle frames.
         val stack = captureMainThreadStackTrace()
+        if (!acked.await(StuckPresentRecovery.STUCK_MS - THRESHOLD_MS, TimeUnit.MILLISECONDS)) StuckPresentRecovery.releaseIfStuck(uiThread, acked)
         acked.await()
         report(postedAt, nowMs() - postedAt, stack)
     }

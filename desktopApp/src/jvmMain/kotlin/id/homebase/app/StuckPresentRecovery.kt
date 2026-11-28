@@ -8,49 +8,36 @@ import com.sun.jna.Pointer
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.ptr.NativeLongByReference
 import com.sun.jna.ptr.PointerByReference
-import java.awt.EventQueue
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.concurrent.thread
+import id.homebase.core.util.HostOs
+import id.homebase.core.util.hostOs
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
-/**
- * After a monitor reconnects under XWayland, NVIDIA's `glXSwapBuffers` can wait forever for a Present
- * event that never comes, holding AWT's lock, so nothing inside AWT can help. Resizing the app's
- * canvas windows over a separate X connection makes XWayland let the swap return, but only once
- * the window can be shown again (not while the screen is locked), so it is retried until the UI
- * thread runs again.
- */
+/** NVIDIA's swap under XWayland can wait forever for a Present event after a monitor reconnect; a canvas resize from outside AWT releases it. */
 internal object StuckPresentRecovery {
+    const val STUCK_MS = 4_000L
+    const val SWAP_CLASS = "org.jetbrains.skiko.renderer.LinuxOpenGLRendererKt"
+    const val SWAP_METHOD = "swapBuffers"
     private const val TAG = "StuckPresentRecovery"
     private const val CANVAS_WINDOW_NAME = "sun-awt-X11-XCanvasPeer"
     private const val XA_CARDINAL = 6L
     private const val RETRY_MS = 2_000L
 
-    private val onX11 = System.getProperty("os.name").startsWith("Linux") && !System.getenv("DISPLAY").isNullOrEmpty()
-    private val recovering = AtomicBoolean(false)
+    internal val onX11 = hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty()
 
-    fun onMainThreadBlocked() {
-        val uiStack = Thread.getAllStackTraces().entries.firstOrNull { it.key.name.startsWith("AWT-EventQueue") }?.value
-        if (!onX11 || !isStuckInSwap(uiStack) || !recovering.compareAndSet(false, true)) return
-        val responded = AtomicBoolean(false)
-        // Posting doesn't take AWT's lock, so it works while the swap holds it.
-        EventQueue.invokeLater { responded.set(true) }
-        Logger.e(tag = TAG) { "UI thread stuck in Skiko swapBuffers; resizing its canvas windows every $RETRY_MS ms until it runs again" }
-        thread(name = TAG, isDaemon = true) {
-            try {
-                val start = System.nanoTime()
-                val rounds = nudgeUntil(responded, nudge = { nudgeCanvases(ProcessHandle.current().pid()) }, pause = { Thread.sleep(RETRY_MS) })
-                Logger.e(tag = TAG) { "UI thread running again after $rounds nudge round(s), ${(System.nanoTime() - start) / 1_000_000} ms" }
-            } finally {
-                recovering.set(false)
-            }
-        }
+    /** Returns at once unless [ui] is stuck in Skiko's swap; otherwise nudges until [uiRan], which the window only allows once it's shown again. */
+    fun releaseIfStuck(ui: Thread?, uiRan: CountDownLatch) {
+        if (!onX11 || ui == null || !isStuckInSwap(ui.stackTrace)) return
+        Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows every $RETRY_MS ms until it runs again" }
+        val pid = ProcessHandle.current().pid()
+        val rounds = nudgeUntil(uiRan, RETRY_MS) { nudgeCanvases(pid) }
+        Logger.e(tag = TAG) { "UI thread running again after $rounds nudge round(s)" }
     }
 
-    /** Nudges, then pauses, until [responded]; a failing nudge is logged once and retried. The rounds run. */
-    internal fun nudgeUntil(responded: AtomicBoolean, nudge: () -> Int, pause: () -> Unit): Int {
+    internal fun nudgeUntil(uiRan: CountDownLatch, retryMs: Long, nudge: () -> Unit): Int {
         var rounds = 0
         var failure: String? = null
-        while (!responded.get()) {
+        while (uiRan.count > 0) {
             try {
                 nudge()
             } catch (e: Exception) {
@@ -58,20 +45,21 @@ internal object StuckPresentRecovery {
                 failure = e.message
             }
             rounds++
-            pause()
+            uiRan.await(retryMs, TimeUnit.MILLISECONDS)
         }
         return rounds
     }
 
-    internal fun isStuckInSwap(uiStack: Array<StackTraceElement>?): Boolean =
-        uiStack?.firstOrNull()?.let { it.className == "org.jetbrains.skiko.renderer.LinuxOpenGLRendererKt" && it.methodName == "swapBuffers" } == true
+    internal fun isStuckInSwap(uiStack: Array<StackTraceElement>): Boolean =
+        uiStack.firstOrNull()?.let { it.className == SWAP_CLASS && it.methodName == SWAP_METHOD } == true
 
-    /** Shrinks each of [pid]'s AWT canvas windows by a pixel and restores it; how many there were. */
+    /** How many of [pid]'s AWT canvas windows it shrank by a pixel and restored. */
     internal fun nudgeCanvases(pid: Long): Int {
         val x = Xlib.INSTANCE
         val display = x.XOpenDisplay(null) ?: error("can't open the X display")
         try {
             val pidAtom = x.XInternAtom(display, "_NET_WM_PID", 1)
+            if (pidAtom.toLong() == 0L) return 0
             val canvases = x.children(display, x.XDefaultRootWindow(display))
                 .filter { x.windowPid(display, it, pidAtom) == pid }
                 .flatMap { x.canvasesUnder(display, it) }
@@ -117,7 +105,6 @@ internal object StuckPresentRecovery {
     }
 
     private fun Xlib.windowPid(display: Pointer, window: NativeLong, pidAtom: NativeLong): Long? {
-        if (pidAtom.toLong() == 0L) return null
         val prop = PointerByReference()
         val items = NativeLongByReference()
         val status = XGetWindowProperty(
