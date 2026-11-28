@@ -13,6 +13,7 @@ import id.homebase.core.config.emailLabeledDrive
 import id.homebase.core.config.targetDriveAccessRequest
 import id.homebase.core.config.vaultLabeledDrive
 import id.homebase.core.filesync.FilesyncProtocol
+import id.homebase.core.photobase.PhotobaseProtocol
 import id.homebase.core.settings.UserPreferences
 import io.ktor.http.formUrlEncode
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,11 @@ val FilesyncPrivateDrive = PrivateDrive(
 val EmailPrivateDrive = PrivateDrive(
     emailLabeledDrive.drive.alias,
     listOf("redeal" to "drive-private", "drive" to emailLabeledDrive.drive.alias.toString(), "model" to "private"),
+)
+
+val PhotosPrivateDrive = PrivateDrive(
+    PhotobaseProtocol.DriveAlias,
+    listOf("redeal" to "drive-private", "drive" to PhotobaseProtocol.DriveAlias.toString(), "model" to "private"),
 )
 
 /** [needsSignIn]: the drive is private and this device signed in before it could get the key. [offerMakePrivate]: developer menu only, while it isn't private. */

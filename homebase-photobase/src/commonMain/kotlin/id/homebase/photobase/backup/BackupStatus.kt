@@ -4,6 +4,8 @@ enum class BackupPauseReason {
     BackupOff,
     NoLibraryAccess,
     SignedOut,
+    /** The Photos drive is private and this device has no key for it: only a sign-in again brings one. */
+    NeedsSignIn,
     NoNetwork,
     WaitingForWifi,
     WaitingForCharging,
@@ -72,7 +74,7 @@ enum class BackupIndicator { Working, UpToDate, Paused, NeedsAttention }
 fun backupIndicatorOf(status: BackupStatus, backupEnabled: Boolean): BackupIndicator? = when {
     !backupEnabled -> null
     status.pauseReason == BackupPauseReason.StorageFull || status.pauseReason == BackupPauseReason.NoLibraryAccess ||
-        status.pauseReason == BackupPauseReason.PhoneStorageLow ->
+        status.pauseReason == BackupPauseReason.PhoneStorageLow || status.pauseReason == BackupPauseReason.NeedsSignIn ->
         BackupIndicator.NeedsAttention
     status.isRunning || status.uploadingCount > 0 -> BackupIndicator.Working
     status.failedCount > 0 -> BackupIndicator.NeedsAttention

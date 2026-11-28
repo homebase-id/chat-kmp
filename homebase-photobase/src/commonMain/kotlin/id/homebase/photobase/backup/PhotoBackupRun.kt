@@ -4,6 +4,7 @@ import id.homebase.api.video.BackgroundVideoWork
 import id.homebase.api.video.VideoWorkYieldedException
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.NetworkException
+import id.homebase.api.client.drives.FileDecryptionException
 import id.homebase.api.client.ServerException
 import id.homebase.api.youauth.ZkKeyStore
 import id.homebase.api.client.isTransientNetworkFailure
@@ -73,6 +74,7 @@ class PhotoBackupRun(
     private val auth: BackupAuth,
     private val scheduler: BackupScheduler,
     private val isStorageFull: suspend (interactive: Boolean) -> Boolean,
+    private val driveKey: BackupDriveKey = BackupDriveKey.Held,
 ) {
     private val mutex = Mutex()
     private val videoPrepare = Mutex()
@@ -320,10 +322,12 @@ class PhotoBackupRun(
             else -> backupPauseReason(current, deviceState, interactive)
                 ?: BackupPauseReason.StorageFull.takeIf { isStorageFull(false) }
         }
-        if (localPause != null) {
+        // Without the key every photo would be exported, hashed and encrypted only to fail. A sign-in again wakes the run.
+        val pause = localPause ?: BackupPauseReason.NeedsSignIn.takeIf { driveKey.isMissing }
+        if (pause != null) {
             if (!signedIn.await()) return@coroutineScope paused(BackupPauseReason.SignedOut)
             scheduler.rearm(current)
-            return@coroutineScope paused(localPause)
+            return@coroutineScope paused(pause)
         }
 
         // Limited access can grow without the change counters saying so, and a new album scope brings in old assets.
@@ -351,6 +355,16 @@ class PhotoBackupRun(
             hashing.cancelAndJoin()
             return@coroutineScope paused(BackupPauseReason.SignedOut)
         }
+        // A saved key can be out of date; null: the server couldn't say, and the hand-off waits for it.
+        when (driveKey.isMissingNow()) {
+            true -> {
+                hashing.cancelAndJoin()
+                scheduler.rearm(current)
+                return@coroutineScope paused(BackupPauseReason.NeedsSignIn)
+            }
+            false -> ledger.requeueMissingKey()
+            null -> Unit
+        }
         scheduler.rearm(current)
         if (isStorageFull(interactive)) {
             hashing.cancelAndJoin()
@@ -362,10 +376,16 @@ class PhotoBackupRun(
         reconcileHandedOff()
         refreshStatus()
 
-        val finished = withTimeoutOrNull(request.budget.remaining) {
-            pipeline(request, maxVideoBytes, oneVideo, newestFirst, hashing)
-            true
-        } ?: false
+        val finished = try {
+            withTimeoutOrNull(request.budget.remaining) {
+                pipeline(request, maxVideoBytes, oneVideo, newestFirst, hashing)
+                true
+            } ?: false
+        } catch (e: DriveKeyLost) {
+            hashing.cancelAndJoin()
+            scheduler.rearm(settings())
+            return@coroutineScope paused(BackupPauseReason.NeedsSignIn)
+        }
         uploader.kick()
         val settled = timed(BackupStage.Settle) { awaitUploadsSettled(request) }
 
@@ -612,6 +632,8 @@ class PhotoBackupRun(
         } catch (e: VideoWorkYieldedException) {
             ledger.deferForOtherVideoWork(row)
         } catch (e: Exception) {
+            // Every other photo would fail the same way: the run stops, and the photo isn't charged.
+            if (e.isMissingDriveKey()) throw DriveKeyLost(e)
             Logger.w(tag = TAG, throwable = e) { "asset ${row.deviceAssetId} failed in state ${row.state}" }
             val reason = e.message ?: e::class.simpleName.orEmpty()
             // The drive key is read from the server before a photo is locked: its failure says nothing about the photo.
@@ -670,6 +692,10 @@ class PhotoBackupRun(
         val WORKER_BUDGET: Duration = 9.minutes
     }
 }
+
+private class DriveKeyLost(cause: Exception) : Exception("the Photos drive key is missing", cause)
+
+private fun Throwable.isMissingDriveKey(): Boolean = generateSequence(this) { it.cause }.take(8).any { it is FileDecryptionException.NoDriveKey }
 
 private fun Exception.isOutage(): Boolean =
     isTransientNetworkFailure() || (this is ServerException && (status >= 500 || status == 408 || status == 429))

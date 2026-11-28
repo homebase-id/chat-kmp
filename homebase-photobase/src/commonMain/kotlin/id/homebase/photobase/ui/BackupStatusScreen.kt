@@ -44,6 +44,7 @@ import id.homebase.resources.photobase_status_failures
 import id.homebase.resources.photobase_status_last_success
 import id.homebase.resources.photobase_status_never
 import id.homebase.resources.photobase_status_paused_auth
+import id.homebase.resources.photobase_status_paused_sign_in
 import id.homebase.resources.photobase_status_paused_battery
 import id.homebase.resources.photobase_status_paused_charging
 import id.homebase.resources.photobase_status_paused_library
@@ -74,7 +75,7 @@ import kotlin.time.Instant
 import org.jetbrains.compose.resources.stringResource
 
 @Composable
-fun BackupStatusScreen(viewModel: BackupSettingsViewModel, onBack: () -> Unit) {
+fun BackupStatusScreen(viewModel: BackupSettingsViewModel, onBack: () -> Unit, banner: @Composable () -> Unit = {}) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     Scaffold(
         topBar = {
@@ -88,6 +89,7 @@ fun BackupStatusScreen(viewModel: BackupSettingsViewModel, onBack: () -> Unit) {
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            banner()
             BackupStatusContent(uiState.status, uiState.settings.enabled) {
                 viewModel.onAction(BackupSettingsUiAction.RetryFailures)
             }
@@ -275,6 +277,7 @@ internal fun backupStatusSummary(status: BackupStatus, backupEnabled: Boolean): 
             BackupPauseReason.BackupOff -> MR.string.photobase_status_paused_off
             BackupPauseReason.NoLibraryAccess -> MR.string.photobase_status_paused_library
             BackupPauseReason.SignedOut -> MR.string.photobase_status_paused_auth
+            BackupPauseReason.NeedsSignIn -> MR.string.photobase_status_paused_sign_in
             BackupPauseReason.NoNetwork -> MR.string.photobase_status_paused_network
             BackupPauseReason.WaitingForWifi -> MR.string.photobase_status_paused_wifi
             BackupPauseReason.WaitingForCharging -> MR.string.photobase_status_paused_charging

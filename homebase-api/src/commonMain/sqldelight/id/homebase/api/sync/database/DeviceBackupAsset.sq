@@ -117,6 +117,12 @@ UPDATE DeviceBackupAsset
 SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL
 WHERE state = :failedState AND (lastError IS NULL OR lastError NOT IN :keep);
 
+requeueByErrorPrefix:
+UPDATE DeviceBackupAsset
+SET state = CASE WHEN state = :failedState THEN (CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END) ELSE state END,
+    attempts = 0, nextAttemptAt = 0, lastError = NULL
+WHERE lastError LIKE :prefix || '%';
+
 recheckDone:
 UPDATE DeviceBackupAsset
 SET state = CASE WHEN uniqueId IS NULL THEN :newState ELSE :hashedState END, attempts = 0, nextAttemptAt = 0, lastError = NULL

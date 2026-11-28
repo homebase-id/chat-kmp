@@ -327,6 +327,12 @@ class BackupLedger(
         changed()
     }
 
+    /** Photos that failed before a run stopped for a missing drive key go back to pending, their count reset. */
+    suspend fun requeueMissingKey() {
+        store.requeueByErrorPrefix(MISSING_KEY_ERROR, BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code)
+        changed()
+    }
+
     /** [alsoCrashed]: the user asked, so what ended the app gets another go too, with its count reset. */
     suspend fun requeueFailed(alsoCrashed: Boolean = false) {
         if (alsoCrashed) store.clearAllPrepareStarts()
@@ -371,6 +377,8 @@ class BackupLedger(
         private const val SINGLE_READ_LIMIT = 500
         const val MAX_ATTEMPTS = 10
         private const val NOT_ON_DEVICE = "not on this device"
+        // FileDecryptionException.NoDriveKey's message, as phones before the NeedsSignIn pause recorded it.
+        private const val MISSING_KEY_ERROR = "This device holds no key for the zero-knowledge drive"
         const val CRASHED_PREPARING = "the app stopped while preparing it"
         private val NOT_ON_DEVICE_RETRY = 6.hours
         private val VIDEO_YIELD_RETRY = 1.minutes

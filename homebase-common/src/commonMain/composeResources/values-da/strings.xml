@@ -2484,6 +2484,9 @@
     <string name="feed_settings_show_icon">Vis Feed i navigationslinjen</string>
     <string name="filesync_settings_open">Åbn Drive</string>
     <string name="photobase_settings_open">Åbn Photos</string>
+    <string name="photobase_status_paused_sign_in">På pause: log ind igen for at tage backup til dit private Photos-drev</string>
+    <string name="photobase_sign_in_again_title">Log ind igen for at tage backup af dine billeder</string>
+    <string name="photobase_sign_in_again_body">Dit Photos-drev er privat, og denne enhed skal logge ind én gang til for at få nøglen. Intet på denne enhed bliver slettet.</string>
     <string name="webdrop_settings_open">Åbn WebDrop</string>
     <string name="calls_settings_open">Åbn Opkald</string>
     <string name="location_settings_open">Åbn Lokation</string>

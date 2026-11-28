@@ -3449,6 +3449,9 @@
     <string name="photobase_status_paused_off">Backup is off</string>
     <string name="photobase_status_paused_library">Paused: no access to your photos</string>
     <string name="photobase_status_paused_auth">Paused: signed out</string>
+    <string name="photobase_status_paused_sign_in">Paused: sign in again to back up to your private Photos drive</string>
+    <string name="photobase_sign_in_again_title">Sign in again to back up your photos</string>
+    <string name="photobase_sign_in_again_body">Your Photos drive is private, and this device needs one more sign-in to get its key. Nothing on this device is deleted.</string>
     <string name="photobase_status_paused_network">Paused: no network</string>
     <string name="photobase_status_paused_wifi">Paused: waiting for Wi-Fi</string>
     <string name="photobase_status_paused_charging">Paused: waiting for the charger</string>

@@ -2,6 +2,7 @@ package id.homebase.photobase.backup
 
 import id.homebase.api.client.NetworkException
 import id.homebase.api.client.ServerException
+import id.homebase.api.client.drives.FileDecryptionException
 import id.homebase.api.client.eventbus.BackendEvent
 import id.homebase.api.client.eventbus.EventBus
 import id.homebase.api.crypto.Blake3Hasher
@@ -50,6 +51,9 @@ class PhotoBackupRunTest {
     private val dedupeCalls = mutableListOf<List<Uuid>>()
     private var dedupeFailure: Exception? = null
     private var storageFull = false
+    private var keyMissing = false
+    private var keyMissingNow: Boolean? = false
+    private var rearms = 0
     private var signedIn = CompletableDeferred(true)
     private val ranWithWorkLeft = mutableListOf<Boolean>()
     private var stuckAlerts = 0
@@ -90,12 +94,16 @@ class PhotoBackupRunTest {
             probe = probe,
             auth = { signedIn.await() },
             scheduler = object : BackupScheduler {
-                override fun rearm(settings: BackupSettings) = Unit
+                override fun rearm(settings: BackupSettings) { rearms++ }
                 override fun onBackupRan(workLeft: Boolean) { ranWithWorkLeft += workLeft }
                 override fun continueSoon(settings: BackupSettings) { continuations++ }
                 override suspend fun alertBackupStuck() { stuckAlerts++ }
             },
             isStorageFull = { storageFull },
+            driveKey = object : BackupDriveKey {
+                override val isMissing get() = keyMissing
+                override suspend fun isMissingNow() = keyMissingNow
+            },
         )
         return run to results
     }
@@ -106,6 +114,89 @@ class PhotoBackupRunTest {
     private fun TestScope.uploader(sendTime: Duration = 1.seconds) = FakeUploader(eventBus, backgroundScope, sendTime)
 
     private suspend fun state(id: String) = ledger.row(id)?.state
+
+    @Test
+    fun withoutTheDriveKeyNothingIsHashedSentOrCounted() = runTest {
+        keyMissing = true
+        source.next = fullListing(asset("a"), asset("b"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        val outcome = run.run(request())
+        advanceUntilIdle()
+
+        assertEquals(BackupRunOutcome.Paused, outcome)
+        assertEquals(BackupPauseReason.NeedsSignIn, run.status.value.pauseReason)
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+        assertEquals(0L, ledger.counts().failed)
+        assertTrue(rearms > 0, "rearmed as the other pauses are")
+    }
+
+    @Test
+    fun everyTriggerPausesTheSameWayWhileTheKeyIsMissing() = runTest {
+        keyMissing = true
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        for (trigger in listOf(BackupTrigger.Foreground, BackupTrigger.UserRequested, BackupTrigger.BackgroundRefresh, BackupTrigger.Push)) {
+            assertEquals(BackupRunOutcome.Paused, run.run(request(trigger = trigger)), "$trigger")
+            assertEquals(BackupPauseReason.NeedsSignIn, run.status.value.pauseReason)
+        }
+        advanceUntilIdle()
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+    }
+
+    @Test
+    fun aSavedKeyTheServerNoLongerCarriesPausesBeforeAnythingIsSent() = runTest {
+        keyMissingNow = true
+        source.next = fullListing(asset("a"))
+        val uploader = uploader()
+        val (run, _) = newRun(uploader)
+
+        assertEquals(BackupRunOutcome.Paused, run.run(request()))
+        advanceUntilIdle()
+
+        assertEquals(BackupPauseReason.NeedsSignIn, run.status.value.pauseReason)
+        assertTrue(dedupeCalls.isEmpty())
+        assertTrue(uploader.handedOff.isEmpty())
+    }
+
+    @Test
+    fun onceTheKeyArrivesTheNextRunBacksUpAndRetriesPhotosThatFailedWithoutIt() = runTest {
+        source.next = fullListing(asset("a"), asset("b"))
+        val failing = uploader()
+        failing.result = { throw IllegalStateException("not yet") }
+        newRun(failing).first.run(request())
+        advanceUntilIdle()
+        // As phones recorded it before the pause: every attempt charged, then FAILED.
+        repeat(10) { ledger.row("a")?.let { ledger.recordFailure(it, FileDecryptionException.NoDriveKey(PhotobaseProtocol.DriveAlias).message!!) } }
+        assertEquals(BackupState.Failed.code, state("a"))
+
+        val uploader = uploader()
+        newRun(uploader).first.run(request())
+        advanceUntilIdle()
+
+        assertTrue("a" in uploader.handedOff, "put back to pending")
+        assertEquals(BackupState.Done.code, state("a"))
+    }
+
+    @Test
+    fun aKeyLostInTheMiddleOfARunStopsItWithoutChargingThePhoto() = runTest {
+        source.next = fullListing(asset("a"), asset("b"), asset("c"))
+        val uploader = uploader()
+        uploader.result = { throw FileDecryptionException.NoDriveKey(PhotobaseProtocol.DriveAlias) }
+        val (run, _) = newRun(uploader)
+
+        assertEquals(BackupRunOutcome.Paused, run.run(request()))
+        advanceUntilIdle()
+
+        assertEquals(BackupPauseReason.NeedsSignIn, run.status.value.pauseReason)
+        assertTrue(listOf("a", "b", "c").all { ledger.row(it)!!.attempts == 0L })
+        assertTrue(uploader.handedOff.size <= 1, "it doesn't go on to the next photo")
+    }
 
     @Test
     fun everythingEndsUpBackedUp() = runTest {

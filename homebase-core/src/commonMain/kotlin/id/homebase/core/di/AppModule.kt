@@ -255,6 +255,12 @@ import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import kotlinx.coroutines.flow.map
+import id.homebase.photobase.backup.BackupDriveKey
+import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.youauth.ZkKeyStore
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
@@ -1819,10 +1825,32 @@ private fun Scope.photoBackupController(): PhotoBackupController {
                 if (refresh) storageQuota.refresh()
                 storageQuota.state.value.isFull
             },
+            driveKey = PhotosDriveKey,
         )
     }
     val configFile = PhotobaseConfigFile(get())
-    return PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+    val controller = PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+    // A sign-in again brings the key in a later grant read, after the foreground run already paused for it.
+    scope.launch {
+        ZkKeyStore.lockedDrives.map { PhotobaseProtocol.DriveAlias in it }.distinctUntilChanged().drop(1)
+            .collect { locked -> if (!locked) controller.onDriveKeyArrived() }
+    }
+    return controller
+}
+
+private object PhotosDriveKey : BackupDriveKey {
+    override val isMissing get() = PhotobaseProtocol.DriveAlias in ZkKeyStore.lockedDrives.value
+
+    override suspend fun isMissingNow(): Boolean? = try {
+        ZkKeyStore.lockingKey(PhotobaseProtocol.DriveAlias)
+        false
+    } catch (e: FileDecryptionException.NoDriveKey) {
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        null
+    }
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds

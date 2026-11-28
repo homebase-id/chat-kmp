@@ -56,6 +56,22 @@ fun interface BackupAuth {
     suspend fun awaitSignedIn(): Boolean
 }
 
+/** Whether this device holds the key of the Photos drive, which every photo is locked with when it is private. */
+interface BackupDriveKey {
+    /** From what this device saved, without asking the server. */
+    val isMissing: Boolean
+
+    /** Read from the server when what was saved is over a minute old; null when that read failed. */
+    suspend fun isMissingNow(): Boolean?
+
+    companion object {
+        val Held = object : BackupDriveKey {
+            override val isMissing = false
+            override suspend fun isMissingNow() = false
+        }
+    }
+}
+
 /** Arms and cancels the platform's triggers. A run re-arms them when it starts and when it ends. */
 fun interface BackupScheduler {
     fun rearm(settings: BackupSettings)
