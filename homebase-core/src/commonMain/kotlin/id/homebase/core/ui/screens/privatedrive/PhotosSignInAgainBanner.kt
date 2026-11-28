@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -20,12 +21,13 @@ import org.koin.compose.viewmodel.koinViewModel
 fun PhotosSignInAgainBanner(viewModel: PhotosSignInAgainViewModel = koinViewModel()) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val signIn = rememberSignInAgainLauncher(viewModel::onSignInCallback)
+    LaunchedEffect(viewModel, signIn) { viewModel.openSignIn.collect(signIn::open) }
     if (!uiState.needsSignIn) return
     SignInAgainBanner(
         title = stringResource(MR.string.photobase_sign_in_again_title),
         body = stringResource(MR.string.photobase_sign_in_again_body),
         blocked = signIn.blockedUrl != null,
-        onSignIn = { signIn.blockedUrl?.let(signIn::open) ?: viewModel.signInAgain(signIn::open) },
+        onSignIn = { signIn.blockedUrl?.let(signIn::open) ?: viewModel.signInAgain() },
     )
     if (uiState.failed) {
         Text(

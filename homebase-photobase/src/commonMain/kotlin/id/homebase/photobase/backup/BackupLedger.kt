@@ -328,7 +328,7 @@ class BackupLedger(
         changed()
     }
 
-    /** Photos that failed for a missing drive key, before a run paused for it instead, go back to pending. */
+    /** Photos an older version marked failed for a missing drive key go back to pending. */
     suspend fun requeueMissingKey() {
         val requeued = store.requeueFailedByErrorPrefix(
             BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code, FileDecryptionException.NoDriveKey.MESSAGE_PREFIX,

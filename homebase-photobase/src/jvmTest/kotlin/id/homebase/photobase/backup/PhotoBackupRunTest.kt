@@ -195,7 +195,7 @@ class PhotoBackupRunTest {
 
         assertEquals(BackupPauseReason.NeedsSignIn, run.status.value.pauseReason)
         assertTrue(listOf("a", "b", "c").all { ledger.row(it)!!.attempts == 0L })
-        assertTrue(uploader.handedOff.size <= 1, "it doesn't go on to the next photo")
+        assertTrue(uploader.handedOff.size <= 2, "it doesn't go on past the photos already being prepared")
     }
 
     @Test

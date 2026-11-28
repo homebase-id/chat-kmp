@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.privatedrive.PhotosPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -17,13 +21,17 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
     private val _uiState = MutableStateFlow(PhotosSignInAgainUiState(needsSignIn = optIn.currentState(PhotosPrivateDrive).needsSignIn))
     val uiState: StateFlow<PhotosSignInAgainUiState> = _uiState.asStateFlow()
 
+    // Opened by the composition showing now, not one from before a rotation.
+    private val _openSignIn = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val openSignIn: SharedFlow<String> = _openSignIn.asSharedFlow()
+
     init {
         viewModelScope.launch { optIn.state(PhotosPrivateDrive).collect { state -> _uiState.update { it.copy(needsSignIn = state.needsSignIn) } } }
     }
 
-    fun signInAgain(open: (String) -> Unit) {
+    fun signInAgain() {
         _uiState.update { it.copy(failed = false) }
-        viewModelScope.launch { optIn.signInAgain(open = { open(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
+        viewModelScope.launch { optIn.signInAgain(open = { _openSignIn.emit(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
     }
 
     fun onSignInCallback(url: String) {
