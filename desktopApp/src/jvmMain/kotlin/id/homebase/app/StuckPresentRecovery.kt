@@ -21,8 +21,8 @@ internal object StuckPresentRecovery {
     private const val TAG = "StuckPresentRecovery"
     private const val CANVAS_WINDOW_NAME = "sun-awt-X11-XCanvasPeer"
     private const val XA_CARDINAL = 6L
-    internal const val FIRST_WAIT_MS = 1_000L
-    internal const val MAX_WAIT_MS = 8_000L
+    private const val FIRST_WAIT_MS = 1_000L
+    private const val MAX_WAIT_MS = 8_000L
     private const val MAX_FRAME_DEPTH = 3
 
     // XWayland only, the case this was proven on. Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
@@ -31,7 +31,7 @@ internal object StuckPresentRecovery {
             java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
     }
 
-    // The window only lets go once it's shown again (not while the screen is locked), hence the retry; backing off keeps a long lock from piling up resize events.
+    // Released only once the window is shown again (not while locked); backing off spares a long lock a pile of resizes.
     fun recoverWhileStuck(uiRan: CountDownLatch) {
         if (!onXWayland) return
         val pid = ProcessHandle.current().pid()
@@ -60,7 +60,10 @@ internal object StuckPresentRecovery {
         var failure: String? = null
         while (uiRan.count > 0) {
             try {
-                if (stuck() && nudge() > 0) nudges++
+                if (stuck() && nudge() > 0) {
+                    nudges++
+                    if (nudges > 1) waitMs = minOf(waitMs * 2, MAX_WAIT_MS)
+                }
             } catch (e: LinkageError) {
                 Logger.e(e, TAG) { "can't load JNA or libX11; no recovery" }
                 return nudges
@@ -71,7 +74,6 @@ internal object StuckPresentRecovery {
                 failure = e.toString()
             }
             wait(waitMs)
-            waitMs = minOf(waitMs * 2, MAX_WAIT_MS)
         }
         return nudges
     }

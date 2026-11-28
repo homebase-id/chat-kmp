@@ -95,6 +95,15 @@ class StuckPresentRecoveryTest {
     }
 
     @Test
+    fun roundsThatSentNothingDontGrowTheWait() {
+        val uiRan = CountDownLatch(1)
+        val waits = mutableListOf<Long>()
+        var checks = 0
+        StuckPresentRecovery.nudgeWhileStuck(uiRan, stuck = { ++checks > 3 }, wait = { waits += it; if (waits.size == 6) uiRan.countDown() }) { 1 }
+        assertEquals(listOf(1_000L, 1_000L, 1_000L, 1_000L, 2_000L, 4_000L), waits)
+    }
+
+    @Test
     fun aUiThreadThatAlreadyRanIsNotNudged() {
         var nudges = 0
         assertEquals(0, StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(0), wait = {}, stuck = { true }) { nudges++; 1 })
