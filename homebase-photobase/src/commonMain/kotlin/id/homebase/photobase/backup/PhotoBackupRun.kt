@@ -361,7 +361,8 @@ class PhotoBackupRun(
         }
         // What was saved can be out of date; asked only when there is something to send.
         if (before.unsent > 0) {
-            withTimeoutOrNull(request.budget.remaining) { drive.notReadyNow() }?.let { return@coroutineScope notReady(hashing, it) }
+            // A failing network can hold this read for minutes: a short wake is better spent preparing photos.
+            withTimeoutOrNull(minOf(request.budget.remaining, DRIVE_CHECK_LIMIT)) { drive.notReadyNow() }?.let { return@coroutineScope notReady(hashing, it) }
         }
         scheduler.rearm(current)
         if (isStorageFull(interactive)) {
@@ -683,6 +684,7 @@ class PhotoBackupRun(
         private const val HASH_BATCH = 16
         private const val DEDUPE_BATCH = 20
         private const val PREPARE_PARALLELISM = 2
+        private val DRIVE_CHECK_LIMIT = 15.seconds
         private const val MAX_UNFINISHED_PREPARES = 2
         private const val MAX_FAILURES_SHOWN = 20
         private val NO_PROGRESS_LIMIT: Duration = 2.minutes

@@ -65,7 +65,7 @@ class PhotoBackupController(
         val settings = settingsStore.settings.value
         if (!settings.enabled) return
         if (!inForeground) {
-            triggers?.continueSoon(settings)
+            scope.launch { if (run?.hasUnsentWork() == true) triggers?.continueSoon(settings) }
             return
         }
         // A run under way may have checked the key before it came: one more run once that one ends.

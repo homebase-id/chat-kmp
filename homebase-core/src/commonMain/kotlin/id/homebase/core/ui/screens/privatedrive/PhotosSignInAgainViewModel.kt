@@ -4,13 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import id.homebase.core.privatedrive.PhotosPrivateDrive
 import id.homebase.core.privatedrive.PrivateDriveOptIn
-import kotlinx.coroutines.channels.BufferOverflow
-import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -21,9 +20,9 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
     private val _uiState = MutableStateFlow(PhotosSignInAgainUiState(needsSignIn = optIn.currentState(PhotosPrivateDrive).needsSignIn))
     val uiState: StateFlow<PhotosSignInAgainUiState> = _uiState.asStateFlow()
 
-    // Opened by the composition showing now, not one from before a rotation.
-    private val _openSignIn = MutableSharedFlow<String>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val openSignIn: SharedFlow<String> = _openSignIn.asSharedFlow()
+    // Opened by the composition showing now, not one from before a rotation; kept until one collects it.
+    private val _openSignIn = Channel<String>(Channel.CONFLATED)
+    val openSignIn: Flow<String> = _openSignIn.receiveAsFlow()
 
     init {
         viewModelScope.launch { optIn.state(PhotosPrivateDrive).collect { state -> _uiState.update { it.copy(needsSignIn = state.needsSignIn) } } }
@@ -31,7 +30,7 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
 
     fun signInAgain() {
         _uiState.update { it.copy(failed = false) }
-        viewModelScope.launch { optIn.signInAgain(open = { _openSignIn.emit(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
+        viewModelScope.launch { optIn.signInAgain(open = { _openSignIn.send(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
     }
 
     fun onSignInCallback(url: String) {
