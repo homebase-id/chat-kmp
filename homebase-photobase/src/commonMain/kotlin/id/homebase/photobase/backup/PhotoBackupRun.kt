@@ -260,10 +260,7 @@ class PhotoBackupRun(
             return
         }
         val reason = _status.value.pauseReason
-        // Opening the app doesn't end these: the status screen asks for the sign-in.
-        if (request.isInteractive || reason == BackupPauseReason.BackupOff || reason == BackupPauseReason.SignedOut ||
-            reason == BackupPauseReason.NeedsSignIn
-        ) return
+        if (request.isInteractive || reason == BackupPauseReason.BackupOff || reason == BackupPauseReason.SignedOut) return
         if (ledger.counts().pending > 0 && ledger.takeStuckAlert()) scheduler.alertBackupStuck()
     }
 
