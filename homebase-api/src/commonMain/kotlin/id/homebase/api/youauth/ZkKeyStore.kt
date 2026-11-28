@@ -96,19 +96,21 @@ object ZkKeyStore {
     /** The key of the zero-knowledge drive [alias], or null when it isn't one or this device can't open it. */
     fun driveKey(alias: Uuid): ByteArray? = loadedDrives()[alias]
 
-    /**
-     * The key to lock a new file with on [alias], read from the server within the last minute: a saved key may be out
-     * of date, so it throws the read's failure rather than use one. Null when the read shows it isn't zero knowledge.
-     */
+    /** Read from the server within the minute, or the read's failure: a saved key may be out of date. Null: not zero knowledge now. */
     suspend fun lockingKey(alias: Uuid): ByteArray? {
+        val signIn = generation
+        if (!isZeroKnowledge(alias)) return null
         if (!fresh()) rereading.withLock {
             if (fresh()) return@withLock
             failedRead?.let { (at, e) -> if (at.elapsedNow() < FAILED_READ_HOLD) throw e }
             Logger.i(tag = TAG) { "Reading the drive keys from the server before locking a file on $alias" }
             readLocked()
         }
-        if (!isZeroKnowledge(alias)) return null
-        return driveKey(alias) ?: throw FileDecryptionException.NoDriveKey(alias)
+        // A sign-out empties the store too, which mustn't read as "ordinary drive" and send the key to the server.
+        return synchronized(saving) {
+            if (signIn != generation) throw DriveKeysNotRead(SignedOutDuringRead())
+            if (isZeroKnowledge(alias)) driveKey(alias) ?: throw FileDecryptionException.NoDriveKey(alias) else null
+        }
     }
 
     /** Null when the server's grant can't be read. */
@@ -167,10 +169,7 @@ object ZkKeyStore {
     val zeroKnowledgeDrives: StateFlow<Set<Uuid>>
         get() = zeroKnowledge.also { loadedDrives() }
 
-    /**
-     * Opens the drive keys [context] carries, each locked with the app's key; a grant that's gone takes its key with
-     * it. Returns the drives whose key arrived or changed.
-     */
+    /** Opens the drive keys [context] carries, locked with the app's key; returns the drives whose key arrived or changed. */
     suspend fun openDriveKeys(context: SecurityContext, keep: () -> Boolean = { true }): Set<Uuid> {
         val before = loadedDrives()
         val appKey = appKey()

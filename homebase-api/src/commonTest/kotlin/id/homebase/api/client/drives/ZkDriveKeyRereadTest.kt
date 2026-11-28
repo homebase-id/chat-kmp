@@ -66,7 +66,6 @@ class ZkDriveKeyRereadTest {
     @AfterTest
     fun reset() {
         ZkKeyStore.clear()
-        SealedKeyHeaders.dropped = null
         ZkKeyStore.timeSource = TimeSource.Monotonic
         ZkKeyStore.useServer(fetchGrant = { throw unreachable() }, resync = {})
     }
@@ -239,41 +238,6 @@ class ZkDriveKeyRereadTest {
         assertTrue(lock.await().exceptionOrNull() is ZkKeyStore.DriveKeysNotRead, "not the photo's or the upload's failure")
         assertEquals(null, ZkKeyStore.driveKey(photos))
         assertEquals(false, ZkKeyStore.isZeroKnowledge(photos))
-    }
-
-    @Test
-    fun aFileBeingReadIsTransformedWithTheSavedKeyWithoutWaitingOnTheServer() = runTest {
-        savedFromAnEarlierRun(oldKey)
-        server = grant(newKey)
-        val fileKey = KeyHeader.newRandom16()
-        val sealed = EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = fileKey.iv, encryptedAesKey = ByteArray(0))
-
-        val transform = sealed.zkDriveFormOf(fileKey, photos)
-
-        assertEquals(fileKey, transform.decryptAesToKeyHeader(SecureByteArray(oldKey)))
-        assertEquals(0, reads)
-    }
-
-    @Test
-    fun onlyTransformsLockedWithTheCurrentKeyAreSent() = runTest {
-        savedFromAnEarlierRun(oldKey)
-        server = grant(newKey)
-        suspend fun transform(key: ByteArray) = KeyHeader.newRandom16().let { fileKey ->
-            KeyHeaderTransform(Uuid.random(), Uuid.random(), EncryptedKeyHeader.encryptKeyHeaderAes(fileKey, fileKey.iv, SecureByteArray(key)))
-        }
-        val withOld = transform(oldKey)
-        val withNew = transform(newKey)
-
-        val offeredAgain = mutableListOf<KeyHeaderTransform>()
-        SealedKeyHeaders.dropped = { _, gone -> offeredAgain += gone }
-
-        assertEquals(listOf(withNew), transformsLockedWithCurrentKey(photos, listOf(withOld, withNew)))
-        assertEquals(1, reads, "the current key is read before sending")
-        assertEquals(listOf(withOld), offeredAgain, "a file's next read queues it again")
-
-        server = grant(null)
-        clock += 61.seconds
-        assertEquals(emptyList(), transformsLockedWithCurrentKey(photos, listOf(withNew)), "a drive this device can no longer open sends none")
     }
 
     @Test

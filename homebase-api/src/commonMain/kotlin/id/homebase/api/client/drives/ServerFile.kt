@@ -166,45 +166,9 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 internal suspend fun EncryptedKeyHeader.zkDriveFormOf(opened: KeyHeader, driveId: Uuid): EncryptedKeyHeader {
     // The server refuses any IV but the one it stores.
     check(opened.iv.contentEquals(iv)) { "the sealed IV doesn't match the header's" }
-    // Made while a file is read, so with the saved key; it is checked against the current one when sent.
-    val key = SecureByteArray(zkDriveKey(driveId))
-    val locked = opened.lockedWith(key)
-    check(locked.decryptAesToKeyHeader(key) == opened) { "the drive-key header doesn't open to the same file key" }
+    val locked = opened.lockedWithDriveKey(driveId)
+    check(locked.decryptAesToKeyHeader(SecureByteArray(zkDriveKey(driveId))) == opened) { "the drive-key header doesn't open to the same file key" }
     return locked
-}
-
-/**
- * The [transforms] locked with the current key of [driveId], read from the server within the minute; a saved key
- * may have been out of date when a file was read. Empty when the drive is no longer one this device can open.
- */
-internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: List<KeyHeaderTransform>): List<KeyHeaderTransform> {
-    val key = try {
-        ZkKeyStore.lockingKey(driveId) ?: return dropped(driveId, transforms, "the drive is no longer zero knowledge")
-    } catch (e: FileDecryptionException.NoDriveKey) {
-        return dropped(driveId, transforms, "this device holds no key for it")
-    }
-    // The file key is locked with its own IV in front: another key can't open to it.
-    val (current, old) = transforms.partition { transform ->
-        try {
-            transform.keyHeader.decryptAesToKeyHeader(SecureByteArray(key)).iv.contentEquals(transform.keyHeader.iv)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Error) {
-            throw e
-        } catch (e: Throwable) {
-            // Throwable: on the web a rejected decrypt arrives as a bare Throwable.
-            false
-        }
-    }
-    if (old.isNotEmpty()) dropped(driveId, old, "made with an old key")
-    return current
-}
-
-private fun dropped(driveId: Uuid, transforms: List<KeyHeaderTransform>, why: String): List<KeyHeaderTransform> {
-    Logger.w { "transformKeyHeaders: drive=$driveId dropped ${transforms.size}: $why" }
-    // A key that comes back makes the same bytes again, which the queue would take for ones already queued.
-    SealedKeyHeaders.dropped?.invoke(driveId, transforms)
-    return emptyList()
 }
 
 /**
@@ -225,7 +189,7 @@ suspend fun lockKeyHeader(
     } else if (keyHeader != null && sealedTo != null) {
         sealKeyHeader(keyHeader, sealedTo)
     } else {
-        val zkKey = if (keyHeader != null && ZkKeyStore.isZeroKnowledge(driveId)) ZkKeyStore.lockingKey(driveId) else null
+        val zkKey = if (keyHeader != null) ZkKeyStore.lockingKey(driveId) else null
         if (keyHeader != null && zkKey != null) keyHeader.lockedWith(SecureByteArray(zkKey))
         else EncryptedKeyHeader.encryptKeyHeaderAes(keyHeader ?: KeyHeader.empty(), transferIv, SecureByteArray(sharedSecret))
     }
@@ -241,7 +205,9 @@ fun keepFileKeyHeader(iv: ByteArray): EncryptedKeyHeader =
 private suspend fun KeyHeader.lockedWith(driveKey: SecureByteArray): EncryptedKeyHeader =
     EncryptedKeyHeader.encryptKeyHeaderAes(this, iv, driveKey).apply { type = EncryptionType.ZkDrive }
 
-/** The key that opens key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
+private suspend fun KeyHeader.lockedWithDriveKey(driveId: Uuid): EncryptedKeyHeader = lockedWith(SecureByteArray(zkDriveKey(driveId)))
+
+/** The key that locks key headers on the zero-knowledge drive [driveId] (a drive's id is its alias). */
 private fun zkDriveKey(driveId: Uuid): ByteArray = ZkKeyStore.driveKey(driveId) ?: throw FileDecryptionException.NoDriveKey(driveId)
 
 internal const val DECRYPTION_FAILURE_APP_DATA =

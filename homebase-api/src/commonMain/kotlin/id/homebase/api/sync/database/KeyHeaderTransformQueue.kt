@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.io.encoding.Base64
 import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.Uuid
 
@@ -33,14 +32,12 @@ class KeyHeaderTransformQueue(
 ) {
     private val arrived = Channel<SealedKeyHeader>(Channel.UNLIMITED)
 
-    // A file listed again before the server answers would queue the same transform each time. Its bytes are part of
-    // it: after a key change the same file and version comes again locked with the new key, and must be queued.
-    private val queued = mutableSetOf<String>()
+    // A file listed again before the server answers would queue the same transform each time.
+    private val queued = mutableSetOf<Pair<Uuid, Uuid>>()
     private val queuing = Mutex()
 
     init {
         SealedKeyHeaders.sink = { arrived.trySend(it) }
-        SealedKeyHeaders.dropped = { driveId, gone -> scope.launch { queuing.withLock { gone.forEach { queued -= driveId.key(it) } } } }
         scope.launch {
             for (first in arrived) {
                 // A listing hands its files over one by one; a moment's wait fills the rows.
@@ -62,17 +59,17 @@ class KeyHeaderTransformQueue(
     }
 
     private suspend fun queue(batch: List<SealedKeyHeader>) {
-        batch.filter { it.driveId.key(it.transform) !in queued }
+        batch.filter { (it.transform.fileId to it.transform.versionTag) !in queued }
             .groupBy({ it.driveId }, { it.transform })
             .forEach { (driveId, transforms) ->
                 try {
-                    transforms.forEach { queued += driveId.key(it) }
+                    transforms.forEach { queued += it.fileId to it.versionTag }
                     // Lost ones are offered again by the file's next read.
-                    enqueue(driveId, transforms).forEach { queued -= driveId.key(it) }
+                    enqueue(driveId, transforms).forEach { queued -= it.fileId to it.versionTag }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    transforms.forEach { queued -= driveId.key(it) }
+                    transforms.forEach { queued -= it.fileId to it.versionTag }
                     Logger.w(e) { "KeyHeaderTransformQueue: transforms for $driveId not queued" }
                 }
             }
@@ -101,9 +98,6 @@ class KeyHeaderTransformQueue(
         if (sendNow && lost.size < merged.size) outbox.send()
         return lost
     }
-
-    private fun Uuid.key(transform: KeyHeaderTransform) =
-        "$this/${transform.fileId}/${transform.versionTag}/${Base64.encode(transform.keyHeader.encryptedAesKey)}"
 
     internal companion object {
         // After everything else: a sealed header still opens, only more slowly, until the server stores the converted one.
