@@ -352,7 +352,6 @@ class FilesyncViewModel(
 
             is FilesyncUiAction.Unshare -> sharing.unshare(action.node, action.recipient)
 
-
             is FilesyncUiAction.OpenSharer -> sharing.openSharer(action.sharer)
             is FilesyncUiAction.SetSharerSync -> sharing.setSync(action.sharer, action.sync)
             FilesyncUiAction.CloseShareView -> sharing.closeShareView()
@@ -383,7 +382,6 @@ class FilesyncViewModel(
             }
         }
     }
-
 
     private fun zipName(nodes: List<FilesyncNode>) = FilesyncArchive.name(nodes, _uiState.value.path.last().name, ARCHIVE_FALLBACK_NAME)
 

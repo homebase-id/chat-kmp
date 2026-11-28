@@ -32,5 +32,4 @@ class PhotosSignInAgainViewModel(private val optIn: PrivateDriveOptIn) : ViewMod
         _uiState.update { it.copy(failed = false) }
         viewModelScope.launch { optIn.signInAgain(open = { _openSignIn.send(it) }, failed = { _uiState.update { it.copy(failed = true) } }) }
     }
-
 }

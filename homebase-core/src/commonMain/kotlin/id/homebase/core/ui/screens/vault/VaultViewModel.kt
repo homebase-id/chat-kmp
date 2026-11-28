@@ -299,7 +299,6 @@ class VaultViewModel(
             ?.let { _events.tryEmit(VaultUiEvent.OpenOwnerConsole(it)) }
     }
 
-
     fun onAction(action: VaultUiAction) {
         when (action) {
             is VaultUiAction.EntryClicked,

@@ -20,6 +20,7 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -100,7 +101,8 @@ class PrivateDriveOptIn(
 
     // On iOS, desktop and web the browser can answer after the screen that asked is gone.
     fun completeSignIn(url: String) {
-        appScope.launch { youAuthFlowManager.handleCallback(url) }
+        // Main, as every other caller: the flow's pending sign-ins aren't guarded against two threads.
+        appScope.launch(Dispatchers.Main) { youAuthFlowManager.handleCallback(url) }
     }
 }
 

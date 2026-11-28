@@ -372,6 +372,11 @@ class YouAuthFlowManager(
             }
 
             val replaced = if (authCodeFlowState.again) credentialsManager.getActiveCredentials() else null
+            // Finished off any screen, so a logout (or another sign-in) can come first; it mustn't be undone.
+            if (authCodeFlowState.again && !signInAgainStillWanted(authCodeFlowState.identity, replaced)) {
+                Logger.i(tag = TAG) { "Dropping a sign-in again: ${authCodeFlowState.identity} is no longer signed in" }
+                return
+            }
             result.zkAppKey?.let(ZkKeyStore::saveAppKey)
             CredentialStorage.saveCredentials(
                 identity = result.identity,
@@ -567,3 +572,5 @@ internal suspend fun stepOrLog(name: String, step: suspend () -> Unit) {
         Logger.e(throwable = e, tag = "YouAuth") { "Logout step '$name' failed — continuing" }
     }
 }
+
+internal fun signInAgainStillWanted(identity: OdinId, signedIn: ApiCredentials?): Boolean = signedIn?.domain == identity

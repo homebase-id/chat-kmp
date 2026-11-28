@@ -202,7 +202,6 @@ class EmailViewModel(
         }
     }
 
-
     /**
      * Ask the server whether email actually works.
      *
