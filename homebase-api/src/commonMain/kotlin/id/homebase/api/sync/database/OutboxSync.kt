@@ -1,6 +1,6 @@
 package id.homebase.api.sync.database
 
-import id.homebase.api.client.drives.FileDecryptionException
+import id.homebase.api.client.drives.isMissingDriveKey
 import co.touchlab.kermit.Logger
 import id.homebase.api.client.drives.files.DeleteFilesByGroupIdOutboxRequest
 import id.homebase.api.client.isTransientNetworkFailure
@@ -1279,5 +1279,3 @@ class OutboxSync(
     }
 }
 
-private fun Throwable.isMissingDriveKey(): Boolean =
-    generateSequence(this) { it.cause }.any { it is FileDecryptionException.NoDriveKey }

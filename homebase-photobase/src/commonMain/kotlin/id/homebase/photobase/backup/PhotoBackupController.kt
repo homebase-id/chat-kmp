@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import id.homebase.photobase.PhotobaseConfigFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,8 @@ class PhotoBackupController(
     private val scope: CoroutineScope,
 ) {
     private var foregroundJob: Job? = null
+    // Waits out a run under way when the key arrived; leaving the app, a logout or a new sign-in drops it.
+    private var afterKeyJob: Job? = null
 
     private var inForeground = false
 
@@ -57,6 +60,24 @@ class PhotoBackupController(
         }
     }
 
+    /** The Photos drive key arrived with a sign-in again: a run paused for it goes on. Main thread, as the others. */
+    fun onDriveKeyArrived() {
+        val settings = settingsStore.settings.value
+        if (!settings.enabled) return
+        if (!inForeground) {
+            scope.launch { if (run?.hasUnsentWork() == true) triggers?.continueSoon(settings) }
+            return
+        }
+        // A run under way may have checked the key before it came: one more run once that one ends.
+        val running = foregroundJob?.takeIf { it.isActive }
+        if (running == null) return onAppForeground()
+        afterKeyJob?.cancel()
+        afterKeyJob = scope.launch(Dispatchers.Main) {
+            running.join()
+            if (inForeground) onAppForeground()
+        }
+    }
+
     suspend fun freshStatus(): BackupStatus? {
         run?.refreshStatus()
         return status?.value
@@ -70,6 +91,7 @@ class PhotoBackupController(
     /** Off screen a foreground run has no time budget at all, so it stops and a background run takes over. */
     fun onAppBackground() {
         inForeground = false
+        afterKeyJob?.cancel()
         foregroundJob?.cancel()
         foregroundJob = null
         val run = run ?: return
@@ -190,6 +212,7 @@ class PhotoBackupController(
 
     /** Runs before logout wipes anything: nothing here may outlive the identity. */
     suspend fun onBeforeLogout(hasSession: Boolean = true) {
+        afterKeyJob?.cancel()
         foregroundJob?.cancel()
         run?.stop()
         triggers?.rearm(BackupSettings(enabled = false))
@@ -198,6 +221,7 @@ class PhotoBackupController(
     }
 
     fun onPostAuthenticated() {
+        afterKeyJob?.cancel()
         foregroundJob?.cancel()
         settingsStore.reset()
         results.reset()

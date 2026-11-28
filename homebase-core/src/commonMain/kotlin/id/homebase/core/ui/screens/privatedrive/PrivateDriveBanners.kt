@@ -102,7 +102,7 @@ private fun MakePrivateBanner(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SignInAgainBanner(title: String, body: String, blocked: Boolean, onSignIn: () -> Unit) {
+internal fun SignInAgainBanner(title: String, body: String, blocked: Boolean, onSignIn: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,

@@ -99,6 +99,9 @@ class DeviceBackupWrapper(
         databaseManager.withWriteValue { assets.requeueFailed(newState, hashedState, failedState, keep) }
     }
 
+    suspend fun requeueFailedByErrorPrefix(failedState: Long, newState: Long, hashedState: Long, prefix: String): Long =
+        databaseManager.withWriteValue { assets.requeueFailedByErrorPrefix(newState, hashedState, failedState, prefix).value }
+
     suspend fun recheckDone(doneState: Long, newState: Long, hashedState: Long) {
         databaseManager.withWriteValue { assets.recheckDone(newState, hashedState, doneState) }
     }

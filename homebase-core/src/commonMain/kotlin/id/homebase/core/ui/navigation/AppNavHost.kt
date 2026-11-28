@@ -303,6 +303,7 @@ import id.homebase.resources.filesync_label
 import id.homebase.resources.openedfile_open_failed
 import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.koinInject
+import id.homebase.core.ui.screens.privatedrive.PhotosSignInAgainBanner
 import id.homebase.core.ui.theme.NavigationIndicatorShape
 import id.homebase.core.util.getUriHandler
 import id.homebase.core.util.isDesktopOrWeb
@@ -2468,7 +2469,7 @@ fun AppNavHost(
 
                             composable<Route.PhotoBackupStatus> {
                                 if (isAuthenticated) {
-                                    BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() })
+                                    BackupStatusScreen(viewModel = koinViewModel(), onBack = { navController.popBackStack() }, banner = { PhotosSignInAgainBanner() })
                                 }
                             }
 

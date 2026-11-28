@@ -1,5 +1,6 @@
 package id.homebase.photobase.backup
 
+import id.homebase.api.client.drives.FileDecryptionException
 import co.touchlab.kermit.Logger
 import id.homebase.api.sync.database.DeviceBackupAsset
 import id.homebase.api.sync.database.DeviceBackupWrapper
@@ -325,6 +326,14 @@ class BackupLedger(
         handOffs.withLock { earlyVerdicts.clear() }
         store.deleteAll()
         changed()
+    }
+
+    /** Photos an older version marked failed for a missing drive key go back to pending. */
+    suspend fun requeueMissingKey() {
+        val requeued = store.requeueFailedByErrorPrefix(
+            BackupState.Failed.code, BackupState.New.code, BackupState.Hashed.code, FileDecryptionException.NoDriveKey.MESSAGE_PREFIX,
+        )
+        if (requeued > 0) changed()
     }
 
     /** [alsoCrashed]: the user asked, so what ended the app gets another go too, with its count reset. */

@@ -56,6 +56,22 @@ fun interface BackupAuth {
     suspend fun awaitSignedIn(): Boolean
 }
 
+/** What keeps the Photos drive from taking new photos, or null when it is ready: today, a missing key. */
+interface BackupDrive {
+    /** From what this device saved, without asking the server. */
+    val notReady: BackupPauseReason?
+
+    /** Asking the server when what was saved is over a minute old; null when ready, or when it couldn't say. */
+    suspend fun notReadyNow(): BackupPauseReason?
+
+    companion object {
+        val Ready = object : BackupDrive {
+            override val notReady: BackupPauseReason? = null
+            override suspend fun notReadyNow(): BackupPauseReason? = null
+        }
+    }
+}
+
 /** Arms and cancels the platform's triggers. A run re-arms them when it starts and when it ends. */
 fun interface BackupScheduler {
     fun rearm(settings: BackupSettings)

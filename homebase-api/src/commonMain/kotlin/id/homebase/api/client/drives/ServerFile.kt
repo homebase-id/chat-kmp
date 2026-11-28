@@ -322,8 +322,12 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
     class WrongDriveKey(cause: Throwable) :
         FileDecryptionException("The drive key doesn't open this key header", cause)
 
-    class NoDriveKey(driveId: Uuid) :
-        FileDecryptionException("This device holds no key for the zero-knowledge drive $driveId")
+    class NoDriveKey(driveId: Uuid) : FileDecryptionException("$MESSAGE_PREFIX $driveId") {
+        companion object {
+            // Kept in ledgers as a photo's last error: a saved one is found by it.
+            const val MESSAGE_PREFIX = "This device holds no key for the zero-knowledge drive"
+        }
+    }
 
     class Sealed :
         FileDecryptionException("The key header is sealed to the drive's write-only key")
@@ -335,3 +339,5 @@ sealed class FileDecryptionException(message: String, cause: Throwable? = null) 
     class Withheld :
         FileDecryptionException("The file's outside key isn't open to this reader yet")
 }
+
+fun Throwable.isMissingDriveKey(): Boolean = generateSequence(this) { it.cause }.any { it is FileDecryptionException.NoDriveKey }

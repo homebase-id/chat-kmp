@@ -255,6 +255,16 @@ import id.homebase.core.config.getStickerPermissionExtensionConfig
 import id.homebase.core.config.mandatorySyncDrives
 import id.homebase.core.moments.MomentsPreferences
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import id.homebase.core.ui.screens.privatedrive.PhotosSignInAgainViewModel
+import id.homebase.photobase.backup.BackupDrive
+import id.homebase.photobase.backup.BackupPauseReason
+import id.homebase.api.client.drives.isMissingDriveKey
+import id.homebase.api.youauth.ZkKeyStore
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import id.homebase.core.moments.services.MomentActionService
 import id.homebase.core.moments.services.MomentCreateFlowState
 import id.homebase.core.moments.services.MomentCommentsService
@@ -758,6 +768,7 @@ val appModule = module {
         // reads it on construction. See MomentDraftSurvivesLogoutTest.
         scoped { MomentCreateFlowState() }
         viewModelOf(::MomentComposeViewModel)
+        viewModelOf(::PhotosSignInAgainViewModel)
         viewModelOf(::MomentAudienceViewModel)
     }
 
@@ -1819,10 +1830,43 @@ private fun Scope.photoBackupController(): PhotoBackupController {
                 if (refresh) storageQuota.refresh()
                 storageQuota.state.value.isFull
             },
+            drive = PhotosDrive,
         )
     }
     val configFile = PhotobaseConfigFile(get())
-    return PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+    val controller = PhotoBackupController(run, settings, BackupPushSchedule(get(), get(), now), configFile, results, platform?.triggers, scope)
+    // A sign-in again brings the key in a later grant read, after the foreground run already paused for it.
+    scope.launch {
+        ZkKeyStore.lockedDrives.map { PhotobaseProtocol.DriveAlias in it }.distinctUntilChanged().drop(1)
+            // A sign-out empties the store too: only a key that's there now counts.
+            .collect { locked ->
+                try {
+                    if (!locked && ZkKeyStore.driveKey(PhotobaseProtocol.DriveAlias) != null) {
+                        withContext(Dispatchers.Main) { controller.onDriveKeyArrived() }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // One failure mustn't end the wake-ups for the rest of the process.
+                    Logger.e(e, "PhotoBackup") { "couldn't resume backup after the drive key arrived" }
+                }
+            }
+    }
+    return controller
+}
+
+private object PhotosDrive : BackupDrive {
+    override val notReady get() = BackupPauseReason.NeedsSignIn.takeIf { PhotobaseProtocol.DriveAlias in ZkKeyStore.lockedDrives.value }
+
+    override suspend fun notReadyNow(): BackupPauseReason? = try {
+        ZkKeyStore.lockingKey(PhotobaseProtocol.DriveAlias)
+        null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Otherwise the server couldn't say: the hand-off waits for it.
+        BackupPauseReason.NeedsSignIn.takeIf { e.isMissingDriveKey() }
+    }
 }
 
 private val BACKUP_AUTH_RESTORE_TIMEOUT = 20.seconds
