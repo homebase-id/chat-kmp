@@ -739,6 +739,79 @@ class DriveFileProviderCachedTest {
         )
     }
 
+    // A versioned read (the full-size viewer) shares one entry with every other reader of the payload.
+    private fun versioned(version: Long) = PayloadOperationOptions(lastModified = version)
+
+    @Test
+    fun `a sent image is shown full size from its seed, which the rekey stamps with the synced version`() = runTest {
+        nextException = IOException("network must not be reached for a sent image")
+        val optimisticId = Uuid.parse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        val bytes = ByteArray(64) { it.toByte() }
+        provider.cachePayloadBytes(driveId, optimisticId, key, bytes, "image/gif")
+
+        provider.rekeyCachedFile(driveId, optimisticId, fileId, listOf(PayloadDescriptor(key = key, lastModified = 5, uid = 900)))
+
+        assertContentEquals(bytes, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900)).bytes)
+        assertEquals(0, requestCount)
+    }
+
+    @Test
+    fun `copying or saving an image opened full size reuses its copy, offline too`() = runTest {
+        nextBody = ByteArray(48) { 3 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+        nextException = IOException("offline")
+
+        assertContentEquals(ByteArray(48) { 3 }, provider.getPayloadBytesRaw(driveId, fileId, key).bytes)
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `a payload overwritten under its key is fetched again and replaces the one copy`() = runTest {
+        nextBody = ByteArray(48) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+        nextBody = ByteArray(48) { 2 }
+
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(901)).bytes)
+        nextException = IOException("offline")
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key).bytes)
+        assertEquals(2, requestCount)
+    }
+
+    @Test
+    fun `a reader holding the old version takes the newer copy instead of replacing it`() = runTest {
+        nextBody = ByteArray(48) { 2 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(901))
+        nextBody = ByteArray(48) { 1 }
+
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900)).bytes)
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(901)).bytes)
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `a 404 an unversioned read recorded is cleared when a versioned read finds the file`() = runTest {
+        nextStatus = HttpStatusCode.NotFound
+        assertFailsWith<NotFoundException> { provider.getPayloadBytesRaw(driveId, fileId, key) }
+        nextStatus = HttpStatusCode.OK
+        nextBody = ByteArray(48) { 3 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+        nextException = IOException("offline")
+
+        assertContentEquals(ByteArray(48) { 3 }, provider.getPayloadBytesRaw(driveId, fileId, key).bytes)
+    }
+
+    @Test
+    fun `evicting a file drops the copy a versioned read kept`() = runTest {
+        nextBody = ByteArray(48) { 1 }
+        provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900))
+
+        provider.evictFile(driveId, fileId, key)
+        nextBody = ByteArray(48) { 2 }
+
+        assertContentEquals(ByteArray(48) { 2 }, provider.getPayloadBytesRaw(driveId, fileId, key, versioned(900)).bytes)
+        assertEquals(2, requestCount)
+    }
+
     @Test
     fun `seeded thumb bytes are served from cache without touching the network`() = runTest {
         nextException = IOException("network must not be reached for a seeded thumb")
@@ -894,6 +967,18 @@ class DriveFileProviderCachedTest {
         val result = provider.getPayloadBytesRaw(driveId, newFileId, key)
         assertEquals(countAfter404, requestCount, "read after rekey must not hit the network")
         assertContentEquals(bytes, result.bytes, "the 404 marker must not shadow the moved entry")
+    }
+
+    @Test
+    fun `a full-size read that 404s before the rekey opens the moved seed`() = runTest {
+        nextStatus = HttpStatusCode.NotFound
+        assertFailsWith<NotFoundException> { provider.getPayloadBytesRaw(driveId, newFileId, key, versioned(900)) }
+        val bytes = ByteArray(16) { 0x42 }
+        provider.cachePayloadBytes(driveId, fileId, key, bytes, "image/jpeg")
+        provider.rekeyCachedFile(driveId, fileId, newFileId, listOf(PayloadDescriptor(key = key, lastModified = serverLastModified, uid = 900)))
+
+        nextException = IOException("network must not be reached after rekey")
+        assertContentEquals(bytes, provider.getPayloadBytesRaw(driveId, newFileId, key, versioned(900)).bytes)
     }
 
     /**

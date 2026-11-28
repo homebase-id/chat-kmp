@@ -34,6 +34,8 @@ data class HomebaseImageData(
     val isEncrypted: Boolean = true,
     /** Last modification timestamp for cache validation */
     val lastModified: Long? = null,
+    /** [PayloadDescriptor.version]: keys the full-size image. */
+    val version: Long? = lastModified,
     /** Local pending file (for images being uploaded/sent) */
     val pendingFileUri: String? = null,
     /**
@@ -76,7 +78,7 @@ data class HomebaseImageData(
             keyHeader = KeyHeader.newRandom16(),
         )
 
-        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
+        /** Derives payloadKey/contentType/thumb sizes/preview/lastModified/version from [descriptor] so a caller can't forget payloadContentType and 404 a GIF's never-generated thumbnail. */
         fun from(
             driveId: Uuid,
             fileId: Uuid,
@@ -86,7 +88,6 @@ data class HomebaseImageData(
             availableThumbSizes: List<ImageSize> = thumbSizesFrom(descriptor.thumbnails),
             loadFullPayload: Boolean = false,
             isEncrypted: Boolean = true,
-            lastModified: Long? = descriptor.lastModified,
             pendingFileUri: String? = null,
             payloadContentType: String? = descriptor.contentType,
             payloadBytes: Long? = descriptor.bytesWritten,
@@ -101,7 +102,8 @@ data class HomebaseImageData(
                 availableThumbSizes = availableThumbSizes,
                 loadFullPayload = loadFullPayload,
                 isEncrypted = isEncrypted,
-                lastModified = lastModified,
+                lastModified = descriptor.lastModified,
+                version = descriptor.version,
                 pendingFileUri = pendingFileUri,
                 payloadContentType = payloadContentType,
                 keyHeader = keyHeader,

@@ -27,6 +27,9 @@ data class PayloadDescriptor(
     val hash: PayloadHash? = null,
     // Add fields as needed
 ) {
+    /** Which upload of this payload: odin-core can overwrite a payload under its key, and every upload gets a new uid. */
+    val version: Long? get() = uid ?: lastModified
+
     fun isInternalDescriptor(): Boolean =
         key.startsWith(HomebaseProtocol.PayloadDescriptorKeyPrefix) || key.startsWith(HomebaseProtocol.PlaylistPayloadKeyPrefix) ||
             key.startsWith(HomebaseProtocol.PlayableCopyKeyPrefix)

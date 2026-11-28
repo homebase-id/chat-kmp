@@ -34,7 +34,7 @@ import kotlin.uuid.Uuid
  * height on the first frame. Loads are started when a message is surfaced, not when it is composed.
  */
 class AgentUiTreeLoader(
-    private val fetch: suspend (fileId: Uuid, keyHeader: KeyHeader, lastModified: Long?) -> ByteArray?,
+    private val fetch: suspend (fileId: Uuid, keyHeader: KeyHeader, version: Long?) -> ByteArray?,
     private val scope: CoroutineScope,
     events: EventBus? = null,
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -44,7 +44,7 @@ class AgentUiTreeLoader(
         events?.let { bus -> scope.launch { bus.events.collect { if (it is BackendEvent.SessionEnded) clear() } } }
     }
 
-    data class Key(val fileId: Uuid, val lastModified: Long?, val iv: String, val imageKeys: Set<String>)
+    data class Key(val fileId: Uuid, val version: Long?, val iv: String, val imageKeys: Set<String>)
 
     private class Request(val key: Key, val messageId: Uuid, val keyHeader: KeyHeader)
 
@@ -100,7 +100,7 @@ class AgentUiTreeLoader(
     // [startedIn] is the generation the fetch began in; a fetch that outlives a [clear] must not repopulate the cache.
     private suspend fun fetchAndDecode(req: Request, startedIn: Int): AgentUiTreeResult? = try {
         val bytes = try {
-            fetch(req.key.fileId, req.keyHeader, req.key.lastModified)
+            fetch(req.key.fileId, req.keyHeader, req.key.version)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -130,7 +130,7 @@ class AgentUiTreeLoader(
         val payload = message.agentUiTreePayload() ?: return null
         val iv = payload.iv?.bytes ?: return null
         return Request(
-            Key(message.fileId, payload.lastModified, Base64.encode(iv), agentUiImageKeys(message.payloads)),
+            Key(message.fileId, payload.version, Base64.encode(iv), agentUiImageKeys(message.payloads)),
             message.id,
             KeyHeader(iv, message.keyHeader.aesKey),
         )

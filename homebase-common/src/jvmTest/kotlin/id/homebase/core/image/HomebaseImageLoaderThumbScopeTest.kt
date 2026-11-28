@@ -5,17 +5,11 @@ import id.homebase.api.client.auth.ApiCredentials
 import id.homebase.api.client.auth.CredentialsManager
 import id.homebase.api.client.drives.cache.DedicatedThumbCache
 import id.homebase.api.client.drives.cache.DriveFileProviderCached
-import id.homebase.api.client.drives.files.DriveFileHttpProvider
-import id.homebase.api.client.drives.files.DriveFileProvider
-import id.homebase.api.client.payload.PayloadReader
-import id.homebase.api.client.peer.PeerFileByGlobalTransitProvider
 import id.homebase.api.common.OdinId
 import id.homebase.api.common.SecureByteArray
-import id.homebase.api.file.FileOperationsProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
-import io.ktor.client.request.forms.InputProvider
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
@@ -24,7 +18,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -55,16 +48,7 @@ class HomebaseImageLoaderThumbScopeTest {
     private val credentialsManager = CredentialsManager()
     private var tempDir = ""
 
-    private val fileOps = object : FileOperationsProvider {
-        override fun getCacheDirectory() = tempDir
-        override suspend fun readFileBytes(path: String): ByteArray = error("not used")
-        override fun openFileInput(path: String): InputProvider = error("not used")
-        override fun deleteTempFile(path: String) = false
-        override fun getFileSize(path: String) = 0L
-        override suspend fun writeBytesToTempFile(bytes: ByteArray, prefix: String, suffix: String): String = error("not used")
-        override suspend fun writeBytesToShareOutboundFile(bytes: ByteArray, suffix: String): String = error("not used")
-        override suspend fun writeStream(path: String, data: Flow<ByteArray>) = error("not used")
-    }
+    private val fileOps = CacheOnlyFileOps { tempDir }
 
     private lateinit var loader: HomebaseImageLoader
 
@@ -90,14 +74,7 @@ class HomebaseImageLoaderThumbScopeTest {
         loader = loaderOver(DriveFileProviderCached(httpClient, credentialsManager, fileOps))
     }
 
-    private fun loaderOver(driveCache: DriveFileProviderCached) = HomebaseImageLoader(
-        payloadReader = PayloadReader(
-            DriveFileProvider(httpClient, credentialsManager, driveCache),
-            PeerFileByGlobalTransitProvider(httpClient, credentialsManager, DriveFileHttpProvider(httpClient, credentialsManager), driveCache),
-            fileOps,
-        ),
-        fileOperationsProvider = fileOps,
-    )
+    private fun loaderOver(driveCache: DriveFileProviderCached) = imageLoaderOver(httpClient, credentialsManager, driveCache, fileOps)
 
     @AfterTest
     fun tearDown() {
