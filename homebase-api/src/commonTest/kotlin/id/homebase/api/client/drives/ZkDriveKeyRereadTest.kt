@@ -218,17 +218,43 @@ class ZkDriveKeyRereadTest {
     }
 
     @Test
-    fun aFileBeingReadIsNeverMadeToWaitOnTheServer() = runTest {
+    fun aFileBeingReadIsTransformedWithTheSavedKeyWithoutWaitingOnTheServer() = runTest {
         savedFromAnEarlierRun(oldKey)
         server = grant(newKey)
         val fileKey = KeyHeader.newRandom16()
         val sealed = EncryptedKeyHeader(encryptionVersion = 1, type = EncryptionType.Sealed, iv = fileKey.iv, encryptedAesKey = ByteArray(0))
 
-        assertFailsWith<IllegalStateException> { sealed.zkDriveFormOf(fileKey, photos) }
-        assertEquals(0, reads, "a key not read within the minute leaves the transform to a later read")
+        val transform = sealed.zkDriveFormOf(fileKey, photos)
 
-        ZkKeyStore.reread()
-        assertEquals(fileKey, sealed.zkDriveFormOf(fileKey, photos).decryptAesToKeyHeader(SecureByteArray(newKey)))
+        assertEquals(fileKey, transform.decryptAesToKeyHeader(SecureByteArray(oldKey)))
+        assertEquals(0, reads)
+    }
+
+    @Test
+    fun onlyTransformsLockedWithTheCurrentKeyAreSent() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        server = grant(newKey)
+        suspend fun transform(key: ByteArray) = KeyHeader.newRandom16().let { fileKey ->
+            KeyHeaderTransform(Uuid.random(), Uuid.random(), EncryptedKeyHeader.encryptKeyHeaderAes(fileKey, fileKey.iv, SecureByteArray(key)))
+        }
+        val withOld = transform(oldKey)
+        val withNew = transform(newKey)
+
+        assertEquals(listOf(withNew), transformsLockedWithCurrentKey(photos, listOf(withOld, withNew)))
+        assertEquals(1, reads, "the current key is read before sending")
+
+        server = grant(null)
+        clock += 61.seconds
+        assertEquals(emptyList(), transformsLockedWithCurrentKey(photos, listOf(withNew)), "a drive this device can no longer open sends none")
+    }
+
+    @Test
+    fun aResyncThatFailsDoesNotFailTheRead() = runTest {
+        savedFromAnEarlierRun(oldKey)
+        server = grant(newKey)
+        ZkKeyStore.useServer(fetchGrant = { server!! }, resync = { error("no sync here") })
+
+        assertTrue(opensWith(lockNewFile(), newKey))
     }
 
     @Test

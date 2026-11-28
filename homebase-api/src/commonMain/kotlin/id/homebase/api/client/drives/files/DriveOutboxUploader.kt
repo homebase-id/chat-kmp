@@ -39,6 +39,7 @@ import id.homebase.api.sync.database.OutboxUploader
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import id.homebase.api.youauth.ZkKeyStore
+import id.homebase.api.client.drives.transformsLockedWithCurrentKey
 import kotlin.uuid.Uuid
 
 internal fun UploadFileRequest.countsAsSent(failure: ClientException): Boolean =
@@ -499,13 +500,18 @@ class DriveOutboxUploader(
 
     private suspend fun transformKeyHeaders(outboxRecord: Outbox) {
         val request = OutboxSerializer.decode<TransformKeyHeadersOutboxRequest>(outboxRecord)
+        val files = transformsLockedWithCurrentKey(request.driveId, request.files)
+        if (files.size < request.files.size) {
+            Logger.w(tag = TAG) { "transformKeyHeaders: drive=${request.driveId} dropped ${request.files.size - files.size} not locked with its current key" }
+        }
+        if (files.isEmpty()) return
         val result = try {
-            operationsProvider.transformKeyHeaders(request.driveId, request.files)
+            operationsProvider.transformKeyHeaders(request.driveId, files)
         } catch (e: Exception) {
             throw keyHeaderTransformFailure(e)
         }
         val refused = result.results.filter { it.errorCode != null }
-        Logger.i(tag = TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${request.files.size}" }
+        Logger.i(tag = TAG) { "transformKeyHeaders: drive=${request.driveId} stored=${result.results.size - refused.size}/${files.size}" }
         if (refused.isNotEmpty()) {
             Logger.w(tag = TAG) { "transformKeyHeaders: kept sealed ${refused.joinToString { "${it.fileId}:${it.errorCode}" }}" }
         }

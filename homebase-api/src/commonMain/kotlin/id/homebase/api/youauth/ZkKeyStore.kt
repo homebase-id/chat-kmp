@@ -101,16 +101,13 @@ object ZkKeyStore {
         return driveKey(alias) ?: throw FileDecryptionException.NoDriveKey(alias)
     }
 
-    /** The key of [alias] if it was read from the server within the last minute, without reading it: for a file being read. */
-    fun freshDriveKey(alias: Uuid): ByteArray? = if (fresh()) driveKey(alias) else null
-
     /** Null when the server's grant can't be read. */
     suspend fun reread(): SecurityContext? = try {
         rereading.withLock { readLocked() }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        Logger.w(tag = TAG) { "The drive keys couldn't be read from the server: ${e.message}" }
+        Logger.e(throwable = e, tag = TAG) { "The drive keys couldn't be read from the server: ${e.message}" }
         null
     }
 
@@ -126,17 +123,16 @@ object ZkKeyStore {
             failedRead = timeSource.markNow() to e
             throw e
         }
-        check(read == generation) { "Signed out while the drive keys were read" }
         failedRead = null
-        val changed = openDriveKeys(context)
-        if (read != generation) {
-            clear()
-            error("Signed out while the drive keys were opened")
-        }
+        val changed = openDriveKeys(context, keep = { read == generation })
         // A drive's files read before its key arrived or changed were hidden or skipped, and the cursor is past them.
         changed.forEach {
             Logger.i(tag = TAG) { "The key of zero-knowledge drive $it arrived or changed: syncing it again" }
-            resync(it)
+            try {
+                resync(it)
+            } catch (e: Exception) {
+                Logger.e(throwable = e, tag = TAG) { "Drive $it couldn't be synced again" }
+            }
         }
         return context
     }
@@ -156,7 +152,7 @@ object ZkKeyStore {
      * Opens the drive keys [context] carries, each locked with the app's key; a grant that's gone takes its key with
      * it. Returns the drives whose key arrived or changed.
      */
-    suspend fun openDriveKeys(context: SecurityContext): Set<Uuid> {
+    suspend fun openDriveKeys(context: SecurityContext, keep: () -> Boolean = { true }): Set<Uuid> {
         val before = loadedDrives()
         val appKey = appKey()
         val opened = context.driveGrants
@@ -167,13 +163,15 @@ object ZkKeyStore {
                 // A zero-knowledge drive the app has no copy for yet stays locked until a sign-in brings one.
                 alias to grant.zkAppKeyEncryptedStorageKey?.let { locked -> appKey?.let { openLocked(alias, locked, it, "this device's app key") } }
             }
-        save(opened)
         val writeOnly = context.driveGrants.mapNotNull { grant ->
             val locked = grant.zkStorageKeyEncryptedWriteOnlyPrivateKey ?: return@mapNotNull null
             val alias = Uuid.parse(grant.permissionedDrive.drive.alias)
             val driveKey = opened[alias] ?: return@mapNotNull null
             openLocked(alias, locked, driveKey, "its drive key")?.let { alias to it }
         }.toMap()
+        // Nothing is saved until every key is open: a sign-out meanwhile must not get the old identity's keys back.
+        check(keep()) { "Signed out while the drive keys were read" }
+        save(opened)
         saveWriteOnly(writeOnly)
         rereadAt = timeSource.markNow()
         return opened.filter { (alias, key) -> key != null && !(key contentEquals before[alias]) }.keys

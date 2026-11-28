@@ -166,11 +166,33 @@ private suspend fun EncryptedKeyHeader.openSealed(driveId: Uuid): KeyHeader {
 internal suspend fun EncryptedKeyHeader.zkDriveFormOf(opened: KeyHeader, driveId: Uuid): EncryptedKeyHeader {
     // The server refuses any IV but the one it stores.
     check(opened.iv.contentEquals(iv)) { "the sealed IV doesn't match the header's" }
-    // Made while a file is read, so never waits on the server: a key not read within the minute leaves it to a later read.
-    val key = SecureByteArray(ZkKeyStore.freshDriveKey(driveId) ?: error("the drive key wasn't read from the server within the minute"))
+    // Made while a file is read, so with the saved key; it is checked against the current one when sent.
+    val key = SecureByteArray(zkDriveKey(driveId))
     val locked = opened.lockedWith(key)
     check(locked.decryptAesToKeyHeader(key) == opened) { "the drive-key header doesn't open to the same file key" }
     return locked
+}
+
+/**
+ * The [transforms] locked with the current key of [driveId], read from the server within the minute; a saved key
+ * may have been out of date when a file was read. Empty when the drive is no longer one this device can open.
+ */
+internal suspend fun transformsLockedWithCurrentKey(driveId: Uuid, transforms: List<KeyHeaderTransform>): List<KeyHeaderTransform> {
+    val key = try {
+        ZkKeyStore.lockingKey(driveId)
+    } catch (e: FileDecryptionException.NoDriveKey) {
+        null
+    } ?: return emptyList()
+    // The file key is locked with its own IV in front: another key can't open to it.
+    return transforms.filter { transform ->
+        try {
+            transform.keyHeader.decryptAesToKeyHeader(SecureByteArray(key)).iv.contentEquals(transform.keyHeader.iv)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
 }
 
 /**
