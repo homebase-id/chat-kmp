@@ -64,6 +64,15 @@ class StuckPresentRecoveryTest {
     }
 
     @Test
+    fun aFailingStuckCheckIsRetried() {
+        val uiRan = CountDownLatch(1)
+        var checks = 0
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { if (++checks == 1) throw IllegalStateException() else true }) { uiRan.countDown() }
+        assertEquals(1, sent)
+        assertEquals(2, checks)
+    }
+
+    @Test
     fun aMissingNativeLibraryStopsTheRounds() {
         val sent = StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(1), retryMs = 0, stuck = { true }) { throw UnsatisfiedLinkError("libX11") }
         assertEquals(1, sent)
@@ -89,14 +98,19 @@ class StuckPresentRecoveryTest {
             }
         }
         try {
+            // Settled: the window manager may still place or resize the frame right after it maps.
             val deadline = System.nanoTime() + 5_000_000_000L
+            var previous = emptyList<Pair<Int, Int>>()
             var before = StuckPresentRecovery.canvasSizes(pid)
-            while (before.isEmpty() && System.nanoTime() < deadline) {
+            while ((before.isEmpty() || before != previous) && System.nanoTime() < deadline) {
                 Thread.sleep(100)
+                previous = before
                 before = StuckPresentRecovery.canvasSizes(pid)
             }
+            var during = emptyList<Pair<Int, Int>>()
 
-            assertEquals(1, StuckPresentRecovery.nudgeCanvases(pid))
+            assertEquals(1, StuckPresentRecovery.nudgeCanvases(pid) { during = StuckPresentRecovery.canvasSizes(pid) })
+            assertEquals(before.map { (w, h) -> w to h - 1 }, during)
             assertEquals(before, StuckPresentRecovery.canvasSizes(pid))
         } finally {
             EventQueue.invokeAndWait { window.dispose() }
