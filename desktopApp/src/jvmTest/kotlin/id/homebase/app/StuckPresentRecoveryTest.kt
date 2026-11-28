@@ -41,7 +41,7 @@ class StuckPresentRecoveryTest {
     fun itNudgesWhileStuckUntilTheUiThreadRunsAgain() {
         val uiRan = CountDownLatch(1)
         var nudges = 0
-        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { true }) { if (++nudges == 3) uiRan.countDown(); 1 }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, wait = {}, stuck = { true }) { if (++nudges == 3) uiRan.countDown(); 1 }
         assertEquals(3, sent)
     }
 
@@ -50,7 +50,7 @@ class StuckPresentRecoveryTest {
         val uiRan = CountDownLatch(1)
         var checks = 0
         var nudges = 0
-        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { ++checks > 2 }) { nudges++; uiRan.countDown(); 1 }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, wait = {}, stuck = { ++checks > 2 }) { nudges++; uiRan.countDown(); 1 }
         assertEquals(1, sent)
         assertEquals(3, checks)
     }
@@ -59,7 +59,7 @@ class StuckPresentRecoveryTest {
     fun aFailingNudgeIsRetried() {
         val uiRan = CountDownLatch(1)
         var attempts = 0
-        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { true }) { if (++attempts == 2) uiRan.countDown() else error("no display"); 1 }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, wait = {}, stuck = { true }) { if (++attempts == 2) uiRan.countDown() else error("no display"); 1 }
         assertEquals(1, sent)
     }
 
@@ -67,14 +67,14 @@ class StuckPresentRecoveryTest {
     fun aFailingStuckCheckIsRetried() {
         val uiRan = CountDownLatch(1)
         var checks = 0
-        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { if (++checks == 1) throw IllegalStateException() else true }) { uiRan.countDown(); 1 }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, wait = {}, stuck = { if (++checks == 1) throw IllegalStateException() else true }) { uiRan.countDown(); 1 }
         assertEquals(1, sent)
         assertEquals(2, checks)
     }
 
     @Test
     fun aMissingNativeLibraryStopsTheRounds() {
-        val sent = StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(1), retryMs = 0, stuck = { true }) { throw UnsatisfiedLinkError("libX11") }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(1), wait = {}, stuck = { true }) { throw UnsatisfiedLinkError("libX11") }
         assertEquals(0, sent)
     }
 
@@ -82,14 +82,22 @@ class StuckPresentRecoveryTest {
     fun aRoundThatResizesNothingIsNotCounted() {
         val uiRan = CountDownLatch(1)
         var rounds = 0
-        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, retryMs = 0, stuck = { true }) { if (++rounds == 3) uiRan.countDown(); if (rounds == 3) 1 else 0 }
+        val sent = StuckPresentRecovery.nudgeWhileStuck(uiRan, wait = {}, stuck = { true }) { if (++rounds == 3) uiRan.countDown(); if (rounds == 3) 1 else 0 }
         assertEquals(1, sent)
+    }
+
+    @Test
+    fun theNudgesBackOffFromOneSecondToEight() {
+        val uiRan = CountDownLatch(1)
+        val waits = mutableListOf<Long>()
+        StuckPresentRecovery.nudgeWhileStuck(uiRan, stuck = { true }, wait = { waits += it; if (waits.size == 6) uiRan.countDown() }) { 1 }
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 8_000L, 8_000L), waits)
     }
 
     @Test
     fun aUiThreadThatAlreadyRanIsNotNudged() {
         var nudges = 0
-        assertEquals(0, StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(0), retryMs = 0, stuck = { true }) { nudges++; 1 })
+        assertEquals(0, StuckPresentRecovery.nudgeWhileStuck(CountDownLatch(0), wait = {}, stuck = { true }) { nudges++; 1 })
         assertEquals(0, nudges)
     }
 

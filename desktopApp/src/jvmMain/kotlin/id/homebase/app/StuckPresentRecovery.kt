@@ -21,7 +21,8 @@ internal object StuckPresentRecovery {
     private const val TAG = "StuckPresentRecovery"
     private const val CANVAS_WINDOW_NAME = "sun-awt-X11-XCanvasPeer"
     private const val XA_CARDINAL = 6L
-    private const val RETRY_MS = 2_000L
+    internal const val FIRST_WAIT_MS = 1_000L
+    internal const val MAX_WAIT_MS = 8_000L
     private const val MAX_FRAME_DEPTH = 3
 
     // Our X errors go to libX11's process-wide handler: XToolkit's is installed; without it libX11 would exit the app.
@@ -29,14 +30,14 @@ internal object StuckPresentRecovery {
         hostOs == HostOs.Linux && !System.getenv("DISPLAY").isNullOrEmpty() && java.awt.Toolkit.getDefaultToolkit().javaClass.name == "sun.awt.X11.XToolkit"
     }
 
-    // The window only lets go once it's shown again (not while the screen is locked), hence the retry.
+    // The window only lets go once it's shown again (not while the screen is locked), hence the retry; backing off keeps a long lock from piling up resize events.
     fun recoverWhileStuck(uiRan: CountDownLatch) {
         if (!onX11) return
         val pid = ProcessHandle.current().pid()
         var announced = false
         var missingLogged = false
-        val nudges = nudgeWhileStuck(uiRan, RETRY_MS, stuck = { awtEventThread()?.let { isStuckInSwap(it.stackTrace) } == true }) {
-            if (!announced) Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows every $RETRY_MS ms until it runs again" }
+        val nudges = nudgeWhileStuck(uiRan, stuck = { awtEventThread()?.let { isStuckInSwap(it.stackTrace) } == true }) {
+            if (!announced) Logger.e(tag = TAG) { "UI thread stuck in Skiko $SWAP_METHOD; resizing its canvas windows, backing off from $FIRST_WAIT_MS to $MAX_WAIT_MS ms, until it runs again" }
             announced = true
             nudgeCanvases(pid).also { resized ->
                 if (resized == 0 && !missingLogged) Logger.e(tag = TAG) { "no canvas window of this process found" }
@@ -47,8 +48,14 @@ internal object StuckPresentRecovery {
     }
 
     // A LinkageError (JNA or libX11 missing) is permanent, so it ends the rounds; anything else is retried.
-    internal fun nudgeWhileStuck(uiRan: CountDownLatch, retryMs: Long, stuck: () -> Boolean, nudge: () -> Int): Int {
+    internal fun nudgeWhileStuck(
+        uiRan: CountDownLatch,
+        stuck: () -> Boolean,
+        wait: (Long) -> Unit = { uiRan.await(it, TimeUnit.MILLISECONDS) },
+        nudge: () -> Int,
+    ): Int {
         var nudges = 0
+        var waitMs = FIRST_WAIT_MS
         var failure: String? = null
         while (uiRan.count > 0) {
             try {
@@ -62,7 +69,8 @@ internal object StuckPresentRecovery {
                 if (e.toString() != failure) Logger.e(e, TAG) { "couldn't reach the canvas windows" }
                 failure = e.toString()
             }
-            uiRan.await(retryMs, TimeUnit.MILLISECONDS)
+            wait(waitMs)
+            waitMs = minOf(waitMs * 2, MAX_WAIT_MS)
         }
         return nudges
     }
